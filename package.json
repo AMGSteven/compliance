@@ -1,5 +1,6 @@
 {
   "name": "my-v0-project",
+  "packageManager": "npm@10.2.4",
   "type": "module",
   "version": "0.1.0",
   "private": true,
