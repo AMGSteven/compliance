@@ -1,0 +1,130 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+
+    /* Update primary to use Juiced Media teal */
+    --primary: 184 100% 39%; /* #00BDC6 */
+    --primary-foreground: 210 40% 98%;
+
+    /* Update secondary to use Juiced Media blue */
+    --secondary: 210 85% 46%; /* #1976D2 */
+    --secondary-foreground: 210 40% 98%;
+
+    /* Update accent to use Juiced Media purple */
+    --accent: 282 68% 38%; /* #7B1FA2 */
+    --accent-foreground: 210 40% 98%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 184 100% 39%; /* Match primary (teal) */
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    /* Update primary to use Juiced Media teal */
+    --primary: 184 100% 39%; /* #00BDC6 */
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    /* Update secondary to use Juiced Media blue */
+    --secondary: 210 85% 46%; /* #1976D2 */
+    --secondary-foreground: 210 40% 98%;
+
+    /* Update accent to use Juiced Media purple */
+    --accent: 282 68% 38%; /* #7B1FA2 */
+    --accent-foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 184 100% 39%; /* Match primary (teal) */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Custom gradient card styles */
+.gradient-card {
+  @apply relative overflow-hidden;
+}
+
+.gradient-card::before {
+  content: "";
+  @apply absolute inset-0 rounded-lg border-2 border-transparent pointer-events-none;
+  background: linear-gradient(to right, #00bdc6, #1976d2, #7b1fa2) border-box;
+  -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+/* Subtle hover effects */
+.hover-lift {
+  @apply transition-all duration-200;
+}
+
+.hover-lift:hover {
+  @apply transform -translate-y-1 shadow-md;
+}
+
+/* Micro-interactions */
+.pulse-on-hover:hover {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+/* Loading animation */
+.loading-gradient {
+  background: linear-gradient(90deg, #00bdc6, #1976d2, #7b1fa2, #1976d2, #00bdc6);
+  background-size: 400% 400%;
+  animation: gradient 3s ease infinite;
+}
+
+@keyframes gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
