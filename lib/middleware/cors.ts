@@ -1,6 +1,15 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
+// CORS headers for use in API routes
+export const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, Api-Key",
+  "Access-Control-Allow-Credentials": "true",
+  "Access-Control-Max-Age": "86400", // 24 hours
+}
+
 // List of allowed origins (your lead gen domains)
 const allowedOrigins = [
   "https://example.com",

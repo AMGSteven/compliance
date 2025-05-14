@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createServerClient } from "@/lib/supabase/server"
 import { ScheduledBatchesService } from "@/lib/services/scheduled-batches-service"
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   try {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const {
       data: { session },
     } = await supabase.auth.getSession()
