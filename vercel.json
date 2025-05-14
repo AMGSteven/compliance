@@ -1,7 +1,9 @@
 {
   "functions": {
     "app/api/**/*": {
-      "runtime": "nodejs18.x"
+      "runtime": "@vercel/node@18"
     }
-  }
+  },
+  "buildCommand": "pnpm build",
+  "installCommand": "pnpm install"
 }
