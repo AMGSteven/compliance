@@ -84,7 +84,7 @@ export function PhoneCheckForm({ onCheckComplete }: PhoneCheckFormProps) {
           </div>
 
           {result && (
-            <Alert variant={result.isCompliant ? "success" : "destructive"} className="mt-4">
+            <Alert variant={result.isCompliant ? "default" : "destructive"} className="mt-4">
               {result.isCompliant ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
               <AlertTitle>{result.isCompliant ? "Compliant" : "Non-Compliant"}</AlertTitle>
               <AlertDescription>

@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createServerClient } from "@/lib/supabase/server"
 import { generateId } from "@/lib/utils/api-key"
 
 export type Webhook = {
@@ -34,7 +34,7 @@ export type WebhookEvent = {
 
 export class WebhooksRepository {
   async findAll(options: { orderBy?: string; orderDirection?: "asc" | "desc" } = {}) {
-    const supabase = createClient()
+    const supabase = createServerClient()
 
     let query = supabase.from("webhooks").select("*")
 
@@ -55,7 +55,7 @@ export class WebhooksRepository {
   }
 
   async findById(id: string) {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const { data, error } = await supabase.from("webhooks").select("*").eq("id", id).single()
 
     if (error) {
@@ -67,7 +67,7 @@ export class WebhooksRepository {
   }
 
   async create(webhook: Omit<Webhook, "id" | "created_at" | "updated_at">) {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const now = new Date().toISOString()
 
     const newWebhook = {
@@ -75,7 +75,7 @@ export class WebhooksRepository {
       ...webhook,
       created_at: now,
       updated_at: now,
-      secret: webhook.secret || generateId(32),
+      secret: webhook.secret || generateId(),
     }
 
     const { data, error } = await supabase.from("webhooks").insert(newWebhook).select().single()
@@ -89,7 +89,7 @@ export class WebhooksRepository {
   }
 
   async update(id: string, webhook: Partial<Webhook>) {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const now = new Date().toISOString()
 
     const { data, error } = await supabase
@@ -111,7 +111,7 @@ export class WebhooksRepository {
   }
 
   async delete(id: string) {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const { error } = await supabase.from("webhooks").delete().eq("id", id)
 
     if (error) {
@@ -123,7 +123,7 @@ export class WebhooksRepository {
   }
 
   async recordEvent(event: Omit<WebhookEvent, "id" | "created_at" | "updated_at" | "attempts">) {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const now = new Date().toISOString()
 
     const newEvent = {
@@ -145,7 +145,7 @@ export class WebhooksRepository {
   }
 
   async updateEventStatus(id: string, status: WebhookEvent["status"], details: Partial<WebhookEvent> = {}) {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const now = new Date().toISOString()
 
     const { data, error } = await supabase
@@ -168,7 +168,7 @@ export class WebhooksRepository {
   }
 
   async findPendingEvents(limit = 10) {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const now = new Date().toISOString()
 
     const { data, error } = await supabase
@@ -188,7 +188,7 @@ export class WebhooksRepository {
   }
 
   async findEventsByWebhookId(webhookId: string, limit = 50) {
-    const supabase = createClient()
+    const supabase = createServerClient()
 
     const { data, error } = await supabase
       .from("webhook_events")
