@@ -29,13 +29,13 @@ export function ComplianceCheckForm({ onCheckComplete }: ComplianceCheckFormProp
     setError(null)
 
     try {
-      const response = await fetch("/api/v1/compliance/check", {
+      const response = await fetch("/api/check-compliance", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          phone,
+          phoneNumber: phone,
           contactName: contactName || undefined,
         }),
       })
@@ -46,6 +46,8 @@ export function ComplianceCheckForm({ onCheckComplete }: ComplianceCheckFormProp
       }
 
       const data = await response.json()
+
+      console.dir({result: data}, { depth: null });
       setResult(data)
       if (onCheckComplete) {
         onCheckComplete(data)
@@ -88,45 +90,33 @@ export function ComplianceCheckForm({ onCheckComplete }: ComplianceCheckFormProp
           {result && (
             <div className="mt-6 space-y-4">
               <Alert
-                variant={
-                  result.overallCompliant === true
-                    ? "success"
-                    : result.overallCompliant === false
-                      ? "destructive"
-                      : "default"
-                }
+                variant={result.isCompliant ? "default" : "destructive"}
                 className="mt-4"
               >
-                {result.overallCompliant === true ? (
+                {result.isCompliant ? (
                   <CheckCircle className="h-4 w-4" />
                 ) : (
                   <AlertCircle className="h-4 w-4" />
                 )}
                 <AlertTitle>
-                  {result.overallCompliant === true
-                    ? "Compliant"
-                    : result.overallCompliant === false
-                      ? "Non-Compliant"
-                      : "Partial Results"}
+                  {result.isCompliant ? "Compliant" : "Non-Compliant"}
                 </AlertTitle>
                 <AlertDescription>
-                  {result.overallCompliant === true
+                  {result.isCompliant
                     ? "This phone number passed all compliance checks."
-                    : result.overallCompliant === false
-                      ? `This phone number failed ${result.summary.failedChecks.length} compliance check(s).`
-                      : "Some compliance checks encountered errors. Please review the detailed results."}
+                    : "This phone number failed one or more compliance checks."}
                 </AlertDescription>
               </Alert>
 
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Detailed Results</h3>
-                {result.checkResults.map((check: any, index: number) => (
+                {result.results.map((check: any, index: number) => (
                   <Card key={index} className="overflow-hidden">
                     <CardHeader className="pb-2">
                       <div className="flex justify-between items-center">
                         <CardTitle className="text-base">{check.source}</CardTitle>
                         {check.compliant === true ? (
-                          <Badge variant="success">PASS</Badge>
+                          <Badge variant="outline" className="text-green-600 bg-green-100">PASS</Badge>
                         ) : check.compliant === false ? (
                           <Badge variant="destructive">FAIL</Badge>
                         ) : (
@@ -137,7 +127,7 @@ export function ComplianceCheckForm({ onCheckComplete }: ComplianceCheckFormProp
                     <CardContent className="pt-2">
                       {check.error ? (
                         <p className="text-destructive">{check.error}</p>
-                      ) : check.compliant === false && check.reasons.length > 0 ? (
+                      ) : check.isCompliant === false && check.reasons.length > 0 ? (
                         <div>
                           <p className="font-medium">Reasons:</p>
                           <ul className="list-disc pl-5 mt-1">
@@ -146,7 +136,7 @@ export function ComplianceCheckForm({ onCheckComplete }: ComplianceCheckFormProp
                             ))}
                           </ul>
                         </div>
-                      ) : check.compliant === true ? (
+                      ) : check.isCompliant === true ? (
                         <p>No compliance issues found.</p>
                       ) : (
                         <p>No detailed information available.</p>

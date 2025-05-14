@@ -3,6 +3,15 @@ import { type NextRequest, NextResponse } from "next/server"
 import { OptOutsRepository } from "@/lib/repositories/opt-outs-repository"
 
 export async function GET(request: NextRequest) {
+  // Validate API key
+  const apiKey = request.headers.get("x-api-key")
+  if (!process.env.DIALER_API_KEYS?.split(",").includes(apiKey || "")) {
+    return NextResponse.json(
+      { error: "Invalid or missing API key" },
+      { status: 401 }
+    )
+  }
+
   const startTime = Date.now()
   const supabase = createServerClient()
   const optOutsRepo = new OptOutsRepository()
@@ -46,7 +55,7 @@ export async function GET(request: NextRequest) {
       response_data: { count: optOuts.length, total },
       status_code: 200,
       latency: Date.now() - startTime,
-      ip_address: request.headers.get("x-forwarded-for") || request.ip,
+      ip_address: request.headers.get("x-forwarded-for") || "unknown",
       user_agent: request.headers.get("user-agent"),
     })
 
@@ -70,7 +79,7 @@ export async function GET(request: NextRequest) {
       method: "GET",
       status_code: 500,
       latency: Date.now() - startTime,
-      ip_address: request.headers.get("x-forwarded-for") || request.ip,
+      ip_address: request.headers.get("x-forwarded-for") || "unknown",
       user_agent: request.headers.get("user-agent"),
     })
 

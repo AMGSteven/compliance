@@ -1,0 +1,405 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Compliance API",
+    "description": "API for managing compliance checks, DNC lists, and opt-outs",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Support",
+      "email": "support@example.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.example.com",
+      "description": "Production server"
+    },
+    {
+      "url": "http://localhost:3002",
+      "description": "Local development server"
+    }
+  ],
+  "paths": {
+    "/api/check-compliance": {
+      "post": {
+        "summary": "Check phone number compliance",
+        "description": "Checks a phone number against multiple compliance services including TCPA, Blacklist, Webrecon, and internal DNC list",
+        "operationId": "checkCompliance",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["phoneNumber"],
+                "properties": {
+                  "phoneNumber": {
+                    "type": "string",
+                    "description": "Phone number to check (E.164 format preferred)",
+                    "example": "+14155551234"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Compliance check results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "phoneNumber": {
+                      "type": "string",
+                      "description": "The phone number that was checked"
+                    },
+                    "isCompliant": {
+                      "type": "boolean",
+                      "description": "Overall compliance status"
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "source": {
+                            "type": "string",
+                            "description": "Name of the compliance service"
+                          },
+                          "isCompliant": {
+                            "type": "boolean",
+                            "description": "Compliance status from this service"
+                          },
+                          "reasons": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "description": "Reasons for non-compliance"
+                          },
+                          "details": {
+                            "type": "object",
+                            "description": "Additional details from the service"
+                          }
+                        }
+                      }
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When the check was performed"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/dialer/dnc": {
+      "post": {
+        "summary": "Add a number to DNC list",
+        "description": "Add a single phone number to the internal Do Not Call list",
+        "operationId": "addToDNC",
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["phone_number"],
+                "properties": {
+                  "phone_number": {
+                    "type": "string",
+                    "description": "Phone number to add (E.164 format)",
+                    "example": "+14155551234"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Reason for adding to DNC",
+                    "example": "Customer request"
+                  },
+                  "source": {
+                    "type": "string",
+                    "description": "Source of the DNC request",
+                    "example": "web_form"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Number added successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "phone_number": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid API key"
+          },
+          "429": {
+            "description": "Too many requests"
+          }
+        }
+      }
+    },
+    "/api/dialer/dnc/bulk": {
+      "post": {
+        "summary": "Bulk add numbers to DNC list",
+        "description": "Add multiple phone numbers to the internal Do Not Call list",
+        "operationId": "bulkAddToDNC",
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["numbers"],
+                "properties": {
+                  "numbers": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["phone_number"],
+                      "properties": {
+                        "phone_number": {
+                          "type": "string",
+                          "description": "Phone number (E.164 format)",
+                          "example": "+14155551234"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "description": "Reason for adding to DNC"
+                        },
+                        "source": {
+                          "type": "string",
+                          "description": "Source of the DNC request"
+                        }
+                      }
+                    },
+                    "minItems": 1,
+                    "maxItems": 1000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Numbers added successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "added": {
+                      "type": "integer",
+                      "description": "Number of entries added"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "phone_number": {
+                            "type": "string"
+                          },
+                          "error": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid API key"
+          },
+          "429": {
+            "description": "Too many requests"
+          }
+        }
+      }
+    },
+    "/api/v1/opt-outs": {
+      "get": {
+        "summary": "Get opt-out list",
+        "description": "Retrieve a paginated list of opt-outs across all channels",
+        "operationId": "getOptOuts",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Page number (1-based)",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Number of items per page",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 10
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Search term to filter results",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of opt-outs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "channel": {
+                            "type": "string",
+                            "enum": ["email", "phone", "sms", "postal", "all"]
+                          },
+                          "source": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "opt_out_date": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "contact": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "email": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "phone": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "postal": {
+                                "type": "string",
+                                "nullable": true
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "pagination": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "totalPages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "apiKey": {
+        "type": "apiKey",
+        "name": "x-api-key",
+        "in": "header",
+        "description": "API key for authentication"
+      }
+    }
+  }
+}

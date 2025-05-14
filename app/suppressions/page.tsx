@@ -53,7 +53,11 @@ export default function SuppressionsPage() {
           queryParams.set("search", debouncedSearchTerm)
         }
 
-        const response = await fetch(`/api/v1/opt-outs?${queryParams.toString()}`)
+        const response = await fetch(`/api/v1/opt-outs?${queryParams.toString()}`, {
+          headers: {
+            "x-api-key": process.env.NEXT_PUBLIC_DIALER_API_KEY || "",
+          },
+        })
 
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`)
@@ -74,17 +78,21 @@ export default function SuppressionsPage() {
         setUsingMockData(true)
 
         // Generate mock data as fallback
-        const mockOptOuts = Array.from({ length: 10 }, (_, i) => ({
+        const mockOptOuts: OptOutWithContact[] = Array.from({ length: 10 }, (_, i) => ({
           id: `mock-${i}`,
-          channel: ["email", "phone", "sms", "postal"][Math.floor(Math.random() * 4)],
+          channel: ["email", "phone", "sms", "postal", "all"][Math.floor(Math.random() * 4)] as "email" | "phone" | "sms" | "postal" | "all",
           source: "Sample Data",
           opt_out_date: new Date().toISOString(),
-          reason: null,
+          reason: undefined,
+          contact_id: `contact-${i}`,
+          created_at: new Date().toISOString(),
           contact: {
             id: `contact-${i}`,
             email: `user${i}@example.com`,
-            phone: null,
-            postal: null,
+            phone: undefined,
+            postal: undefined,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
           },
         }))
 

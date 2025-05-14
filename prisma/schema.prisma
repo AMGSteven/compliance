@@ -1,0 +1,27 @@
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  schemas   = ["public", "auth"]
+}
+
+model DNCEntry {
+  phone_number    String   @id @unique @map("phone_number")
+  date_added     DateTime @default(now()) @map("date_added")
+  reason         String
+  source         String
+  added_by       String   @map("added_by")
+  status         String   @default("active")
+  metadata       Json     @default("{}")
+  expiration_date DateTime? @map("expiration_date")
+
+  @@index([status])
+  @@index([date_added])
+  @@map("dnc_entries")
+  @@schema("public")
+}

@@ -28,14 +28,13 @@ export function PhoneCheckForm({ onCheckComplete }: PhoneCheckFormProps) {
     setError(null)
 
     try {
-      const response = await fetch("/api/v1/tcpa/check", {
+      const response = await fetch("/api/check-compliance", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          phone,
-          contactName: contactName || undefined,
+          phoneNumber: phone,
         }),
       })
 
@@ -80,18 +79,18 @@ export function PhoneCheckForm({ onCheckComplete }: PhoneCheckFormProps) {
               id="contactName"
               placeholder="Enter contact name"
               value={contactName}
-              onChange={(e) => setContactName(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setContactName(e.target.value)}
             />
           </div>
 
           {result && (
-            <Alert variant={result.compliant ? "success" : "destructive"} className="mt-4">
-              {result.compliant ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-              <AlertTitle>{result.compliant ? "Compliant" : "Non-Compliant"}</AlertTitle>
+            <Alert variant={result.isCompliant ? "success" : "destructive"} className="mt-4">
+              {result.isCompliant ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+              <AlertTitle>{result.isCompliant ? "Compliant" : "Non-Compliant"}</AlertTitle>
               <AlertDescription>
-                {result.compliant
-                  ? "This phone number is not on any TCPA litigator lists."
-                  : `This phone number is on the following lists: ${result.reasons.join(", ")}`}
+                {result.isCompliant
+                  ? "This phone number passed all compliance checks."
+                  : `This phone number failed the following checks: ${result.results.filter((r: { isCompliant: boolean; source: string; reasons: string[]; }) => !r.isCompliant).map((r: { source: string; reasons: string[]; }) => `${r.source} (${r.reasons.join(", ")})`).join("; ")}`}
               </AlertDescription>
             </Alert>
           )}
