@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createServerClient } from "@/lib/supabase/server"
 import { generateId } from "@/lib/utils/api-key"
 
 export type BatchOperation = {
@@ -33,7 +33,7 @@ export class BatchOperationsRepository {
       "id" | "status" | "processed_items" | "successful_items" | "failed_items" | "created_at" | "updated_at"
     >,
   ): Promise<BatchOperation> {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const now = new Date().toISOString()
 
     const newBatchOp = {
@@ -58,7 +58,7 @@ export class BatchOperationsRepository {
   }
 
   async findById(id: string): Promise<BatchOperation | null> {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const { data, error } = await supabase.from("batch_operations").select("*").eq("id", id).single()
 
     if (error) {
@@ -73,7 +73,7 @@ export class BatchOperationsRepository {
   }
 
   async findWithResults(id: string): Promise<(BatchOperation & { results: BatchOperationResult[] }) | null> {
-    const supabase = createClient()
+    const supabase = createServerClient()
 
     // First get the batch operation
     const { data: batchOp, error: batchError } = await supabase
@@ -109,7 +109,7 @@ export class BatchOperationsRepository {
   }
 
   async updateStatus(id: string, updates: Partial<BatchOperation>): Promise<BatchOperation> {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const now = new Date().toISOString()
 
     const { data, error } = await supabase
@@ -134,7 +134,7 @@ export class BatchOperationsRepository {
     batchId: string,
     result: Omit<BatchOperationResult, "id" | "batch_operation_id" | "created_at">,
   ): Promise<BatchOperationResult> {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const now = new Date().toISOString()
 
     const newResult = {
@@ -155,7 +155,7 @@ export class BatchOperationsRepository {
   }
 
   async findRecent(limit = 10): Promise<BatchOperation[]> {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const { data, error } = await supabase
       .from("batch_operations")
       .select("*")
@@ -171,7 +171,7 @@ export class BatchOperationsRepository {
   }
 
   async findByUser(userId: string, limit = 50): Promise<BatchOperation[]> {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const { data, error } = await supabase
       .from("batch_operations")
       .select("*")
@@ -188,7 +188,7 @@ export class BatchOperationsRepository {
   }
 
   async findByType(type: string, limit = 50): Promise<BatchOperation[]> {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const { data, error } = await supabase
       .from("batch_operations")
       .select("*")
@@ -205,7 +205,7 @@ export class BatchOperationsRepository {
   }
 
   async getResultsByBatchId(batchId: string): Promise<BatchOperationResult[]> {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const { data, error } = await supabase
       .from("batch_operation_results")
       .select("*")
@@ -221,7 +221,7 @@ export class BatchOperationsRepository {
   }
 
   async deleteById(id: string): Promise<boolean> {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const { error } = await supabase.from("batch_operations").delete().eq("id", id)
 
     if (error) {
@@ -239,7 +239,7 @@ export class BatchOperationsRepository {
     completed: number
     failed: number
   }> {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const { data, error } = await supabase.from("batch_operations").select("status")
 
     if (error) {

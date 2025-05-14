@@ -1,10 +1,10 @@
-import { createClient } from "@/lib/supabase/server"
+import { createServerClient } from "@/lib/supabase/server"
 import { generateId } from "@/lib/utils/api-key"
 import type { ScheduledBatch, BatchScheduleHistory } from "@/lib/types/batch"
 
 export class ScheduledBatchesRepository {
   async create(scheduledBatch: Omit<ScheduledBatch, "id" | "created_at" | "updated_at">): Promise<ScheduledBatch> {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const now = new Date().toISOString()
 
     const newScheduledBatch = {
@@ -25,7 +25,7 @@ export class ScheduledBatchesRepository {
   }
 
   async findById(id: string): Promise<ScheduledBatch | null> {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const { data, error } = await supabase.from("scheduled_batches").select("*").eq("id", id).single()
 
     if (error) {
@@ -40,7 +40,7 @@ export class ScheduledBatchesRepository {
   }
 
   async findByUser(userId: string): Promise<ScheduledBatch[]> {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const { data, error } = await supabase
       .from("scheduled_batches")
       .select("*")
@@ -56,7 +56,7 @@ export class ScheduledBatchesRepository {
   }
 
   async findActive(): Promise<ScheduledBatch[]> {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const { data, error } = await supabase
       .from("scheduled_batches")
       .select("*")
@@ -72,7 +72,7 @@ export class ScheduledBatchesRepository {
   }
 
   async findDue(): Promise<ScheduledBatch[]> {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const now = new Date().toISOString()
 
     const { data, error } = await supabase
@@ -91,7 +91,7 @@ export class ScheduledBatchesRepository {
   }
 
   async update(id: string, updates: Partial<ScheduledBatch>): Promise<ScheduledBatch> {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const now = new Date().toISOString()
 
     const { data, error } = await supabase
@@ -113,7 +113,7 @@ export class ScheduledBatchesRepository {
   }
 
   async delete(id: string): Promise<boolean> {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const { error } = await supabase.from("scheduled_batches").delete().eq("id", id)
 
     if (error) {
@@ -125,7 +125,7 @@ export class ScheduledBatchesRepository {
   }
 
   async addHistoryEntry(entry: Omit<BatchScheduleHistory, "id" | "run_at">): Promise<BatchScheduleHistory> {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const now = new Date().toISOString()
 
     const newEntry = {
@@ -145,7 +145,7 @@ export class ScheduledBatchesRepository {
   }
 
   async getHistoryByScheduleId(scheduleId: string): Promise<BatchScheduleHistory[]> {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const { data, error } = await supabase
       .from("batch_schedule_history")
       .select("*")

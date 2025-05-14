@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createServerClient } from "@/lib/supabase/server"
 import { nanoid } from "nanoid"
 
 export interface TCPACheckResult {
@@ -29,7 +29,7 @@ export class TCPARepository {
    * Creates a new TCPA check result
    */
   async createCheckResult(data: Omit<TCPACheckResult, "id" | "createdAt">): Promise<TCPACheckResult> {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const id = nanoid()
     const createdAt = new Date().toISOString()
 
@@ -69,7 +69,7 @@ export class TCPARepository {
    * Creates a new TCPA batch check
    */
   async createBatchCheck(data: Omit<TCPABatchCheck, "id" | "createdAt">): Promise<TCPABatchCheck> {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const id = nanoid()
     const createdAt = new Date().toISOString()
 
@@ -111,7 +111,7 @@ export class TCPARepository {
    * Updates a TCPA batch check
    */
   async updateBatchCheck(id: string, data: Partial<Omit<TCPABatchCheck, "id" | "createdAt">>): Promise<TCPABatchCheck> {
-    const supabase = createClient()
+    const supabase = createServerClient()
 
     const updateData: any = {}
     if (data.totalChecked !== undefined) updateData.total_checked = data.totalChecked
@@ -150,7 +150,7 @@ export class TCPARepository {
    * Gets a TCPA batch check by ID
    */
   async getBatchCheck(id: string): Promise<TCPABatchCheck | null> {
-    const supabase = createClient()
+    const supabase = createServerClient()
 
     const { data, error } = await supabase.from("tcpa_batch_checks").select().eq("id", id).single()
 
@@ -179,7 +179,7 @@ export class TCPARepository {
    * Gets TCPA check results by batch ID
    */
   async getCheckResultsByBatchId(batchId: string): Promise<TCPACheckResult[]> {
-    const supabase = createClient()
+    const supabase = createServerClient()
 
     const { data, error } = await supabase.from("tcpa_check_results").select().eq("batch_id", batchId)
 
@@ -204,7 +204,7 @@ export class TCPARepository {
    * Gets recent TCPA batch checks
    */
   async getRecentBatchChecks(limit = 10): Promise<TCPABatchCheck[]> {
-    const supabase = createClient()
+    const supabase = createServerClient()
 
     const { data, error } = await supabase
       .from("tcpa_batch_checks")
@@ -234,7 +234,7 @@ export class TCPARepository {
    * Gets TCPA check results by phone number
    */
   async getCheckResultsByPhone(phone: string, limit = 10): Promise<TCPACheckResult[]> {
-    const supabase = createClient()
+    const supabase = createServerClient()
 
     const { data, error } = await supabase
       .from("tcpa_check_results")
@@ -269,7 +269,7 @@ export class TCPARepository {
     nonCompliantCount: number
     complianceRate: number
   }> {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const startDate = new Date()
     startDate.setDate(startDate.getDate() - days)
 
