@@ -1,11 +1,11 @@
 import { Suspense } from "react"
-import { createClient } from "@/lib/supabase/server"
+import { createServerClient } from "@/lib/supabase/server"
 import { ScheduledBatchList } from "@/components/batch/scheduled-batch-list"
 
 export const dynamic = "force-dynamic"
 
 async function ScheduledBatchesPage() {
-  const supabase = createClient()
+  const supabase = createServerClient()
   const {
     data: { session },
   } = await supabase.auth.getSession()

@@ -4,14 +4,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { createClient } from "@/lib/supabase/server"
+import { createServerClient } from "@/lib/supabase/server"
 import { ScheduledBatchesService } from "@/lib/services/scheduled-batches-service"
 import { formatScheduleType } from "@/lib/utils/cron-utils"
 
 export const dynamic = "force-dynamic"
 
 async function ScheduledBatchDetail({ params }: { params: { id: string } }) {
-  const supabase = createClient()
+  const supabase = createServerClient()
   const {
     data: { session },
   } = await supabase.auth.getSession()
@@ -101,7 +101,7 @@ async function ScheduledBatchDetail({ params }: { params: { id: string } }) {
                   <TableRow key={entry.id}>
                     <TableCell>{new Date(entry.run_at).toLocaleString()}</TableCell>
                     <TableCell>
-                      <Badge variant={entry.status === "success" ? "success" : "destructive"}>{entry.status}</Badge>
+                      <Badge variant={entry.status === "success" ? "default" : "destructive"}>{entry.status}</Badge>
                     </TableCell>
                     <TableCell>
                       {entry.batch_operation_id ? (

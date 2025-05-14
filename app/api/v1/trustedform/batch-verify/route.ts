@@ -1,10 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { TrustedFormService } from "@/lib/services/trusted-form-service"
-import { createClient } from "@/lib/supabase/server"
+import { createServerClient } from "@/lib/supabase/server"
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const {
       data: { user },
     } = await supabase.auth.getUser()
