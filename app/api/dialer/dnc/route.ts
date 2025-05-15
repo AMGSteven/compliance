@@ -11,6 +11,49 @@ const limiter = rateLimit({
   uniqueTokenPerInterval: 100
 });
 
+export async function GET(request: Request) {
+  console.log('GET /api/dialer/dnc');
+  try {
+    // Get API key from headers
+    const apiKey = request.headers.get('x-api-key');
+    if (!await validateApiKey(apiKey)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid or missing API key' },
+        { status: 401 }
+      );
+    }
+
+    // Get phone number from query params
+    const { searchParams } = new URL(request.url);
+    const phoneNumber = searchParams.get('phone');
+    
+    if (!phoneNumber) {
+      return NextResponse.json(
+        { success: false, error: 'Phone number is required' },
+        { status: 400 }
+      );
+    }
+
+    // Check if number is in DNC
+    const checker = new InternalDNCChecker();
+    const result = await checker.checkNumber(phoneNumber);
+
+    return NextResponse.json({
+      success: true,
+      is_blocked: !result.isCompliant,
+      phone_number: result.phoneNumber,
+      reasons: result.reasons,
+      details: result.details
+    });
+  } catch (error: any) {
+    console.error('Error in DNC endpoint:', error);
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request: Request) {
   console.log('POST /api/dialer/dnc');
   try {
