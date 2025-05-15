@@ -30,12 +30,32 @@ export interface TCPALitigatorResponse {
 }
 
 export interface BlacklistAllianceResponse {
+  sid: string;
   status: string;
-  found: boolean;
-  details?: {
-    reason: string;
-    date_added: string;
+  message: string;
+  code: string;
+  offset: number;
+  phone: string;
+  results: number;
+  time: number;
+  carrier?: {
+    did: string;
+    type: string;
+    name: string;
+    state: string;
+    ratecenter: string;
+    country: string;
+    clli: string;
+    lata: string;
+    wireless: string;
+    lrn: string;
+    npa: string;
+    nxx: string;
+    nxxx: string;
+    ocn: string;
+    port_type: string;
   };
+  scrubs: boolean;
 }
 
 export interface WebreconResponse {

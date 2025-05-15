@@ -32,12 +32,22 @@ export class BlacklistChecker implements ComplianceChecker {
 
       const data = await response.json() as BlacklistAllianceResponse;
 
+      // Check if the number is blacklisted based on scrubs flag and message
+      const isBlacklisted = data.scrubs === true || data.message === "Blacklisted";
+      
+      // Get reason from code and message
+      const reason = data.code ? `${data.message} (${data.code})` : data.message;
+      
       return {
-        isCompliant: !data.found,
-        reasons: data.found && data.details ? [`${data.details.reason} (${data.details.date_added})`] : [],
+        isCompliant: !isBlacklisted,
+        reasons: isBlacklisted ? [reason] : [],
         source: this.name,
         phoneNumber,
-        details: data.details,
+        details: {
+          carrier: data.carrier,
+          code: data.code,
+          message: data.message
+        },
         rawResponse: data,
       };
     } catch (error) {
