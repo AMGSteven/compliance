@@ -17,16 +17,10 @@ export async function GET(request: Request) {
     const apiKey = searchParams.get('api_key');
     console.log('API key received from query params:', apiKey);
     
-    // TEMPORARY: Always accept test_key_123 directly in code for testing
+    // We'll still accept test_key_123 but ensure we actually check the database
     if (apiKey === 'test_key_123') {
-      console.log('OVERRIDE: Accepting hardcoded test_key_123');
-      return NextResponse.json({
-        success: true,
-        is_blocked: apiKey === 'test_key_123' && searchParams.get('phone')?.includes('9999999999'),
-        phone_number: searchParams.get('phone') || '',
-        reasons: searchParams.get('phone')?.includes('9999999999') ? ['Test number - automatically blocked'] : [],
-        details: searchParams.get('phone')?.includes('9999999999') ? { isTestNumber: true } : {}
-      });
+      console.log('Accepting hardcoded test_key_123 for GET, but will check actual database');
+      // Continue processing instead of returning early
     }
   
     // Direct check for test_key_123 to simplify debugging
@@ -92,14 +86,10 @@ export async function POST(request: Request) {
     const body = await request.json();
     console.log('Request body:', body);
     
-    // TEMPORARY: Always accept test_key_123 directly in code for testing
+    // We'll still accept test_key_123 but ensure we actually process the request
     if (body.api_key === 'test_key_123') {
-      console.log('OVERRIDE: Accepting hardcoded test_key_123 in POST');
-      return NextResponse.json({
-        success: true,
-        message: 'Number added to DNC',
-        phone_number: body.phone_number || '',
-      });
+      console.log('Accepting hardcoded test_key_123 in POST, but will process the actual request');
+      // Continue processing instead of returning early
     }
     
     // Check both header and body for API key

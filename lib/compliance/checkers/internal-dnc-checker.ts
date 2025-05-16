@@ -72,59 +72,27 @@ export class InternalDNCChecker implements ComplianceChecker {
         };
       }
       
-      // Try all possible DNC table names
+      // Use the correct dnc_entries table as defined in the schema
       let dncEntry = null;
       
       try {
-        // Try dnc table
-        const { data: dncData, error: dncError } = await supabase
-          .from('dnc')
+        // Query the dnc_entries table
+        console.log('Querying dnc_entries table for:', normalizedNumber);
+        const { data: entriesData, error: entriesError } = await supabase
+          .from('dnc_entries')
           .select('*')
           .eq('phone_number', normalizedNumber)
           .eq('status', 'active')
           .maybeSingle();
         
-        if (!dncError) {
-          dncEntry = dncData;
+        if (entriesError) {
+          console.error('Error querying dnc_entries table:', entriesError);
+        } else {
+          console.log('Query result:', entriesData);
+          dncEntry = entriesData;
         }
       } catch (e) {
-        console.log('Error querying dnc table:', e);
-      }
-      
-      if (!dncEntry) {
-        try {
-          // Try dnc_entries table
-          const { data: entriesData, error: entriesError } = await supabase
-            .from('dnc_entries')
-            .select('*')
-            .eq('phone_number', normalizedNumber)
-            .eq('status', 'active')
-            .maybeSingle();
-          
-          if (!entriesError) {
-            dncEntry = entriesData;
-          }
-        } catch (e) {
-          console.log('Error querying dnc_entries table:', e);
-        }
-      }
-      
-      if (!dncEntry) {
-        try {
-          // Try DNCEntry table
-          const { data: dncEntryData, error: dncEntryError } = await supabase
-            .from('DNCEntry')
-            .select('*')
-            .eq('phone_number', normalizedNumber)
-            .eq('status', 'active')
-            .maybeSingle();
-          
-          if (!dncEntryError) {
-            dncEntry = dncEntryData;
-          }
-        } catch (e) {
-          console.log('Error querying DNCEntry table:', e);
-        }
+        console.error('Exception querying dnc_entries table:', e);
       }
 
       console.log('DNC check result:', dncEntry ? 'Found in DNC' : 'Not found in DNC');
@@ -176,66 +144,44 @@ export class InternalDNCChecker implements ComplianceChecker {
       
       const supabase = createServerClient();
       
-      // Try multiple possible table names
-      let data: any = null;
-      let finalError: any = null;
+      // We now consistently use the dnc_entries table as defined in the schema
+      let data = null;
+      let finalError = null;
       
       try {
-        // First try 'dnc' table
-        console.log('Attempting to add to dnc table');
-        const { data: dncData, error: dncError } = await supabase
-          .from('dnc')
+        // Use dnc_entries table exclusively
+        console.log('Inserting to dnc_entries table:', dncEntry);
+        const { data: entriesData, error: entriesError } = await supabase
+          .from('dnc_entries')
           .upsert(dncEntry)
           .select('*')
           .maybeSingle();
         
-        if (!dncError) {
-          data = dncData;
+        if (entriesError) {
+          finalError = entriesError;
+          console.error('Error upserting to dnc_entries table:', entriesError);
+          console.error('Error details:', JSON.stringify(entriesError, null, 2));
+          
+          // If it fails due to unique constraint, try to query the existing record
+          if (entriesError.code === '23505') { // Unique violation
+            console.log('Unique constraint violation, fetching existing record');
+            const { data: existingData, error: queryError } = await supabase
+              .from('dnc_entries')
+              .select('*')
+              .eq('phone_number', normalizedNumber)
+              .maybeSingle();
+              
+            if (!queryError && existingData) {
+              console.log('Found existing record:', existingData);
+              data = existingData;
+            }
+          }
         } else {
-          finalError = dncError;
+          console.log('Successfully inserted/updated record:', entriesData);
+          data = entriesData;
         }
       } catch (e) {
-        console.error('Error upserting to dnc table:', e);
-      }
-      
-      if (!data) {
-        try {
-          // Try dnc_entries table
-          console.log('Attempting to add to dnc_entries table');
-          const { data: entriesData, error: entriesError } = await supabase
-            .from('dnc_entries')
-            .upsert(dncEntry)
-            .select('*')
-            .maybeSingle();
-            
-          if (!entriesError) {
-            data = entriesData;
-          } else {
-            finalError = entriesError;
-          }
-        } catch (e) {
-          console.error('Error upserting to dnc_entries table:', e);
-        }
-      }
-      
-      if (!data) {
-        try {
-          // Try DNCEntry table
-          console.log('Attempting to add to DNCEntry table');
-          const { data: dncEntryData, error: dncEntryError } = await supabase
-            .from('DNCEntry')
-            .upsert(dncEntry)
-            .select('*')
-            .maybeSingle();
-            
-          if (!dncEntryError) {
-            data = dncEntryData;
-          } else {
-            finalError = dncEntryError;
-          }
-        } catch (e) {
-          console.error('Error upserting to DNCEntry table:', e);
-        }
+        console.error('Exception upserting to dnc_entries table:', e);
       }
       
       // If all attempts failed, create a fake success response for the test number
