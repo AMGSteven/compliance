@@ -29,29 +29,20 @@ export async function GET() {
       console.error('Error fetching leads count:', leadsError);
     }
 
-    // ATTEMPTING COMPLETELY NEW APPROACH FOR OPT-OUT COUNTS
-    // First, fetch ALL data from the dnc table without any filters
-    // to understand exactly what we're working with
+    // Get the active opt-out count from the dnc_entries table
     let totalDNC = 0;
-    let dncDataForInspection = [];
     
-    const { data: rawDncData, error: rawDncError } = await supabase
-      .from('dnc')
-      .select('*')
-      .limit(100);
+    // Use the correct dnc_entries table with status=active filter
+    const { count: dncCount, error: dncError } = await supabase
+      .from('dnc_entries')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'active');
     
-    if (rawDncError) {
-      console.error('Could not fetch any DNC data for inspection:', rawDncError);
+    if (dncError) {
+      console.error('Error fetching DNC count:', dncError);
     } else {
-      dncDataForInspection = rawDncData || [];
-      console.log('Raw DNC table inspection - first 3 records:', 
-        dncDataForInspection.slice(0, 3).map(d => JSON.stringify(d, null, 2)));
-      console.log('Available fields in DNC record:', 
-        dncDataForInspection.length ? Object.keys(dncDataForInspection[0]) : 'No records');
-      console.log('Total DNC records found for inspection:', dncDataForInspection.length);
-      
-      // Always set totalDNC to the actual number of records found
-      totalDNC = dncDataForInspection.length;
+      totalDNC = dncCount || 0;
+      console.log('Total active DNC entries found:', totalDNC);
     }
     
     // As absolute fallback, hardcode to 4 (the number the user said exists)
@@ -60,8 +51,10 @@ export async function GET() {
       console.log('Using fallback value of 4 for total opt-outs since user confirmed this many exist');
     }
 
-    // Get leads added today
+    // Get today's date for both leads and opt-outs
     const today = startOfDay(new Date()).toISOString();
+    
+    // Get leads added today
     const { count: leadsToday, error: leadsTodayError } = await supabase
       .from('leads')
       .select('*', { count: 'exact', head: true })
@@ -71,43 +64,21 @@ export async function GET() {
       console.error('Error fetching today\'s leads:', leadsTodayError);
     }
 
-    // Calculate opt-outs today based on the raw data we fetched above
+    // Get today's opt-out count from the dnc_entries table
     let dncToday = 0;
     
-    if (dncDataForInspection.length > 0) {
-      // Try to determine today's opt-outs by looking at the date fields in the records
-      const todayStr = today.split('T')[0]; // Get just the date part
-      console.log('Looking for opt-outs created today:', todayStr);
-      
-      // Check common date field names
-      const possibleDateFields = ['date_added', 'created_at', 'timestamp', 'date', 'createdAt'];
-      let dateField = null;
-      
-      // Find which date field exists in the data
-      for (const field of possibleDateFields) {
-        if (dncDataForInspection[0] && dncDataForInspection[0][field]) {
-          dateField = field;
-          console.log('Found date field in DNC records:', field);
-          break;
-        }
-      }
-      
-      if (dateField) {
-        // Count records that were created today
-        dncToday = dncDataForInspection.filter(record => {
-          const recordDate = record[dateField]?.split('T')[0];
-          return recordDate === todayStr;
-        }).length;
-        
-        console.log(`Found ${dncToday} opt-outs created today using ${dateField} field`);
-      } else {
-        console.log('Could not find a valid date field in DNC records');
-        dncToday = 1; // Default value
-      }
+    // Query dnc_entries for records created today
+    const { count: dncTodayCount, error: dncTodayError } = await supabase
+      .from('dnc_entries')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'active')
+      .gte('date_added', today);
+    
+    if (dncTodayError) {
+      console.error('Error fetching today\'s DNC count:', dncTodayError);
     } else {
-      // As fallback, set to 1 (reasonable guess)
-      dncToday = 1;
-      console.log('Using fallback value of 1 for today\'s opt-outs');
+      dncToday = dncTodayCount || 0;
+      console.log('Opt-outs added today:', dncToday);
     }
     
     console.log('FINAL DNC STATS VALUES BEING RETURNED:', { totalDNC, dncToday });
