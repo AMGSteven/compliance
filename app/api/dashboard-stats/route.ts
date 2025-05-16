@@ -8,22 +8,49 @@ interface CountResult {
 
 export async function GET() {
   try {
+    // Test database connection first
+    try {
+      const testResult = await prisma.$queryRaw`SELECT 1 as test`;
+      console.log('Database connection test:', testResult);
+    } catch (dbError: any) {
+      console.error('Database connection failed:', {
+        message: dbError.message,
+        code: dbError.code,
+        meta: dbError.meta
+      });
+      return NextResponse.json({
+        error: 'Database connection failed',
+        details: {
+          message: dbError.message,
+          code: dbError.code
+        }
+      }, { status: 500 });
+    }
+    // Log environment and database info
+    console.log('Environment:', {
+      NODE_ENV: process.env.NODE_ENV,
+      VERCEL_ENV: process.env.VERCEL_ENV
+    });
+
     // Log the database URL (without sensitive info)
     const dbUrl = process.env.DATABASE_URL || 'not set';
     console.log('Database connection info:', {
       host: dbUrl.split('@')[1]?.split(':')[0] || 'unknown',
-      dbName: dbUrl.split('/').pop() || 'unknown'
+      dbName: dbUrl.split('/').pop() || 'unknown',
+      urlLength: dbUrl.length
     });
 
     // Test database connection
     try {
-      await prisma.$queryRaw`SELECT 1`;
-      console.log('Database connection test successful');
+      console.log('Testing database connection...');
+      const result = await prisma.$queryRaw`SELECT 1 as test`;
+      console.log('Database connection test result:', result);
     } catch (connError: any) {
       console.error('Database connection test failed:', {
         error: connError.message,
         code: connError.code,
-        meta: connError.meta
+        meta: connError.meta,
+        stack: connError.stack
       });
       return NextResponse.json(
         { 
@@ -31,7 +58,8 @@ export async function GET() {
           error: 'Database connection failed',
           details: {
             message: connError.message,
-            code: connError.code
+            code: connError.code,
+            meta: connError.meta
           }
         },
         { status: 500 }

@@ -2,9 +2,7 @@ import { NextResponse } from 'next/server';
 import { InternalDNCChecker } from '@/lib/compliance/checkers/internal-dnc-checker';
 import { rateLimit } from '@/lib/rate-limit';
 import { validateApiKey } from '@/lib/auth';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../../../../lib/prisma';
 
 const limiter = rateLimit({
   interval: 60 * 1000, // 1 minute
@@ -83,7 +81,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     console.log('Request body:', body);
     const { phone_number, reason, source } = body;
-    const prisma = new PrismaClient();
+    // Using shared Prisma client
 
     // Validate required fields
     if (!phone_number) {

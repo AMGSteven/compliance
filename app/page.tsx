@@ -61,26 +61,58 @@ export default function Home() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [statsRes, optInsRes, optOutsRes] = await Promise.all([
-          fetch('/api/dashboard-stats'),
-          fetch('/api/leads/list'),
-          fetch('/api/dnc/recent')
-        ]);
-
-        if (!statsRes.ok || !optInsRes.ok || !optOutsRes.ok) {
-          throw new Error('One or more API requests failed');
+        // Fetch and handle each endpoint separately for better error tracking
+        try {
+          const statsRes = await fetch('/api/dashboard-stats');
+          console.log('Stats response:', { ok: statsRes.ok, status: statsRes.status });
+          if (!statsRes.ok) {
+            const errorData = await statsRes.json();
+            console.error('Stats API error:', { status: statsRes.status, error: errorData });
+            throw new Error(errorData.error || `Stats API failed: ${statsRes.status}`);
+          }
+          const statsData = await statsRes.json();
+          setStats(statsData);
+        } catch (statsError) {
+          console.error('Stats API error:', statsError);
+          throw new Error('Failed to fetch dashboard stats');
         }
 
-        const statsData = await statsRes.json();
-        const optInsData = await optInsRes.json();
-        const optOutsData = await optOutsRes.json();
+        try {
+          const optInsRes = await fetch('/api/leads/list');
+          console.log('OptIns response:', { ok: optInsRes.ok, status: optInsRes.status });
+          if (!optInsRes.ok) {
+            const errorText = await optInsRes.text();
+            console.error('OptIns API error:', { status: optInsRes.status, text: errorText });
+            throw new Error(`OptIns API failed: ${optInsRes.status}`);
+          }
+          const optInsData = await optInsRes.json();
+          setRecentOptIns(optInsData || []);
+        } catch (optInsError) {
+          console.error('OptIns API error:', optInsError);
+          throw new Error('Failed to fetch recent opt-ins');
+        }
 
-        setStats(statsData);
-        setRecentOptIns(optInsData || []);
-        setRecentOptOuts(optOutsData || []);
-      } catch (error) {
-        console.error('Failed to fetch data:', error);
-        setError('Failed to load dashboard data');
+        try {
+          const optOutsRes = await fetch('/api/dnc/recent');
+          console.log('OptOuts response:', { ok: optOutsRes.ok, status: optOutsRes.status });
+          if (!optOutsRes.ok) {
+            const errorText = await optOutsRes.text();
+            console.error('OptOuts API error:', { status: optOutsRes.status, text: errorText });
+            throw new Error(`OptOuts API failed: ${optOutsRes.status}`);
+          }
+          const optOutsData = await optOutsRes.json();
+          setRecentOptOuts(optOutsData || []);
+        } catch (optOutsError) {
+          console.error('OptOuts API error:', optOutsError);
+          throw new Error('Failed to fetch recent opt-outs');
+        }
+      } catch (error: any) {
+        console.error('Failed to fetch data:', { 
+          message: error.message,
+          stack: error.stack,
+          cause: error.cause
+        });
+        setError(error.message || 'Failed to load dashboard data');
       } finally {
         setLoading(false);
       }

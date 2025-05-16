@@ -1,6 +1,4 @@
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../prisma';
 const API_KEY = process.env.TRUSTED_FORM_API_KEY;
 const BASE_URL = 'https://cert.trustedform.com';
 

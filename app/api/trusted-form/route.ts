@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../../lib/prisma';
 import { z } from 'zod';
 import { TrustedFormService } from '@/lib/services/trusted-form';
-
-const prisma = new PrismaClient();
 
 // Schema for POST request
 const createTrustedFormSchema = z.object({

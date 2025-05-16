@@ -1,5 +1,6 @@
 import { ComplianceChecker, ComplianceResult } from '../types';
-import { PrismaClient, Prisma } from '@prisma/client';
+import { prisma } from '../../prisma';
+import { Prisma } from '@prisma/client';
 type ErrorWithMessage = { message: string };
 type DNCMetadata = {
   campaign?: string;
@@ -22,12 +23,9 @@ export type DNCEntry = {
 
 export class InternalDNCChecker implements ComplianceChecker {
   name = 'Internal DNC List';
-  private prisma: PrismaClient;
-
   private initialized: Promise<void>;
 
   constructor() {
-    this.prisma = new PrismaClient();
     this.initialized = this.initializeDatabase();
   }
 
@@ -47,7 +45,7 @@ export class InternalDNCChecker implements ComplianceChecker {
     const normalizedNumber = this.normalizePhoneNumber(phoneNumber);
     
     try {
-      const dncEntry = await this.prisma.dNCEntry.findFirst({
+      const dncEntry = await prisma.dNCEntry.findFirst({
         where: {
           phone_number: normalizedNumber,
           status: 'active',
@@ -93,7 +91,7 @@ export class InternalDNCChecker implements ComplianceChecker {
     };
 
     try {
-      const result = await this.prisma.dNCEntry.upsert({
+      const result = await prisma.dNCEntry.upsert({
         where: { phone_number: normalizedEntry.phone_number },
         update: {
           ...normalizedEntry,
@@ -135,7 +133,7 @@ export class InternalDNCChecker implements ComplianceChecker {
         results.failed++;
         results.errors.push({
           phone_number: entry.phone_number!,
-          error: error.message
+          error: (error as Error).message
         });
       }
     }

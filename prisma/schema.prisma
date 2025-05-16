@@ -7,9 +7,10 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
   schemas = ["public", "auth"]
+  relationMode = "foreignKeys"
 }
 
-model DNCEntry {
+model dNCEntry {
   @@schema("public")
   phone_number    String   @id @unique @map("phone_number")
   date_added     DateTime @default(now()) @map("date_added")
