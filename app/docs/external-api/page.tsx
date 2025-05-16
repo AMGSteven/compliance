@@ -201,9 +201,9 @@ Api-Key: YOUR_API_KEY`}
               </pre>
               <p className="text-sm">
                 You can obtain an API key from the{" "}
-                <Link href="/api-keys" className="text-primary underline">
+                <span className="text-primary">
                   API Keys
-                </Link>{" "}
+                </span>{" "}
                 page.
               </p>
             </CardContent>

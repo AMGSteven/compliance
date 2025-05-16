@@ -124,9 +124,6 @@ export function MainNav({ className, ...props }: React.HTMLAttributes<HTMLElemen
             <NavigationMenuTrigger>API & Docs</NavigationMenuTrigger>
             <NavigationMenuContent>
               <ul className="grid w-[400px] gap-3 p-4 md:w-[500px] md:grid-cols-2 lg:w-[600px]">
-                <ListItem href="/api-keys" title="API Keys">
-                  Manage your API keys
-                </ListItem>
                 <ListItem href="/docs/api" title="API Documentation">
                   Learn how to use our API
                 </ListItem>

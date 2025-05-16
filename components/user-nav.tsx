@@ -79,7 +79,7 @@ export function UserNav() {
             </DropdownMenuItem>
           )}
           <DropdownMenuItem asChild>
-            <Link href="/api-keys">API Keys</Link>
+            {/* API Keys link removed */}
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
