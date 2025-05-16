@@ -10,9 +10,35 @@ interface CountResult {
 
 export async function GET() {
   try {
+    // Log the database URL (without sensitive info)
+    const dbUrl = process.env.DATABASE_URL || 'not set';
+    console.log('Database connection info:', {
+      host: dbUrl.split('@')[1]?.split(':')[0] || 'unknown',
+      dbName: dbUrl.split('/').pop() || 'unknown'
+    });
+
     // Test database connection
-    await prisma.$queryRaw`SELECT 1`;
-    console.log('Database connection successful');
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      console.log('Database connection test successful');
+    } catch (connError: any) {
+      console.error('Database connection test failed:', {
+        error: connError.message,
+        code: connError.code,
+        meta: connError.meta
+      });
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Database connection failed',
+          details: {
+            message: connError.message,
+            code: connError.code
+          }
+        },
+        { status: 500 }
+      );
+    }
     // Get total leads count
     const totalLeads = await prisma.$queryRaw<CountResult[]>`
       SELECT COUNT(*) as count FROM "leads"
