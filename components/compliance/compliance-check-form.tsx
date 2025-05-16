@@ -62,8 +62,8 @@ export function ComplianceCheckForm({ onCheckComplete }: ComplianceCheckFormProp
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Multi-Source Compliance Check</CardTitle>
-        <CardDescription>Check a phone number against multiple compliance databases</CardDescription>
+        <CardTitle>Enter Phone Number to Check</CardTitle>
+        <CardDescription>Instantly verify compliance status across all sources</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">

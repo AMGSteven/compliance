@@ -39,9 +39,9 @@ export default function RootLayout({
                     <Link href="/compliance" className="nav-link">
                       Multi Source Compliance
                     </Link>
-                    <a href="http://127.0.0.1:53533/docs/api" className="nav-link" target="_blank" rel="noopener noreferrer">
+                    <Link href="/docs/api" className="nav-link">
                       API Docs
-                    </a>
+                    </Link>
                   </nav>
                 </div>
               </div>
