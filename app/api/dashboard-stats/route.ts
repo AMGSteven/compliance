@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../../../lib/prisma';
 import { startOfDay } from 'date-fns';
-
-const prisma = new PrismaClient();
 
 interface CountResult {
   count: string | number;
