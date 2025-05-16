@@ -64,3 +64,25 @@ export interface WebreconResponse {
   matchType?: string;
   dateFound?: string;
 }
+
+export interface EmailOptOutEntry {
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  reason?: string;
+  source?: string;
+  added_by?: string;
+  status?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface EmailOptInEntry {
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  source?: string;
+  added_by?: string;
+  consent_details?: string;
+  status?: string;
+  metadata?: Record<string, any>;
+}

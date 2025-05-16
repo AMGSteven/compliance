@@ -1,3 +1,5 @@
+"use client"
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import Link from "next/link"
@@ -40,6 +42,12 @@ export default function ApiDocsPage() {
             </Link>
             <Link href="#dashboard-optin" className="rounded-md px-3 py-2 text-sm hover:bg-muted">
               Add Dashboard Opt-In
+            </Link>
+            <Link href="#email-optin" className="rounded-md px-3 py-2 text-sm hover:bg-muted">
+              Email Opt-In
+            </Link>
+            <Link href="#email-optout" className="rounded-md px-3 py-2 text-sm hover:bg-muted">
+              Email Opt-Out
             </Link>
             <Link href="#check-suppression" className="rounded-md px-3 py-2 text-sm hover:bg-muted">
               Check Suppression
@@ -102,567 +110,6 @@ Authorization: Bearer YOUR_API_KEY`}
                         {`{
   "firstName": "John",
   "lastName": "Doe",
-  "phone": "+14155552671",
-  "email": "john@example.com",
-  "zipCode": "94105",
-  "trustedFormCertUrl": "https://cert.trustedform.com/..."
-}`}
-                      </code>
-                    </pre>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium">Field Descriptions</h3>
-                    <ul className="mt-2 list-disc pl-6 text-sm text-gray-600">
-                      <li><code>firstName</code>: First name of the lead (required)</li>
-                      <li><code>lastName</code>: Last name of the lead (required)</li>
-                      <li><code>phone</code>: Phone number in E.164 format (required)</li>
-                      <li><code>email</code>: Valid email address (required)</li>
-                      <li><code>zipCode</code>: 5-digit US zip code (required)</li>
-                      <li><code>trustedFormCertUrl</code>: Valid TrustedForm certificate URL (required)</li>
-                    </ul>
-                  </div>
-                </TabsContent>
-                <TabsContent value="response" className="mt-2 space-y-4">
-                  <div>
-                    <h3 className="text-sm font-medium">Success Response (200 OK)</h3>
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
-                      <code className="text-sm text-white">
-                        {`{
-  "success": true,
-  "data": {
-    "id": "lead_01H9X7KXZJ1N2Y3Z4A5B6C7D8",
-    "name": "John Doe",
-    "phone": "+14155552671",
-    "date": "2025-05-15T18:17:57-07:00"
-  }
-}`}
-                      </code>
-                    </pre>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium">Error Response (400 Bad Request)</h3>
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
-                      <code className="text-sm text-white">
-                        {`{
-  "success": false,
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Invalid request body",
-    "details": {
-      "firstName": ["First name is required"],
-      "phone": ["Phone number must be in E.164 format"]
-    }
-  }
-}`}
-                      </code>
-                    </pre>
-                  </div>
-                </TabsContent>
-              </Tabs>
-
-              <div className="mt-4">
-                <h3 className="text-sm font-medium">Notes</h3>
-                <ul className="mt-2 list-disc pl-6 text-sm text-gray-600">
-                  <li>All opt-ins submitted through this endpoint will appear in the dashboard's Recent Opt-Ins section</li>
-                  <li>Phone numbers must be in E.164 format (e.g., +14155552671)</li>
-                  <li>TrustedForm certificates will be verified before the opt-in is accepted</li>
-                  <li>Rate limits apply as specified in the Rate Limits section</li>
-                </ul>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card id="leads">
-            <CardHeader>
-              <CardTitle>Submit Lead (Opt-In)</CardTitle>
-              <CardDescription>Submit a new lead to the system</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <h3 className="text-sm font-medium">Endpoint</h3>
-                <p className="mt-1 font-mono text-sm">POST /api/v1/leads</p>
-              </div>
-
-              <Tabs defaultValue="request">
-                <TabsList>
-                  <TabsTrigger value="request">Request</TabsTrigger>
-                  <TabsTrigger value="response">Response</TabsTrigger>
-                </TabsList>
-                <TabsContent value="request" className="mt-2 space-y-4">
-                  <div>
-                    <h3 className="text-sm font-medium">Headers</h3>
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
-                      <code className="text-sm text-white">
-                        {`Content-Type: application/json
-Authorization: Bearer YOUR_API_KEY`}
-                      </code>
-                    </pre>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium">Body</h3>
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
-                      <code className="text-sm text-white">
-                        {`{
-  "firstName": "John",
-  "lastName": "Doe",
-  "email": "john@example.com",
-  "phone": "1234567890",
-  "zipCode": "12345",
-  "trustedFormCertUrl": "https://cert.trustedform.com/..."
-}`}
-                      </code>
-                    </pre>
-                  </div>
-                </TabsContent>
-                <TabsContent value="response" className="mt-2 space-y-4">
-                  <div>
-                    <h3 className="text-sm font-medium">Success Response (200 OK)</h3>
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
-                      <code className="text-sm text-white">
-                        {`{
-  "success": true,
-  "data": {
-    "id": "lead_123",
-    "first_name": "John",
-    "last_name": "Doe",
-    "email": "john@example.com",
-    "phone": "1234567890",
-    "zip_code": "12345",
-    "trusted_form_cert_url": "https://cert.trustedform.com/...",
-    "status": "new",
-    "created_at": "2025-05-15T17:55:28-07:00",
-    "updated_at": "2025-05-15T17:55:28-07:00"
-  }
-}`}
-                      </code>
-                    </pre>
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </CardContent>
-          </Card>
-
-          <Card id="check-suppression">
-            <CardHeader>
-              <CardTitle>Check Suppression</CardTitle>
-              <CardDescription>Check if a contact is on the suppression list</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <h3 className="text-sm font-medium">Endpoint</h3>
-                <p className="mt-1 font-mono text-sm">POST /api/v1/check-suppression</p>
-              </div>
-
-              <Tabs defaultValue="request">
-                <TabsList>
-                  <TabsTrigger value="request">Request</TabsTrigger>
-                  <TabsTrigger value="response">Response</TabsTrigger>
-                </TabsList>
-                <TabsContent value="request" className="mt-2 space-y-4">
-                  <div>
-                    <h3 className="text-sm font-medium">Headers</h3>
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
-                      <code className="text-sm text-white">
-                        {`Content-Type: application/json
-Authorization: Bearer YOUR_API_KEY`}
-                      </code>
-                    </pre>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium">Body</h3>
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
-                      <code className="text-sm text-white">
-                        {`{
-  "email": "user@example.com",
-  "phone": "+15551234567",
-  "postal": "123 Main St, Anytown, US 12345",
-  "channel": "all"
-}`}
-                      </code>
-                    </pre>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium">Parameters</h3>
-                    <div className="mt-1 rounded-md border">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b bg-muted/50">
-                            <th className="p-2 text-left font-medium">Parameter</th>
-                            <th className="p-2 text-left font-medium">Type</th>
-                            <th className="p-2 text-left font-medium">Required</th>
-                            <th className="p-2 text-left font-medium">Description</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr className="border-b">
-                            <td className="p-2 font-mono">email</td>
-                            <td className="p-2">string</td>
-                            <td className="p-2">No*</td>
-                            <td className="p-2">Email address to check</td>
-                          </tr>
-                          <tr className="border-b">
-                            <td className="p-2 font-mono">phone</td>
-                            <td className="p-2">string</td>
-                            <td className="p-2">No*</td>
-                            <td className="p-2">Phone number in E.164 format</td>
-                          </tr>
-                          <tr className="border-b">
-                            <td className="p-2 font-mono">postal</td>
-                            <td className="p-2">string</td>
-                            <td className="p-2">No*</td>
-                            <td className="p-2">Postal address</td>
-                          </tr>
-                          <tr>
-                            <td className="p-2 font-mono">channel</td>
-                            <td className="p-2">string</td>
-                            <td className="p-2">No</td>
-                            <td className="p-2">Channel to check (email, phone, sms, postal, all)</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      * At least one of email, phone, or postal is required
-                    </p>
-                  </div>
-                </TabsContent>
-                <TabsContent value="response" className="mt-2 space-y-4">
-                  <div>
-                    <h3 className="text-sm font-medium">Success Response (200 OK)</h3>
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
-                      <code className="text-sm text-white">
-                        {`{
-  "timestamp": "2025-05-07T11:35:26.000Z",
-  "requestId": "550e8400-e29b-41d4-a716-446655440000",
-  "suppressed": true,
-  "details": {
-    "email": true,
-    "phone": false,
-    "postal": false
-  }
-}`}
-                      </code>
-                    </pre>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium">Error Response (400 Bad Request)</h3>
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
-                      <code className="text-sm text-white">
-                        {`{
-  "error": "At least one identifier (email, phone, or postal) is required"
-}`}
-                      </code>
-                    </pre>
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </CardContent>
-          </Card>
-
-          <Card id="opt-out">
-            <CardHeader>
-              <CardTitle>Opt-Out</CardTitle>
-              <CardDescription>Add a contact to the suppression list</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <h3 className="text-sm font-medium">Endpoint</h3>
-                <p className="mt-1 font-mono text-sm">POST /api/v1/opt-out</p>
-              </div>
-
-              <Tabs defaultValue="request">
-                <TabsList>
-                  <TabsTrigger value="request">Request</TabsTrigger>
-                  <TabsTrigger value="response">Response</TabsTrigger>
-                </TabsList>
-                <TabsContent value="request" className="mt-2 space-y-4">
-                  <div>
-                    <h3 className="text-sm font-medium">Headers</h3>
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
-                      <code className="text-sm text-white">
-                        {`Content-Type: application/json
-Authorization: Bearer YOUR_API_KEY`}
-                      </code>
-                    </pre>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium">Body</h3>
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
-                      <code className="text-sm text-white">
-                        {`{
-  "identifier": "john@example.com",
-  "identifierType": "email",  // Required: one of "email", "phone", "postal"
-  "channel": "all",  // Required: one of "email", "phone", "sms", "postal", "all"
-  "source": "website",  // Required: where this opt-out came from
-  "reason": "user request",  // Optional: reason for opt-out
-  "metadata": {}  // Optional: additional data
-}`}
-                      </code>
-                    </pre>
-                  </div>
-                </TabsContent>
-                <TabsContent value="response" className="mt-2 space-y-4">
-                  <div>
-                    <h3 className="text-sm font-medium">Success Response (200 OK)</h3>
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
-                      <code className="text-sm text-white">
-                        {`{
-  "success": true,
-  "timestamp": "2025-05-15T18:55:33-07:00",
-  "requestId": "123e4567-e89b-12d3-a456-426614174000",
-  "message": "Successfully opted out john@example.com from all communications",
-  "details": {
-    "identifier": "john@example.com",
-    "channel": "all",
-    "source": "website",
-    "reason": "user request",
-    "metadata": null
-  }
-}`}
-                      </code>
-                    </pre>
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </CardContent>
-          </Card>
-
-          <Card id="bulk-dnc">
-            <CardHeader>
-              <CardTitle>Bulk DNC Addition</CardTitle>
-              <CardDescription>Add multiple phone numbers to the DNC list</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <h3 className="text-sm font-medium">Endpoint</h3>
-                <p className="mt-1 font-mono text-sm">POST /api/dialer/dnc/bulk</p>
-              </div>
-
-              <Tabs defaultValue="request">
-                <TabsList>
-                  <TabsTrigger value="request">Request</TabsTrigger>
-                  <TabsTrigger value="response">Response</TabsTrigger>
-                </TabsList>
-                <TabsContent value="request" className="mt-2 space-y-4">
-                  <div>
-                    <h3 className="text-sm font-medium">Headers</h3>
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
-                      <code className="text-sm text-white">
-                        {`Content-Type: application/json
-Authorization: Bearer YOUR_API_KEY`}
-                      </code>
-                    </pre>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium">Body</h3>
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
-                      <code className="text-sm text-white">
-                        {`{
-  "phones": [
-    "1234567890",
-    "0987654321"
-  ],
-  "reason": "Consumer Request",
-  "source": "Web Form"
-}`}
-                      </code>
-                    </pre>
-                  </div>
-                </TabsContent>
-                <TabsContent value="response" className="mt-2 space-y-4">
-                  <div>
-                    <h3 className="text-sm font-medium">Success Response (200 OK)</h3>
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
-                      <code className="text-sm text-white">
-                        {`{
-  "success": true,
-  "message": "Successfully added 2 numbers to DNC list",
-  "data": {
-    "added": [
-      "1234567890",
-      "0987654321"
-    ]
-  }
-}`}
-                      </code>
-                    </pre>
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </CardContent>
-          </Card>
-
-          <Card id="batch-check">
-            <CardHeader>
-              <CardTitle>Batch Check DNC</CardTitle>
-              <CardDescription>Check multiple phone numbers against the DNC list</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <h3 className="text-sm font-medium">Endpoint</h3>
-                <p className="mt-1 font-mono text-sm">POST /api/v1/batch-check</p>
-              </div>
-
-              <Tabs defaultValue="request">
-                <TabsList>
-                  <TabsTrigger value="request">Request</TabsTrigger>
-                  <TabsTrigger value="response">Response</TabsTrigger>
-                </TabsList>
-                <TabsContent value="request" className="mt-2 space-y-4">
-                  <div>
-                    <h3 className="text-sm font-medium">Headers</h3>
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
-                      <code className="text-sm text-white">
-                        {`Content-Type: application/json
-Authorization: Bearer YOUR_API_KEY`}
-                      </code>
-                    </pre>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium">Body</h3>
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
-                      <code className="text-sm text-white">
-                        {`{
-  "phones": [
-    "1234567890",
-    "0987654321"
-  ]
-}`}
-                      </code>
-                    </pre>
-                  </div>
-                </TabsContent>
-                <TabsContent value="response" className="mt-2 space-y-4">
-                  <div>
-                    <h3 className="text-sm font-medium">Success Response (200 OK)</h3>
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
-                      <code className="text-sm text-white">
-                        {`{
-  "success": true,
-  "data": {
-    "results": [
-      {
-        "phone": "1234567890",
-        "onDnc": false
-      },
-      {
-        "phone": "0987654321",
-        "onDnc": true,
-        "addedOn": "2025-05-15T17:55:28-07:00",
-        "reason": "Consumer Request"
-      }
-    ]
-  }
-}`}
-                      </code>
-                    </pre>
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </CardContent>
-          </Card>
-
-          <Card id="compliance-verification">
-            <CardHeader>
-              <CardTitle>Compliance Check</CardTitle>
-              <CardDescription>Verify compliance status for a phone number</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <h3 className="text-sm font-medium">Endpoint</h3>
-                <p className="mt-1 font-mono text-sm">POST /api/v1/compliance/check</p>
-              </div>
-
-              <Tabs defaultValue="request">
-                <TabsList>
-                  <TabsTrigger value="request">Request</TabsTrigger>
-                  <TabsTrigger value="response">Response</TabsTrigger>
-                </TabsList>
-                <TabsContent value="request" className="mt-2 space-y-4">
-                  <div>
-                    <h3 className="text-sm font-medium">Headers</h3>
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
-                      <code className="text-sm text-white">
-                        {`Content-Type: application/json
-Authorization: Bearer YOUR_API_KEY`}
-                      </code>
-                    </pre>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium">Body</h3>
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
-                      <code className="text-sm text-white">
-                        {`{
-  "phone": "1234567890",
-  "checkType": "all"
-}`}
-                      </code>
-                    </pre>
-                  </div>
-                </TabsContent>
-                <TabsContent value="response" className="mt-2 space-y-4">
-                  <div>
-                    <h3 className="text-sm font-medium">Success Response (200 OK)</h3>
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
-                      <code className="text-sm text-white">
-                        {`{
-  "success": true,
-  "data": {
-    "phone": "1234567890",
-    "compliant": true,
-    "checks": {
-      "dnc": {
-        "passed": true,
-        "details": "Not found on DNC list"
-      },
-      "tcpa": {
-        "passed": true,
-        "details": "Valid consent record found"
-      }
-    }
-  }
-}`}
-                      </code>
-                    </pre>
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </CardContent>
-          </Card>
-
-          <Card id="trusted-form">
-            <CardHeader>
-              <CardTitle>TrustedForm Verification</CardTitle>
-              <CardDescription>Verify a TrustedForm certificate</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <h3 className="text-sm font-medium">Endpoint</h3>
-                <p className="mt-1 font-mono text-sm">POST /api/v1/trustedform/verify</p>
-              </div>
-
-              <Tabs defaultValue="request">
-                <TabsList>
-                  <TabsTrigger value="request">Request</TabsTrigger>
-                  <TabsTrigger value="response">Response</TabsTrigger>
-                </TabsList>
-                <TabsContent value="request" className="mt-2 space-y-4">
-                  <div>
-                    <h3 className="text-sm font-medium">Headers</h3>
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
-                      <code className="text-sm text-white">
-                        {`Content-Type: application/json
-Authorization: Bearer YOUR_API_KEY`}
-                      </code>
-                    </pre>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium">Body</h3>
-                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
-                      <code className="text-sm text-white">
-                        {`{
-  "firstName": "John",
-  "lastName": "Doe",
   "email": "john@example.com",
   "phone": "+15551234567",
   "certificateUrl": "https://cert.trustedform.com/...",
@@ -689,6 +136,339 @@ Authorization: Bearer YOUR_API_KEY`}
     "status": "verified",
     "matchStatus": true
   }
+}`}
+                      </code>
+                    </pre>
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+
+          <Card id="email-optin">
+            <CardHeader>
+              <CardTitle>Email Opt-In</CardTitle>
+              <CardDescription>Add and check email opt-ins</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Tabs defaultValue="post">
+                <TabsList>
+                  <TabsTrigger value="post">Add Email Opt-In</TabsTrigger>
+                  <TabsTrigger value="get">Check Email Opt-In</TabsTrigger>
+                  <TabsTrigger value="recent">Get Recent Opt-Ins</TabsTrigger>
+                </TabsList>
+                <TabsContent value="post" className="mt-2 space-y-4">
+                  <div>
+                    <h3 className="text-sm font-medium">Endpoint</h3>
+                    <p className="mt-1 font-mono text-sm">POST /api/email/optin</p>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium">Headers</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`Content-Type: application/json
+api_key: YOUR_API_KEY`}
+                      </code>
+                    </pre>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium">Body</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`{
+  "email": "subscriber@example.com",
+  "first_name": "Jane",    // Optional
+  "last_name": "Smith",    // Optional
+  "source": "website-form", // Optional
+  "consent_details": "Subscribed via newsletter form"  // Optional
+}`}
+                      </code>
+                    </pre>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium">Success Response (200 OK)</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`{
+  "success": true,
+  "message": "Email added to opt-in list",
+  "data": {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "email": "subscriber@example.com",
+    "status": "active",
+    "date_added": "2025-05-16T00:31:53-07:00"
+  }
+}`}
+                      </code>
+                    </pre>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium">Error Response (400 Bad Request)</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`{
+  "success": false,
+  "message": "Invalid email format"
+}`}
+                      </code>
+                    </pre>
+                  </div>
+                </TabsContent>
+                <TabsContent value="get" className="mt-2 space-y-4">
+                  <div>
+                    <h3 className="text-sm font-medium">Endpoint</h3>
+                    <p className="mt-1 font-mono text-sm">GET /api/email/optin?email=subscriber@example.com</p>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium">Headers</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`api_key: YOUR_API_KEY`}
+                      </code>
+                    </pre>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium">Success Response (200 OK)</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`{
+  "success": true,
+  "isOptedIn": true,
+  "data": {
+    "email": "subscriber@example.com",
+    "date_added": "2025-05-16T00:31:53-07:00",
+    "source": "website-form"
+  }
+}`}
+                      </code>
+                    </pre>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium">Not Found Response (200 OK)</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`{
+  "success": true,
+  "isOptedIn": false
+}`}
+                      </code>
+                    </pre>
+                  </div>
+                </TabsContent>
+                <TabsContent value="recent" className="mt-2 space-y-4">
+                  <div>
+                    <h3 className="text-sm font-medium">Endpoint</h3>
+                    <p className="mt-1 font-mono text-sm">GET /api/email/recent/optins</p>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium">Headers</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`api_key: YOUR_API_KEY`}
+                      </code>
+                    </pre>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium">Query Parameters</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`limit=10    // Optional: Number of records to return (default: 10, max: 100) 
+offset=0    // Optional: Pagination offset`}
+                      </code>
+                    </pre>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium">Success Response (200 OK)</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`{
+  "success": true,
+  "data": [
+    {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "email": "subscriber@example.com",
+      "first_name": "Jane", 
+      "last_name": "Smith",
+      "source": "website-form",
+      "consent_details": "Subscribed via newsletter form",
+      "date_added": "2025-05-16T00:31:53-07:00"
+    },
+    {
+      "id": "223e4567-e89b-12d3-a456-426614174001",
+      "email": "newsletter@example.com",
+      "source": "marketing-campaign",
+      "date_added": "2025-05-15T14:22:10-07:00"
+    }
+  ],
+  "count": 2,
+  "total": 2
+}`}
+                      </code>
+                    </pre>
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+
+          <Card id="email-optout">
+            <CardHeader>
+              <CardTitle>Email Opt-Out</CardTitle>
+              <CardDescription>Add and check email opt-outs</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Tabs defaultValue="post">
+                <TabsList>
+                  <TabsTrigger value="post">Add Email Opt-Out</TabsTrigger>
+                  <TabsTrigger value="get">Check Email Opt-Out</TabsTrigger>
+                  <TabsTrigger value="recent">Get Recent Opt-Outs</TabsTrigger>
+                </TabsList>
+                <TabsContent value="post" className="mt-2 space-y-4">
+                  <div>
+                    <h3 className="text-sm font-medium">Endpoint</h3>
+                    <p className="mt-1 font-mono text-sm">POST /api/email/optout</p>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium">Headers</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`Content-Type: application/json
+api_key: YOUR_API_KEY`}
+                      </code>
+                    </pre>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium">Body</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`{
+  "email": "unsubscribe@example.com",
+  "first_name": "John",    // Optional
+  "last_name": "Doe",      // Optional
+  "reason": "No longer interested",  // Optional
+  "source": "unsubscribe-form"       // Optional
+}`}
+                      </code>
+                    </pre>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium">Success Response (200 OK)</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`{
+  "success": true,
+  "message": "Email added to opt-out list",
+  "data": {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "email": "unsubscribe@example.com",
+    "status": "opted_out",
+    "date_added": "2025-05-16T00:31:53-07:00"
+  }
+}`}
+                      </code>
+                    </pre>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium">Error Response (400 Bad Request)</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`{
+  "success": false,
+  "message": "Invalid email format"
+}`}
+                      </code>
+                    </pre>
+                  </div>
+                </TabsContent>
+                <TabsContent value="get" className="mt-2 space-y-4">
+                  <div>
+                    <h3 className="text-sm font-medium">Endpoint</h3>
+                    <p className="mt-1 font-mono text-sm">GET /api/email/optout?email=unsubscribe@example.com</p>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium">Headers</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`api_key: YOUR_API_KEY`}
+                      </code>
+                    </pre>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium">Success Response (200 OK)</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`{
+  "success": true,
+  "isOptedOut": true,
+  "data": {
+    "email": "unsubscribe@example.com",
+    "date_added": "2025-05-16T00:31:53-07:00",
+    "reason": "No longer interested"
+  }
+}`}
+                      </code>
+                    </pre>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium">Not Found Response (200 OK)</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`{
+  "success": true,
+  "isOptedOut": false
+}`}
+                      </code>
+                    </pre>
+                  </div>
+                </TabsContent>
+                <TabsContent value="recent" className="mt-2 space-y-4">
+                  <div>
+                    <h3 className="text-sm font-medium">Endpoint</h3>
+                    <p className="mt-1 font-mono text-sm">GET /api/email/recent/optouts</p>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium">Headers</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`api_key: YOUR_API_KEY`}
+                      </code>
+                    </pre>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium">Query Parameters</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`limit=10    // Optional: Number of records to return (default: 10, max: 100) 
+offset=0    // Optional: Pagination offset`}
+                      </code>
+                    </pre>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium">Success Response (200 OK)</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`{
+  "success": true,
+  "data": [
+    {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "email": "unsubscribe@example.com",
+      "first_name": "John",
+      "last_name": "Doe",
+      "reason": "No longer interested",
+      "source": "unsubscribe-form",
+      "date_added": "2025-05-16T00:31:53-07:00"
+    },
+    {
+      "id": "223e4567-e89b-12d3-a456-426614174001",
+      "email": "optout@example.com",
+      "reason": "Spam complaints",
+      "source": "admin-interface",
+      "date_added": "2025-05-15T14:22:10-07:00"
+    }
+  ],
+  "count": 2,
+  "total": 2
 }`}
                       </code>
                     </pre>
