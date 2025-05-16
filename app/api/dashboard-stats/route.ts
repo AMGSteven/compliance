@@ -10,6 +10,9 @@ interface CountResult {
 
 export async function GET() {
   try {
+    // Test database connection
+    await prisma.$queryRaw`SELECT 1`;
+    console.log('Database connection successful');
     // Get total leads count
     const totalLeads = await prisma.$queryRaw<CountResult[]>`
       SELECT COUNT(*) as count FROM "leads"
@@ -47,9 +50,21 @@ export async function GET() {
       optOutsToday: dncToday
     });
   } catch (error: any) {
-    console.error('Error fetching dashboard stats:', error);
+    console.error('Error fetching dashboard stats:', {
+      error: error.message,
+      stack: error.stack,
+      name: error.name,
+      code: error.code
+    });
     return NextResponse.json(
-      { success: false, error: error.message },
+      { 
+        success: false, 
+        error: error.message,
+        details: {
+          name: error.name,
+          code: error.code
+        }
+      },
       { status: 500 }
     );
   }
