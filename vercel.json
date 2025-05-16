@@ -1,11 +1,6 @@
 {
   "version": 2,
-  "functions": {
-    "app/api/**/*": {
-      "runtime": "@vercel/node@18.18.0"
-    }
-  },
-  "buildCommand": "npm run vercel-build",
+  "buildCommand": "next build",
   "installCommand": "npm install",
   "framework": "nextjs"
 }
