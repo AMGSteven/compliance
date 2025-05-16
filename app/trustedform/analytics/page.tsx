@@ -1,5 +1,9 @@
+
+
 "use client"
 
+// Force dynamic rendering instead of static generation
+export const dynamic = 'force-dynamic';
 import { DateRangePicker } from "@/components/analytics/date-range-picker"
 import { GeoMap } from "@/components/analytics/geo-map"
 import { PieChartComponent } from "@/components/analytics/pie-chart"

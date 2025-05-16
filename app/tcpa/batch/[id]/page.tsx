@@ -1,3 +1,7 @@
+// Force dynamic rendering instead of static generation
+export const dynamic = 'force-dynamic';
+
+
 import { BatchResults } from "@/components/tcpa/batch-results"
 
 export default function BatchResultPage({ params }: { params: { id: string } }) {

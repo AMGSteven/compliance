@@ -1,5 +1,7 @@
 'use client';
 
+// Force dynamic rendering instead of static generation
+export const dynamic = 'force-dynamic';
 import { useState } from 'react';
 
 export default function LeadTestPage() {

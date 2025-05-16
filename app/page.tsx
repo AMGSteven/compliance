@@ -1,5 +1,7 @@
 'use client';
 
+// Force dynamic rendering instead of static generation
+export const dynamic = 'force-dynamic';
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useInView } from 'react-intersection-observer';

@@ -1,5 +1,9 @@
+
+
 "use client"
 
+// Force dynamic rendering instead of static generation
+export const dynamic = 'force-dynamic';
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"

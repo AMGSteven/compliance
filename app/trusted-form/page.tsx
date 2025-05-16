@@ -2,6 +2,8 @@ import { TrustedFormService } from '@/lib/services/trusted-form';
 
 'use client';
 
+// Force dynamic rendering instead of static generation
+export const dynamic = 'force-dynamic';
 import { useEffect, useState } from 'react';
 
 export default function TrustedFormPage() {

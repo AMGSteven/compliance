@@ -1,3 +1,7 @@
+// Force dynamic rendering instead of static generation
+export const dynamic = 'force-dynamic';
+
+
 import { ComplianceCheckForm } from "@/components/compliance/compliance-check-form"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 

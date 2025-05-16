@@ -1,3 +1,6 @@
+// Force dynamic rendering instead of static generation
+export const dynamic = 'force-dynamic';
+
 import { Suspense } from "react"
 import { notFound } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -7,8 +10,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { createServerClient } from "@/lib/supabase/server"
 import { ScheduledBatchesService } from "@/lib/services/scheduled-batches-service"
 import { formatScheduleType } from "@/lib/utils/cron-utils"
-
-export const dynamic = "force-dynamic"
 
 async function ScheduledBatchDetail({ params }: { params: { id: string } }) {
   const supabase = createServerClient()

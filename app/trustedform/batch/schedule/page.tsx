@@ -1,10 +1,11 @@
+// Force dynamic rendering instead of static generation
+export const dynamic = 'force-dynamic';
+
 import { Suspense } from "react"
 import { createServerClient } from "@/lib/supabase/server"
 import { ScheduledBatchList } from "@/components/batch/scheduled-batch-list"
 import { Button } from "@/components/ui/button"
 
-// Force dynamic rendering instead of static generation
-export const dynamic = 'force-dynamic';
 
 async function ScheduledBatchesPage() {
   const supabase = createServerClient()

@@ -1,5 +1,9 @@
+
+
 "use client"
 
+// Force dynamic rendering instead of static generation
+export const dynamic = 'force-dynamic';
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"

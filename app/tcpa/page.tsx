@@ -1,3 +1,7 @@
+// Force dynamic rendering instead of static generation
+export const dynamic = 'force-dynamic';
+
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PhoneCheckForm } from "@/components/tcpa/phone-check-form"
 import { BatchCheckForm } from "@/components/tcpa/batch-check-form"

@@ -42,8 +42,8 @@ export async function POST(request: Request) {
           last_name: lastName,
           email: email,
           phone: phone,
-          zip_code: zipCode || null,
-          trusted_form_cert_url: trustedFormCertUrl || null,
+          zip_code: zipCode || '',
+          trusted_form_cert_url: trustedFormCertUrl || '',
           created_at: new Date().toISOString()
         }
       ])

@@ -1,3 +1,7 @@
+// Force dynamic rendering instead of static generation
+export const dynamic = 'force-dynamic';
+
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ComplianceTest } from "@/components/testing/compliance-test"
 import { SuppressionTest } from "@/components/testing/suppression-test"
