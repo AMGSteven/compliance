@@ -2,6 +2,59 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --juiced-teal-start: #2BCBBA;
+  --juiced-teal-end: #32CCCD;
+  --juiced-blue: #2B7DE9;
+  --juiced-purple-start: #7349D1;
+  --juiced-purple-end: #9A45C3;
+  --juiced-gray: #939393;
+}
+
+@layer base {
+  body {
+    @apply bg-gray-50;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply text-juiced-blue font-semibold;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-gradient-to-r from-[--juiced-teal-start] to-[--juiced-teal-end] text-white px-4 py-2 rounded-lg hover:opacity-90 transition-opacity;
+  }
+
+  .btn-secondary {
+    @apply bg-white text-juiced-blue border border-juiced-blue px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors;
+  }
+
+  .card {
+    @apply bg-white rounded-xl shadow-sm border border-gray-100 p-6;
+  }
+
+  .nav-link {
+    @apply text-gray-600 hover:text-juiced-blue transition-colors;
+  }
+
+  .nav-link.active {
+    @apply text-juiced-blue font-medium;
+  }
+
+  .data-card {
+    @apply bg-gradient-to-br from-[--juiced-blue] to-[--juiced-purple-end] text-white rounded-xl shadow-sm p-6;
+  }
+
+  .section-title {
+    @apply text-xl font-semibold text-juiced-blue mb-4;
+  }
+}
+
+.bg-juiced-gradient {
+  @apply bg-gradient-to-r from-[--juiced-teal-start] to-[--juiced-purple-end];
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

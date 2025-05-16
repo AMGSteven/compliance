@@ -32,11 +32,26 @@ export class BlacklistChecker implements ComplianceChecker {
 
       const data = await response.json() as BlacklistAllianceResponse;
 
-      // Check if the number is blacklisted based on scrubs flag and message
-      const isBlacklisted = data.scrubs === true || data.message === "Blacklisted";
-      
-      // Get reason from code and message
-      const reason = data.code ? `${data.message} (${data.code})` : data.message;
+      // Parse the response to determine if the number is blacklisted
+      let isBlacklisted = false;
+      let reason = '';
+
+      // If message is "Good" or code is "good", the number is explicitly good
+      if (data.message === "Good" || data.code === "good") {
+        isBlacklisted = false;
+      }
+      // If message contains "Blacklisted" or code indicates a problem, it's blacklisted
+      else if (
+        data.message?.toLowerCase().includes("blacklist") ||
+        (data.code && data.code !== "good")
+      ) {
+        isBlacklisted = true;
+        reason = data.code ? `${data.message} (${data.code})` : data.message;
+      }
+      // Default case - if we can't determine status, assume it's good
+      else {
+        isBlacklisted = false;
+      }
       
       return {
         isCompliant: !isBlacklisted,

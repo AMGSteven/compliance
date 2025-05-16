@@ -5,7 +5,7 @@ import { validateApiKey } from '@/lib/auth';
 
 const limiter = rateLimit({
   interval: 60 * 1000, // 1 minute
-  uniqueTokenPerInterval: 100
+  uniqueTokenPerInterval: 10000
 });
 
 export async function POST(request: Request) {
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
 
     // Apply rate limiting
     try {
-      await limiter.check(2, apiKey!); // 2 bulk requests per minute per API key
+      await limiter.check(10000, apiKey!); // 10,000 requests per minute per API key
     } catch {
       return NextResponse.json(
         { success: false, error: 'Too many requests' },

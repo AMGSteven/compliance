@@ -1,252 +1,249 @@
-"use client"
+'use client';
 
-import { useEffect, useState } from "react"
-import { StatsCard } from "@/components/dashboard/stats-card"
-import { RecentOptOuts } from "@/components/dashboard/recent-opt-outs"
-import type { DashboardStats } from "@/lib/types"
-import {
-  Users,
-  Shield,
-  CheckCircle,
-  Mail,
-  Phone,
-  MessageSquare,
-  MapPin,
-  FileCheck,
-  Clock,
-  BarChart,
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import Link from "next/link"
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
 
-// Fallback data for development/preview
-const fallbackStats: DashboardStats = {
-  totalContacts: 1250,
-  totalOptOuts: 87,
-  emailOptOuts: 45,
-  phoneOptOuts: 22,
-  smsOptOuts: 15,
-  postalOptOuts: 5,
-  complianceRate: 99.2,
-  recentOptOuts: [],
+interface Lead {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  trusted_form_cert_url: string;
+  created_at: string;
+}
+
+interface DNCEntry {
+  phone_number: string;
+  date_added: string;
+  reason: string;
+  source: string;
+  added_by: string;
+}
+
+interface DashboardStats {
+  totalContacts: number;
+  activeOptOuts: number;
+  optInsToday: number;
+  optOutsToday: number;
+}
+
+interface OptIn {
+  id: string;
+  first_name: string;
+  last_name: string;
+  phone: string;
+  email: string;
+  created_at: string;
+  trusted_form_cert_url: string;
+}
+
+interface OptOut {
+  phone_number: string;
+  date_added: string;
+  reason: string;
+  source: string;
+  added_by: string;
 }
 
 export default function Home() {
-  const [stats, setStats] = useState<DashboardStats | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [trustedFormStats, setTrustedFormStats] = useState<any>(null)
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<DashboardStats>({
+    totalContacts: 0,
+    activeOptOuts: 0,
+    optInsToday: 0,
+    optOutsToday: 0
+  });
+  const [recentOptIns, setRecentOptIns] = useState<OptIn[]>([]);
+  const [recentOptOuts, setRecentOptOuts] = useState<OptOut[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchStats() {
+    const fetchData = async () => {
       try {
-        // First try to fetch real data
-        const dashboardResponse = await fetch("/api/v1/dashboard-stats")
+        const [statsRes, optInsRes, optOutsRes] = await Promise.all([
+          fetch('/api/dashboard-stats'),
+          fetch('/api/leads/list'),
+          fetch('/api/dnc/recent')
+        ]);
 
-        if (!dashboardResponse.ok) {
-          console.warn("Dashboard stats API returned non-OK status:", dashboardResponse.status)
-          setStats(fallbackStats)
-        } else {
-          const dashboardData = await dashboardResponse.json()
-          setStats(dashboardData)
+        if (!statsRes.ok || !optInsRes.ok || !optOutsRes.ok) {
+          throw new Error('One or more API requests failed');
         }
 
-        // Try to fetch TrustedForm stats
-        try {
-          const trustedFormResponse = await fetch("/api/v1/trustedform/stats")
-          if (trustedFormResponse.ok) {
-            const trustedFormData = await trustedFormResponse.json()
-            setTrustedFormStats(trustedFormData)
-          }
-        } catch (tfError) {
-          console.warn("Error fetching TrustedForm stats:", tfError)
-          // Continue without TrustedForm stats
-        }
-      } catch (err) {
-        console.error("Error fetching dashboard stats:", err)
-        setError("Unable to load live data. Showing sample data instead.")
-        setStats(fallbackStats)
+        const statsData = await statsRes.json();
+        const optInsData = await optInsRes.json();
+        const optOutsData = await optOutsRes.json();
+
+        setStats(statsData);
+        setRecentOptIns(optInsData || []);
+        setRecentOptOuts(optOutsData || []);
+      } catch (error) {
+        console.error('Failed to fetch data:', error);
+        setError('Failed to load dashboard data');
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
-    }
+    };
 
-    fetchStats()
-  }, [])
+    fetchData();
+  }, []);
 
   if (loading) {
     return (
       <main className="flex min-h-screen flex-col p-8">
-        <h1 className="text-3xl font-bold mb-8 bg-clip-text text-transparent bg-juiced-gradient">
-          Juiced Media Compliance Engine
-        </h1>
         <div className="flex items-center justify-center h-64">
           <div className="loading-gradient h-2 w-40 rounded-full"></div>
         </div>
       </main>
-    )
+    );
+  }
+
+  if (error) {
+    return (
+      <main className="flex min-h-screen flex-col p-8">
+        <div className="flex items-center justify-center h-64">
+          <p className="text-red-500">{error}</p>
+        </div>
+      </main>
+    );
   }
 
   return (
     <main className="flex min-h-screen flex-col p-8">
-      <h1 className="text-3xl font-bold mb-8 bg-clip-text text-transparent bg-juiced-gradient">
-        Juiced Media Compliance Engine
-      </h1>
-
-      {error && (
-        <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-md text-amber-700">
-          <p>{error}</p>
-        </div>
-      )}
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
-        <StatsCard title="Total Contacts" value={stats?.totalContacts.toLocaleString() || "0"} icon={<Users />} />
-        <StatsCard title="Active Opt-Outs" value={stats?.totalOptOuts.toLocaleString() || "0"} icon={<Shield />} />
-        <StatsCard title="Compliance Rate" value={`${stats?.complianceRate || 100}%`} icon={<CheckCircle />} />
-        <StatsCard title="Email Opt-Outs" value={stats?.emailOptOuts.toLocaleString() || "0"} icon={<Mail />} />
+      <div className="flex justify-end mb-8">
+        <Link href="/docs/api" className="btn-primary">
+          View API Docs
+        </Link>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-8">
-        <div className="lg:col-span-2">
-          <RecentOptOuts optOuts={stats?.recentOptOuts || []} />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="card">
+          <h3 className="text-lg font-semibold mb-2">Total Contacts</h3>
+          <p className="text-3xl font-bold">{stats.totalContacts.toLocaleString()}</p>
         </div>
-        <div>
-          <ChannelBreakdown
-            emailOptOuts={stats?.emailOptOuts || 0}
-            phoneOptOuts={stats?.phoneOptOuts || 0}
-            smsOptOuts={stats?.smsOptOuts || 0}
-            postalOptOuts={stats?.postalOptOuts || 0}
-          />
+        <div className="card">
+          <h3 className="text-lg font-semibold mb-2">Active Opt-Outs</h3>
+          <p className="text-3xl font-bold">{stats.activeOptOuts.toLocaleString()}</p>
+        </div>
+        <div className="card">
+          <h3 className="text-lg font-semibold mb-2">Opt-Ins Today</h3>
+          <p className="text-3xl font-bold">{stats.optInsToday.toLocaleString()}</p>
+        </div>
+        <div className="card">
+          <h3 className="text-lg font-semibold mb-2">Opt-Outs Today</h3>
+          <p className="text-3xl font-bold">{stats.optOutsToday.toLocaleString()}</p>
         </div>
       </div>
 
-      {trustedFormStats && (
-        <div className="mt-8">
-          <h2 className="text-2xl font-bold mb-4 bg-clip-text text-transparent bg-juiced-gradient">
-            TrustedForm Certificates
-          </h2>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
-            <StatsCard
-              title="Total Certificates"
-              value={trustedFormStats.totalCertificates.toLocaleString()}
-              icon={<FileCheck className="h-4 w-4" />}
-            />
-            <StatsCard
-              title="Verified Certificates"
-              value={trustedFormStats.verifiedCertificates.toLocaleString()}
-              icon={<CheckCircle className="h-4 w-4" />}
-            />
-            <StatsCard
-              title="Pending Verification"
-              value={trustedFormStats.pendingCertificates.toLocaleString()}
-              icon={<Clock className="h-4 w-4" />}
-            />
-            <StatsCard
-              title="Verification Rate"
-              value={`${trustedFormStats.verificationSuccessRate}%`}
-              icon={<BarChart className="h-4 w-4" />}
-            />
-          </div>
-          <div className="flex justify-end">
-            <Button variant="gradient" asChild className="pulse-on-hover">
-              <Link href="/trustedform">View TrustedForm Dashboard</Link>
-            </Button>
+      <div className="grid gap-6 md:grid-cols-2">
+        <div className="card">
+          <h2 className="section-title">Recent Opt-Ins</h2>
+          <div className="space-y-6">
+            {recentOptIns.length > 0 ? (
+              recentOptIns.map((optIn) => (
+                <div key={optIn.id} className="bg-white rounded-lg p-4 shadow-sm border border-gray-100">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <h3 className="font-semibold text-lg">{optIn.first_name} {optIn.last_name}</h3>
+                      <p className="text-sm text-gray-600">{optIn.phone}</p>
+                      <p className="text-sm text-gray-500">{optIn.email}</p>
+                    </div>
+                    <time className="text-xs text-gray-400">{new Date(optIn.created_at).toLocaleString()}</time>
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-gray-100">
+                    <a href={optIn.trusted_form_cert_url} target="_blank" rel="noopener noreferrer" 
+                       className="text-sm text-blue-600 hover:text-blue-800 flex items-center">
+                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      View TrustedForm Certificate
+                    </a>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-gray-500">No recent opt-ins</p>
+            )}
           </div>
         </div>
-      )}
+
+        <div className="card">
+          <h2 className="section-title">Recent Opt-Outs</h2>
+          <div className="space-y-6">
+            {recentOptOuts.length > 0 ? (
+              recentOptOuts.map((optOut) => (
+                <div key={optOut.phone_number} className="bg-white rounded-lg p-4 shadow-sm border border-gray-100">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                          {optOut.source}
+                        </span>
+                      </div>
+                      <p className="font-medium text-gray-900">{optOut.phone_number}</p>
+                      <p className="text-sm text-gray-600 mt-1">{optOut.reason}</p>
+                      <p className="text-xs text-gray-500 mt-1">Added by: {optOut.added_by}</p>
+                    </div>
+                    <time className="text-xs text-gray-400">{new Date(optOut.date_added).toLocaleString()}</time>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-gray-500">No recent opt-outs</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-8">
+        <div className="card">
+          <h2 className="section-title">Recent Leads</h2>
+          <div className="space-y-6">
+            {recentOptIns.length > 0 ? (
+              recentOptIns.map((lead) => (
+                <div key={lead.id} className="bg-white rounded-lg p-4 shadow-sm border border-gray-100">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <h3 className="font-semibold text-lg">{lead.first_name} {lead.last_name}</h3>
+                      <div className="mt-1 space-y-1">
+                        <p className="text-sm text-gray-600 flex items-center">
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                  d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                          </svg>
+                          {lead.phone}
+                        </p>
+                        <p className="text-sm text-gray-600 flex items-center">
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                  d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                          </svg>
+                          {lead.email}
+                        </p>
+                      </div>
+                    </div>
+                    <time className="text-xs text-gray-400">{new Date(lead.created_at).toLocaleString()}</time>
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-gray-100">
+                    <a href={lead.trusted_form_cert_url} target="_blank" rel="noopener noreferrer" 
+                       className="text-sm text-blue-600 hover:text-blue-800 flex items-center">
+                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      View TrustedForm Certificate
+                    </a>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-gray-500">No recent leads</p>
+            )}
+          </div>
+        </div>
+      </div>
     </main>
-  )
-}
-
-function ChannelBreakdown({
-  emailOptOuts,
-  phoneOptOuts,
-  smsOptOuts,
-  postalOptOuts,
-}: {
-  emailOptOuts: number
-  phoneOptOuts: number
-  smsOptOuts: number
-  postalOptOuts: number
-}) {
-  const total = emailOptOuts + phoneOptOuts + smsOptOuts + postalOptOuts
-
-  const calculatePercentage = (value: number) => {
-    if (total === 0) return 0
-    return Math.round((value / total) * 100)
-  }
-
-  return (
-    <div className="rounded-lg border bg-card text-card-foreground shadow-sm gradient-card">
-      <div className="p-6">
-        <h3 className="text-lg font-semibold">Opt-Outs by Channel</h3>
-        <p className="text-sm text-juiced-gray">Distribution across channels</p>
-      </div>
-      <div className="p-6 pt-0 space-y-4">
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <Mail className="h-4 w-4 mr-2 text-juiced-teal" />
-              <span className="text-sm">Email</span>
-            </div>
-            <span className="text-sm font-medium">{calculatePercentage(emailOptOuts)}%</span>
-          </div>
-          <div className="h-2 bg-muted rounded-full overflow-hidden">
-            <div
-              className="h-full bg-juiced-teal rounded-full"
-              style={{ width: `${calculatePercentage(emailOptOuts)}%` }}
-            />
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <Phone className="h-4 w-4 mr-2 text-juiced-blue" />
-              <span className="text-sm">Phone</span>
-            </div>
-            <span className="text-sm font-medium">{calculatePercentage(phoneOptOuts)}%</span>
-          </div>
-          <div className="h-2 bg-muted rounded-full overflow-hidden">
-            <div
-              className="h-full bg-juiced-blue rounded-full"
-              style={{ width: `${calculatePercentage(phoneOptOuts)}%` }}
-            />
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <MessageSquare className="h-4 w-4 mr-2 text-juiced-purple" />
-              <span className="text-sm">SMS</span>
-            </div>
-            <span className="text-sm font-medium">{calculatePercentage(smsOptOuts)}%</span>
-          </div>
-          <div className="h-2 bg-muted rounded-full overflow-hidden">
-            <div
-              className="h-full bg-juiced-purple rounded-full"
-              style={{ width: `${calculatePercentage(smsOptOuts)}%` }}
-            />
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <MapPin className="h-4 w-4 mr-2 text-juiced-gray" />
-              <span className="text-sm">Postal</span>
-            </div>
-            <span className="text-sm font-medium">{calculatePercentage(postalOptOuts)}%</span>
-          </div>
-          <div className="h-2 bg-muted rounded-full overflow-hidden">
-            <div
-              className="h-full bg-juiced-gray rounded-full"
-              style={{ width: `${calculatePercentage(postalOptOuts)}%` }}
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  )
+  );
 }

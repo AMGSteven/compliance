@@ -4,7 +4,6 @@ import { Inter } from "next/font/google"
 import "./globals.css"
 import Link from "next/link"
 import { AuthProvider } from "@/lib/context/auth-context"
-import { UserNav } from "@/components/user-nav"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -25,42 +24,26 @@ export default function RootLayout({
         <AuthProvider>
           <div className="flex min-h-screen flex-col">
             <header className="border-b shadow-sm bg-white">
-              <div className="container mx-auto flex h-16 items-center px-4 justify-between">
-                <div className="flex items-center">
-                  <Link href="/" className="font-bold text-xl bg-clip-text text-transparent bg-juiced-gradient">
-                    Juiced Media Compliance
+              <div className="container mx-auto flex h-16 items-center px-4">
+                <div className="flex items-center flex-grow">
+                  <Link href="/" className="h-8">
+                    <img src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/3e7ab034-c4d7-498f-bd0e-9231e1afbd24_removalai_preview%20%281%29-R3vkoRZjHg0GgKBUVR9hVcw9wbxZNG.png" alt="Juiced Media" className="h-full w-auto" />
                   </Link>
-                  <nav className="ml-6 flex gap-6">
-                    <Link href="/" className="text-sm font-medium hover:text-juiced-teal transition-colors">
+                  <nav className="ml-8 flex gap-6">
+                    <Link href="/" className="nav-link active">
                       Dashboard
                     </Link>
-                    <Link
-                      href="/suppressions"
-                      className="text-sm font-medium text-juiced-gray hover:text-juiced-blue transition-colors"
-                    >
-                      Suppressions
+                    <Link href="/leads/test" className="nav-link">
+                      Add New Lead
                     </Link>
-                    <Link
-                      href="/trustedform"
-                      className="text-sm font-medium text-juiced-gray hover:text-juiced-blue transition-colors"
-                    >
-                      TrustedForm
+                    <Link href="/compliance" className="nav-link">
+                      Multi Source Compliance
                     </Link>
-                    <Link
-                      href="/lead-validation"
-                      className="text-sm font-medium text-juiced-gray hover:text-juiced-blue transition-colors"
-                    >
-                      Lead Validation
-                    </Link>
-                    <Link
-                      href="/api-docs"
-                      className="text-sm font-medium text-juiced-gray hover:text-juiced-blue transition-colors"
-                    >
+                    <a href="http://127.0.0.1:53533/docs/api" className="nav-link" target="_blank" rel="noopener noreferrer">
                       API Docs
-                    </Link>
+                    </a>
                   </nav>
                 </div>
-                <UserNav />
               </div>
             </header>
             {children}
