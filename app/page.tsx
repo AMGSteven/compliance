@@ -139,7 +139,7 @@ export default function Home() {
       <div className="grid gap-6 md:grid-cols-2">
         <div className="card">
           <h2 className="section-title">Recent Opt-Ins</h2>
-          <div className="space-y-6">
+          <div className="space-y-6 h-[400px] overflow-y-auto pr-2 custom-scrollbar">
             {recentOptIns.length > 0 ? (
               recentOptIns.map((optIn) => (
                 <div key={optIn.id} className="bg-white rounded-lg p-4 shadow-sm border border-gray-100">
@@ -171,7 +171,7 @@ export default function Home() {
 
         <div className="card">
           <h2 className="section-title">Recent Opt-Outs</h2>
-          <div className="space-y-6">
+          <div className="space-y-6 h-[400px] overflow-y-auto pr-2 custom-scrollbar">
             {recentOptOuts.length > 0 ? (
               recentOptOuts.map((optOut) => (
                 <div key={optOut.phone_number} className="bg-white rounded-lg p-4 shadow-sm border border-gray-100">
@@ -200,7 +200,7 @@ export default function Home() {
       <div className="mt-8">
         <div className="card">
           <h2 className="section-title">Recent Leads</h2>
-          <div className="space-y-6">
+          <div className="space-y-6 h-[400px] overflow-y-auto pr-2 custom-scrollbar">
             {recentOptIns.length > 0 ? (
               recentOptIns.map((lead) => (
                 <div key={lead.id} className="bg-white rounded-lg p-4 shadow-sm border border-gray-100">

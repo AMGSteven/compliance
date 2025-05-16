@@ -1,0 +1,4 @@
+# This is a Prisma migration file
+# Learn more about migrations: https://pris.ly/d/prisma-migrate
+
+migration_name = "20250515000000_add_trusted_form_records"

@@ -390,14 +390,12 @@ Authorization: Bearer YOUR_API_KEY`}
                     <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
                       <code className="text-sm text-white">
                         {`{
-  "identifier": "user@example.com",
-  "channel": "email",
-  "source": "Preference Center",
-  "reason": "User request",
-  "metadata": {
-    "campaignId": "camp_12345",
-    "ipAddress": "192.168.1.1"
-  }
+  "identifier": "john@example.com",
+  "identifierType": "email",  // Required: one of "email", "phone", "postal"
+  "channel": "all",  // Required: one of "email", "phone", "sms", "postal", "all"
+  "source": "website",  // Required: where this opt-out came from
+  "reason": "user request",  // Optional: reason for opt-out
+  "metadata": {}  // Optional: additional data
 }`}
                       </code>
                     </pre>
@@ -410,18 +408,15 @@ Authorization: Bearer YOUR_API_KEY`}
                       <code className="text-sm text-white">
                         {`{
   "success": true,
-  "timestamp": "2025-05-07T11:35:26.000Z",
-  "requestId": "550e8400-e29b-41d4-a716-446655440000",
-  "message": "Successfully opted out user@example.com from email communications",
+  "timestamp": "2025-05-15T18:55:33-07:00",
+  "requestId": "123e4567-e89b-12d3-a456-426614174000",
+  "message": "Successfully opted out john@example.com from all communications",
   "details": {
-    "identifier": "user@example.com",
-    "channel": "email",
-    "source": "Preference Center",
-    "reason": "User request",
-    "metadata": {
-      "campaignId": "camp_12345",
-      "ipAddress": "192.168.1.1"
-    }
+    "identifier": "john@example.com",
+    "channel": "all",
+    "source": "website",
+    "reason": "user request",
+    "metadata": null
   }
 }`}
                       </code>
@@ -666,9 +661,14 @@ Authorization: Bearer YOUR_API_KEY`}
                     <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
                       <code className="text-sm text-white">
                         {`{
+  "firstName": "John",
+  "lastName": "Doe",
+  "email": "john@example.com",
+  "phone": "+15551234567",
   "certificateUrl": "https://cert.trustedform.com/...",
-  "phoneNumber": "1234567890",
-  "email": "john@example.com"
+  "source": "https://yourleadsite.com/form-page",
+  "formName": "Insurance Quote Form",
+  "verifyImmediately": true
 }`}
                       </code>
                     </pre>
@@ -681,15 +681,13 @@ Authorization: Bearer YOUR_API_KEY`}
                       <code className="text-sm text-white">
                         {`{
   "success": true,
-  "data": {
-    "verified": true,
-    "created": "2025-05-15T17:55:28-07:00",
-    "age": "1 hour",
-    "fingerprints": {
-      "phone": true,
-      "email": true
-    },
-    "screenshot": "https://cert.trustedform.com/.../screenshot.jpg"
+  "message": "Lead and TrustedForm certificate captured successfully",
+  "certificateId": "cert_123abc",
+  "status": "pending",
+  "verificationResult": {
+    "success": true,
+    "status": "verified",
+    "matchStatus": true
   }
 }`}
                       </code>
