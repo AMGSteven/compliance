@@ -1,7 +1,48 @@
 import { TrustedFormService } from '@/lib/services/trusted-form';
 
-export default async function TrustedFormPage() {
-  const { records, pagination } = await TrustedFormService.getCertificateRecords({});
+'use client';
+
+import { useEffect, useState } from 'react';
+
+export default function TrustedFormPage() {
+  interface TrustedFormRecord {
+    id: string;
+    phone_number: string;
+    email: string | null;
+    created_at: string;
+    expires_at: string;
+    page_url: string;
+    reference: string | null;
+  }
+
+  const [records, setRecords] = useState<TrustedFormRecord[]>([]);
+  const [pagination, setPagination] = useState({
+    total: 0,
+    page: 1,
+    limit: 10,
+    pages: 0
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const response = await fetch('/api/trusted-form/records');
+        const data = await response.json();
+        setRecords(data.records);
+        setPagination(data.pagination);
+      } catch (error) {
+        console.error('Error fetching records:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return <div className="container mx-auto px-4 py-8">Loading...</div>;
+  }
 
   return (
     <div className="container mx-auto px-4 py-8">
