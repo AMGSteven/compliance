@@ -137,33 +137,98 @@ x-api-key: YOUR_API_KEY`}
                   </div>
                 </TabsContent>
                 <TabsContent value="response" className="mt-2 space-y-4">
-                  <div>
-                    <h3 className="text-sm font-medium">Success Response (200 OK)</h3>
+                  <div className="mb-6">
+                    <h3 className="text-sm font-medium">Standard Lead Format</h3>
                     <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
                       <code className="text-sm text-white">
                         {`{
-  "success": true,
-  "data": {
-    "id": "123e4567-e89b-12d3-a456-426614174000",
-    "first_name": "John",
-    "last_name": "Doe",
-    "email": "john@example.com",
-    "phone": "+15551234567",
-    "address": "123 Main St",
-    "city": "San Francisco",
-    "state": "CA",
-    "zip_code": "90210",
-    "source": "Landing Page",
-    "transaction_id": "abc123",
-    "custom_fields": {
-      "age": 35,
-      "income": "100k-150k",
-      "interested_in": "Solar Panels"
+  "firstName": "John",
+  "lastName": "Doe",
+  "email": "john@example.com",
+  "phone": "+15551234567",
+  "address": "123 Main St",
+  "city": "San Francisco",
+  "state": "CA",
+  "zip_code": "90210",
+  "source": "Landing Page",
+  "transaction_id": "abc123",
+  "custom_fields": {
+    "age": 35,
+    "income": "100k-150k",
+    "interested_in": "Solar Panels"
+  },
+  "trusted_form_cert_url": "https://cert.trustedform.com/...",
+  "list_id": "1b759535-2a5e-421e-9371-3bde7f855c60",
+  "campaign_id": "camp_456"
+}`}
+                      </code>
+                    </pre>
+                    
+                    <h3 className="mt-6 text-sm font-medium">Health Insurance Lead Format</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`{
+  "ApiToken": "179380CB-3E09-4E32-B4C6-7D4A3CFB2C4E",
+  "Vertical": "aca",
+  "SubId": "OPG4",
+  "UserAgent": "Mozilla/5.0...",
+  "OriginalUrl": "example.com",
+  "Source": "Social",
+  "JornayaLeadId": "302b7110-19ac-6ada-c8cd-55db7776f6b6",
+  "TrustedForm": "https://cert.trustedform.com/...",
+  "SessionLength": "90",
+  "TcpaText": "By clicking...",
+  "VerifyAddress": "false",
+  "OriginalCreationDate": "2025-03-24 16:46:50-04",
+  "SiteLicenseNumber": "MULTI-PLAN_hmm3jroh2025_C",
+  "ContactData": {
+    "FirstName": "Jane",
+    "LastName": "Smith",
+    "Address": "456 Oak Street",
+    "City": "San Diego",
+    "State": "CA",
+    "ZipCode": "92101",
+    "EmailAddress": "jane@example.com",
+    "PhoneNumber": "7195551234",
+    "DayPhoneNumber": "7195551234",
+    "IpAddress": "24.9.250.95",
+    "ResidenceType": "Other",
+    "YearsAtResidence": "1",
+    "MonthsAtResidence": "1"
+  },
+  "Person": {
+    "BirthDate": "1985-05-08",
+    "Gender": "Female",
+    "MaritalStatus": "Single",
+    "RelationshipToApplicant": "Self",
+    "DeniedInsurance": "No",
+    "USResidence": "True",
+    "Height_FT": "5",
+    "Height_Inch": "5",
+    "Weight": "140",
+    "Student": "false",
+    "Occupation": "Other",
+    "Education": "Bachelors Degree",
+    "HouseHoldIncome": "$30,000-$50,000",
+    "HouseHoldSize": "1",
+    "Conditions": {
+      "HighCholesterol": "No",
+      "Diabetes": "No",
+      "HeartDisease": "No"
+      // Additional conditions...
     },
-    "list_id": "list_12345",
-    "traffic_source": "Onpoint",
-    "campaign_id": "camp_6789",
-    "created_at": "2025-05-16T15:34:46-07:00"
+    "MedicalHistory": {
+      "Hospitalized": "No",
+      "Pregnant": "No",
+      "Smoker": "No"
+      // Additional history...
+    }
+  },
+  "RequestedInsurancePolicy": {
+    "CoverageType": "Medicaid"
+  },
+  "CurrentInsurancePolicy": {
+    "InsuranceCompany": "Currently not insured"
   }
 }`}
                       </code>
