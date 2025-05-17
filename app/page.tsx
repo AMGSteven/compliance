@@ -46,6 +46,8 @@ interface OptIn {
   email: string;
   created_at: string;
   trusted_form_cert_url: string;
+  traffic_source?: string;
+  list_id?: string;
 }
 
 interface EmailOptIn {
@@ -598,6 +600,24 @@ export default function Home() {
                           </svg>
                           {lead.email}
                         </p>
+                        {lead.traffic_source && (
+                          <p className="text-sm text-gray-600 flex items-center">
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                            </svg>
+                            <span className="font-medium">Traffic Source:</span> {lead.traffic_source}
+                          </p>
+                        )}
+                        {lead.list_id && (
+                          <p className="text-sm text-gray-600 flex items-center">
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                            </svg>
+                            <span className="font-medium">List ID:</span> {lead.list_id}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <time className="text-xs text-gray-400">{new Date(lead.created_at).toLocaleString()}</time>

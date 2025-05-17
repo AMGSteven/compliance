@@ -255,6 +255,19 @@ export class EmailManager {
     error?: any;
   }> {
     try {
+      // First, try to fetch leads with traffic_source and list_id
+      const { data: leadsData, error: leadsError } = await this.supabase
+        .from('leads')
+        .select('id, first_name, last_name, email, phone, traffic_source, list_id, trusted_form_cert_url, created_at')
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1);
+
+      if (leadsData && leadsData.length > 0 && !leadsError) {
+        console.log('Fetched leads with traffic_source and list_id:', leadsData.length);
+        return { data: leadsData || [] };
+      }
+
+      // Fallback to email_optins if leads table doesn't have data
       const { data, error } = await this.supabase
         .from('email_optins')
         .select('*')
