@@ -77,6 +77,122 @@ export default function ApiDocsPage() {
         </div>
 
         <div className="space-y-6">
+          <Card id="leads">
+            <CardHeader>
+              <CardTitle>Submit Lead (Opt-In)</CardTitle>
+              <CardDescription>Add a new phone opt-in lead with required tracking fields</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <h3 className="text-sm font-medium">Endpoint</h3>
+                <p className="mt-1 font-mono text-sm">POST /api/leads</p>
+              </div>
+
+              <Tabs defaultValue="request">
+                <TabsList>
+                  <TabsTrigger value="request">Request</TabsTrigger>
+                  <TabsTrigger value="response">Response</TabsTrigger>
+                </TabsList>
+                <TabsContent value="request" className="mt-2 space-y-4">
+                  <div>
+                    <h3 className="text-sm font-medium">Headers</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`Content-Type: application/json
+x-api-key: YOUR_API_KEY`}
+                      </code>
+                    </pre>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium">Body</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`{
+  "firstName": "John",          // Required
+  "lastName": "Doe",            // Required
+  "email": "john@example.com",  // Required
+  "phone": "+15551234567",     // Required
+  "list_id": "list_12345",     // Required - provided by administrator
+  "campaign_id": "camp_6789",  // Required - provided by administrator
+  "traffic_source": "Custom",  // Optional - will be auto-mapped from list_id if not provided
+  "address": "123 Main St",    // Optional - physical address 
+  "city": "San Francisco",     // Optional - city
+  "state": "CA",              // Optional - state/province
+  "zip_code": "90210",         // Optional - postal code
+  "source": "Landing Page",    // Optional - lead source/origin
+  "transaction_id": "abc123",  // Optional - unique transaction identifier
+  "custom_fields": {           // Optional - any additional custom data
+    "age": 35,
+    "income": "100k-150k",
+    "interested_in": "Solar Panels"
+  },
+  "trusted_form_cert_url": "https://cert.trustedform.com/..."  // Optional
+}`}
+                      </code>
+                    </pre>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-amber-500">⚠️ Important Note</h3>
+                    <p className="mt-1 text-sm">The <code className="text-xs bg-gray-100 p-1 rounded">list_id</code> and <code className="text-xs bg-gray-100 p-1 rounded">campaign_id</code> fields are required for all lead submissions. These values will be provided to you by the administrator and must be included with every submission.</p>
+                  </div>
+                </TabsContent>
+                <TabsContent value="response" className="mt-2 space-y-4">
+                  <div>
+                    <h3 className="text-sm font-medium">Success Response (200 OK)</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`{
+  "success": true,
+  "data": {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "first_name": "John",
+    "last_name": "Doe",
+    "email": "john@example.com",
+    "phone": "+15551234567",
+    "address": "123 Main St",
+    "city": "San Francisco",
+    "state": "CA",
+    "zip_code": "90210",
+    "source": "Landing Page",
+    "transaction_id": "abc123",
+    "custom_fields": {
+      "age": 35,
+      "income": "100k-150k",
+      "interested_in": "Solar Panels"
+    },
+    "list_id": "list_12345",
+    "traffic_source": "Onpoint",
+    "campaign_id": "camp_6789",
+    "created_at": "2025-05-16T15:34:46-07:00"
+  }
+}`}
+                      </code>
+                    </pre>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium">Error Response (400 Bad Request)</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`{
+  "success": false,
+  "error": "Missing required fields",
+  "received": {
+    "firstName": "John",
+    "lastName": "Doe",
+    "email": "john@example.com",
+    "phone": "+15551234567"
+    // Missing list_id and campaign_id
+  },
+  "required": ["firstName", "lastName", "email", "phone", "list_id", "campaign_id"]
+}`}
+                      </code>
+                    </pre>
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+          
           <Card id="dashboard-optin">
             <CardHeader>
               <CardTitle>Add Dashboard Opt-In</CardTitle>
@@ -478,6 +594,79 @@ offset=0    // Optional: Pagination offset`}
             </CardContent>
           </Card>
 
+          <Card id="opt-out">
+            <CardHeader>
+              <CardTitle>Add to DNC (Opt-Out)</CardTitle>
+              <CardDescription>Add a phone number to the Do Not Contact list</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <h3 className="text-sm font-medium">Endpoint</h3>
+                <p className="mt-1 font-mono text-sm">POST /api/dialer/dnc</p>
+              </div>
+              
+              <Tabs defaultValue="request">
+                <TabsList>
+                  <TabsTrigger value="request">Request</TabsTrigger>
+                  <TabsTrigger value="response">Response</TabsTrigger>
+                </TabsList>
+                <TabsContent value="request" className="mt-2 space-y-4">
+                  <div>
+                    <h3 className="text-sm font-medium">Headers</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`Content-Type: application/json
+x-api-key: YOUR_API_KEY`}
+                      </code>
+                    </pre>
+                  </div>
+                  
+                  <div>
+                    <h3 className="text-sm font-medium">Body</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`{
+  "phone_number": "+15551234567",  // Required - must use this exact parameter name (snake_case)
+  "reason": "Customer request",     // Optional - reason for adding to DNC
+  "source": "website-form"         // Optional - source of the opt-out
+}`}
+                      </code>
+                    </pre>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-amber-500">⚠️ Important Note</h3>
+                    <p className="mt-1 text-sm">The parameter name <code className="text-xs bg-gray-100 p-1 rounded">phone_number</code> must be in snake_case format exactly as shown. Using <code className="text-xs bg-gray-100 p-1 rounded">phoneNumber</code> or other variations will result in an error.</p>
+                  </div>
+                </TabsContent>
+                <TabsContent value="response" className="mt-2 space-y-4">
+                  <div>
+                    <h3 className="text-sm font-medium">Success Response (200 OK)</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`{
+  "success": true,
+  "message": "Number added to DNC",
+  "phone_number": "+15551234567"
+}`}
+                      </code>
+                    </pre>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium">Error Response (400 Bad Request)</h3>
+                    <pre className="mt-1 overflow-x-auto rounded-md bg-slate-950 p-4">
+                      <code className="text-sm text-white">
+                        {`{
+  "success": false,
+  "error": "phoneNumber is required"
+}`}
+                      </code>
+                    </pre>
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+          
           <Card id="authentication">
             <CardHeader>
               <CardTitle>Authentication</CardTitle>

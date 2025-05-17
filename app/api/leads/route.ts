@@ -14,21 +14,38 @@ export async function POST(request: Request) {
     const phone = body.phone;
     const zipCode = body.zipCode || body.zip_code;
     const trustedFormCertUrl = body.trustedFormCertUrl || body.trusted_form_cert_url;
+    const listId = body.listId || body.list_id;
+    const campaignId = body.campaignId || body.campaign_id;
 
     // Validate required fields
-    if (!firstName || !lastName || !email || !phone) {
-      console.error('Missing required fields:', { firstName, lastName, email, phone });
+    if (!firstName || !lastName || !email || !phone || !listId || !campaignId) {
+      console.error('Missing required fields:', { firstName, lastName, email, phone, listId, campaignId });
       return NextResponse.json(
         { 
           success: false, 
           error: 'Missing required fields',
-          received: { firstName, lastName, email, phone }
+          received: { firstName, lastName, email, phone, listId, campaignId },
+          required: ['firstName', 'lastName', 'email', 'phone', 'listId', 'campaignId']
         },
         { status: 400 }
       );
     }
 
-    console.log('Submitting lead with validated fields:', { firstName, lastName, email, phone, zipCode, trustedFormCertUrl });
+    console.log('Submitting lead with validated fields:', { firstName, lastName, email, phone, zipCode, trustedFormCertUrl, listId, campaignId });
+    
+    // Determine traffic source based on list_id
+    let trafficSource = body.trafficSource || body.traffic_source;
+    
+    // If no traffic_source is provided, set it based on list_id mapping
+    if (!trafficSource) {
+      if (listId === '1b759535-2a5e-421e-9371-3bde7f855c60') {
+        trafficSource = 'Onpoint';
+      } else if (listId === 'a38881ab-93b2-4750-9f9c-92ae6cd10b7e') {
+        trafficSource = 'Juiced';
+      }
+    }
+
+    console.log('Using traffic source:', trafficSource);
 
     // Create Supabase client
     const supabase = createServerClient();
@@ -42,8 +59,17 @@ export async function POST(request: Request) {
           last_name: lastName,
           email: email,
           phone: phone,
+          address: body.address || '',
+          city: body.city || '',
+          state: body.state || '',
           zip_code: zipCode || '',
+          source: body.source || '',
           trusted_form_cert_url: trustedFormCertUrl || '',
+          transaction_id: body.transactionId || body.transaction_id || '',
+          custom_fields: body.customFields || body.custom_fields || null,
+          list_id: listId,
+          campaign_id: campaignId,
+          traffic_source: trafficSource,
           created_at: new Date().toISOString()
         }
       ])
