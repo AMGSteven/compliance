@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
+import { ComplianceEngine } from '@/lib/compliance/engine';
 
 // Main POST handler for all lead formats
 export async function POST(request: Request) {
@@ -59,6 +60,36 @@ async function handleStandardLead(body: any, request: Request) {
     }
 
     console.log('Submitting standard lead with validated fields:', { firstName, lastName, email, phone });
+
+    // Perform comprehensive compliance check across all sources - using the same engine as the /compliance page
+    console.log('Performing comprehensive compliance check for phone:', phone);
+    
+    // Use the ComplianceEngine that includes all checkers: TCPA, Blacklist, Webrecon, and Internal DNC
+    const complianceEngine = new ComplianceEngine();
+    const complianceReport = await complianceEngine.checkPhoneNumber(phone);
+    
+    if (!complianceReport.isCompliant) {
+      console.log('Phone number failed compliance check, rejecting lead:', phone);
+      
+      // Find the failed check(s) to provide more specific details
+      const failedChecks = complianceReport.results.filter(result => !result.isCompliant);
+      const failedSources = failedChecks.map(check => check.source).join(', ');
+      const failedReasons = failedChecks.flatMap(check => check.reasons);
+      
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: `Phone number failed compliance check with: ${failedSources}`, 
+          details: {
+            failedSources: failedChecks.map(check => check.source),
+            reasons: failedReasons,
+            phoneNumber: phone,
+            complianceResults: complianceReport.results
+          }
+        },
+        { status: 403 }
+      );
+    }
     
     // Determine traffic source based on list_id
     let trafficSource = body.trafficSource || body.traffic_source;
@@ -148,6 +179,38 @@ async function handleHealthInsuranceLead(body: any, request: Request) {
     
     // For now, we'll skip strict validation to facilitate testing
     // In production, you might want to enforce validation
+
+    // Perform comprehensive compliance check across all sources - using the same engine as the /compliance page
+    if (phone) {
+      console.log('Performing comprehensive compliance check for phone:', phone);
+      
+      // Use the ComplianceEngine that includes all checkers: TCPA, Blacklist, Webrecon, and Internal DNC
+      const complianceEngine = new ComplianceEngine();
+      const complianceReport = await complianceEngine.checkPhoneNumber(phone);
+      
+      if (!complianceReport.isCompliant) {
+        console.log('Phone number failed compliance check, rejecting health insurance lead:', phone);
+        
+        // Find the failed check(s) to provide more specific details
+        const failedChecks = complianceReport.results.filter(result => !result.isCompliant);
+        const failedSources = failedChecks.map(check => check.source).join(', ');
+        const failedReasons = failedChecks.flatMap(check => check.reasons);
+        
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: `Phone number failed compliance check with: ${failedSources}`, 
+            details: {
+              failedSources: failedChecks.map(check => check.source),
+              reasons: failedReasons,
+              phoneNumber: phone,
+              complianceResults: complianceReport.results
+            }
+          },
+          { status: 403 }
+        );
+      }
+    }
     
     // Create Supabase client
     const supabase = createServerClient();
