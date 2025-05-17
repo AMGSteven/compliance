@@ -37,6 +37,8 @@ model leads {
   zip_code              String   @map("zip_code")
   trusted_form_cert_url String   @map("trusted_form_cert_url")
   status                String   @default("new") @map("status")
+  cadence_id            String?  @map("cadence_id")
+  token                 String?  @map("token")
   created_at            DateTime @default(now()) @map("created_at") @db.Timestamptz
   updated_at            DateTime @updatedAt @map("updated_at") @db.Timestamptz
 

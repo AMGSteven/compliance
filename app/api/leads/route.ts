@@ -44,6 +44,8 @@ async function handleStandardLead(body: any, request: Request) {
     const trustedFormCertUrl = body.trustedFormCertUrl || body.trusted_form_cert_url || body.TrustedForm;
     const listId = body.listId || body.list_id;
     const campaignId = body.campaignId || body.campaign_id;
+    const cadenceId = body.cadenceId || body.cadence_id;
+    const token = body.token || body.Token;
 
     // Validate required fields
     if (!firstName || !lastName || !email || !phone || !listId || !campaignId) {
@@ -128,6 +130,8 @@ async function handleStandardLead(body: any, request: Request) {
           list_id: listId,
           campaign_id: campaignId,
           traffic_source: trafficSource,
+          cadence_id: cadenceId || null,
+          token: token || null,
           created_at: new Date().toISOString()
         }
       ])
@@ -161,13 +165,17 @@ async function handleHealthInsuranceLead(body: any, request: Request) {
   try {
     console.log('Processing health insurance lead...');
     
-    // Get data from nested objects with safety checks
+    // Create the contact data for health insurance lead
     const contactData = body.ContactData || {};
     const person = body.Person || {};
-    const conditions = person.Conditions || {};
-    const medicalHistory = person.MedicalHistory || {};
-    const requestedInsurance = body.RequestedInsurancePolicy || {};
-    const currentInsurance = body.CurrentInsurancePolicy || {};
+    const conditions = body.Conditions || {};
+    const medicalHistory = body.MedicalHistory || {};
+    const requestedInsurance = body.RequestedInsurance || {};
+    const currentInsurance = body.CurrentInsurance || {};
+    
+    // Extract cadence_id and token if provided
+    const cadenceId = body.CadenceID || body.cadenceId || body.cadence_id || null;
+    const token = body.Token || body.token || null;
     
     // Extract basic lead data
     const firstName = contactData.FirstName || '';
@@ -316,6 +324,9 @@ async function handleHealthInsuranceLead(body: any, request: Request) {
           // Insurance information
           coverage_type: requestedInsurance.CoverageType || '',
           insurance_company: currentInsurance.InsuranceCompany || '',
+          
+          cadence_id: cadenceId,
+          token: token,
           
           created_at: new Date().toISOString(),
           source: body.Source || ''
