@@ -2,8 +2,31 @@ import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { corsMiddleware, handleOptions } from "./lib/middleware/cors"
 import { validateApiKey } from "./lib/middleware/api-key-middleware"
+import { cookies } from 'next/headers'
 
 export async function middleware(request: NextRequest) {
+  // Check if the request is for the login page or auth API
+  if (
+    request.nextUrl.pathname === "/login" ||
+    request.nextUrl.pathname === "/api/auth/login" ||
+    request.nextUrl.pathname.includes("/_next/") ||
+    request.nextUrl.pathname.includes("/favicon.ico")
+  ) {
+    return NextResponse.next()
+  }
+
+  // Check for authentication token
+  const authToken = request.cookies.get("auth-token")?.value
+  const isAuthenticated = authToken === "authenticated"
+
+  // If not authenticated, redirect to login page
+  if (!isAuthenticated) {
+    const url = request.nextUrl.clone()
+    url.pathname = "/login"
+    url.search = `?from=${encodeURIComponent(request.nextUrl.pathname)}`
+    return NextResponse.redirect(url)
+  }
+
   // Handle OPTIONS requests for CORS preflight
   if (request.method === "OPTIONS") {
     return handleOptions(request)
@@ -21,7 +44,7 @@ export async function middleware(request: NextRequest) {
       !request.nextUrl.pathname.includes("/public")
     ) {
       const { valid, response } = await validateApiKey(request)
-      if (!valid) {
+      if (!valid && response) {
         // Copy CORS headers to the error response
         Object.entries(corsResponse.headers).forEach(([key, value]) => {
           response.headers.set(key, value)
@@ -37,5 +60,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/api/:path*"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"]
 }

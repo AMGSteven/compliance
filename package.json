@@ -11,6 +11,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@ant-design/icons": "^6.0.0",
     "@hookform/resolvers": "^3.9.1",
     "@prisma/client": "^6.7.0",
     "@radix-ui/react-accordion": "1.2.2",
@@ -43,6 +44,7 @@
     "@radix-ui/react-tooltip": "1.1.6",
     "@supabase/auth-helpers-nextjs": "latest",
     "@supabase/supabase-js": "latest",
+    "antd": "^5.25.1",
     "autoprefixer": "^10.4.20",
     "chalk": "^5.4.1",
     "class-variance-authority": "^0.7.1",
@@ -50,6 +52,7 @@
     "cmdk": "1.0.4",
     "crypto": "latest",
     "date-fns": "^4.1.0",
+    "dotenv": "^16.5.0",
     "embla-carousel-react": "8.5.1",
     "framer-motion": "^12.11.4",
     "input-otp": "1.4.1",

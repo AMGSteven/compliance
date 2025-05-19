@@ -39,6 +39,10 @@ model leads {
   status                String   @default("new") @map("status")
   cadence_id            String?  @map("cadence_id")
   token                 String?  @map("token")
+  income_bracket        String?  @map("income_bracket")
+  age_range             String?  @map("age_range")
+  birth_date            DateTime? @map("birth_date")
+  homeowner_status      String?  @map("homeowner_status")
   created_at            DateTime @default(now()) @map("created_at") @db.Timestamptz
   updated_at            DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
@@ -47,6 +51,21 @@ model leads {
   @@index([status])
   @@index([created_at])
   @@map("leads")
+}
+
+model list_routings {
+  @@schema("public")
+  id                    String   @id @default(uuid()) @db.Uuid
+  list_id               String   @map("list_id")
+  campaign_id           String   @map("campaign_id")
+  cadence_id            String   @map("cadence_id")
+  description           String?
+  active                Boolean  @default(true)
+  created_at            DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updated_at            DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([list_id])
+  @@map("list_routings")
 }
 
 model trusted_form_certificates {

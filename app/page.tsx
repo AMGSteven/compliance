@@ -174,9 +174,11 @@ export default function Home() {
           
           if (optInsRes.ok) {
             const optInsData = await optInsRes.json();
-            console.log('OptIns data received successfully');
-            // Handle both formats: direct array or { data: [...] }
-            const leads = Array.isArray(optInsData) ? optInsData : (optInsData.leads || []);
+            console.log('OptIns data received:', optInsData);
+            // Handle various response formats
+            const leads = Array.isArray(optInsData) ? optInsData : 
+                         (optInsData.data ? optInsData.data : 
+                         (optInsData.leads || []));
             setRecentOptIns(leads);
           } else {
             console.error('OptIns API returned error status:', optInsRes.status);

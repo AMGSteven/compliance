@@ -4,6 +4,7 @@ import { Inter } from "next/font/google"
 import "./globals.css"
 import Link from "next/link"
 import { AuthProvider } from "@/lib/context/auth-context"
+import LogoutButton from "@/components/logout-button"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -39,10 +40,19 @@ export default function RootLayout({
                     <Link href="/compliance" className="nav-link">
                       Multi Source Compliance
                     </Link>
+                    <Link href="/dashboard/list-routings" className="nav-link">
+                      List Routings
+                    </Link>
+                    <Link href="/dashboard/leads" className="nav-link">
+                      Leads
+                    </Link>
                     <Link href="/docs/api" className="nav-link">
                       API Docs
                     </Link>
                   </nav>
+                </div>
+                <div className="ml-auto">
+                  <LogoutButton />
                 </div>
               </div>
             </header>

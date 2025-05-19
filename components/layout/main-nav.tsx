@@ -31,6 +31,11 @@ export function MainNav({ className, ...props }: React.HTMLAttributes<HTMLElemen
             </Link>
           </NavigationMenuItem>
           <NavigationMenuItem>
+            <Link href="/dashboard/leads" legacyBehavior passHref>
+              <NavigationMenuLink className={navigationMenuTriggerStyle()}>Leads</NavigationMenuLink>
+            </Link>
+          </NavigationMenuItem>
+          <NavigationMenuItem>
             <NavigationMenuTrigger>Suppressions</NavigationMenuTrigger>
             <NavigationMenuContent>
               <ul className="grid gap-3 p-4 md:w-[400px] lg:w-[500px] lg:grid-cols-[.75fr_1fr]">
