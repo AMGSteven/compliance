@@ -3,19 +3,26 @@ import { createServerClient } from '@/lib/supabase/server';
 
 // Generate mock lead data as a fallback
 function getMockLeads(count = 10) {
-  return Array.from({ length: count }, (_, i) => ({
-    id: `lead-${i + 1}`,
-    first_name: `Test${i + 1}`,
-    last_name: `User${i + 1}`,
-    phone: `+1${Math.floor(1000000000 + Math.random() * 9000000000)}`,
-    email: `test${i + 1}@example.com`,
-    status: ['new', 'success', 'error'][Math.floor(Math.random() * 3)],
-    list_id: `test-list-${Math.floor(Math.random() * 3) + 1}`,
-    campaign_id: `test-campaign-${Math.floor(Math.random() * 3) + 1}`,
-    created_at: new Date(Date.now() - Math.floor(Math.random() * 30) * 24 * 60 * 60 * 1000).toISOString(),
-    trusted_form_cert_url: `https://cert.trustedform.com/example${i + 1}`,
-    custom_fields: { subid: `mock-subid-${i + 1}` }
-  }));
+  return Array.from({ length: count }, (_, i) => {
+    // Include a mix of policy statuses, including some with no policy status
+    const policyStatuses = [null, 'pending', 'issued', 'paid', 'cancelled', 'rejected'];
+    const randomPolicyIndex = Math.floor(Math.random() * policyStatuses.length);
+    
+    return {
+      id: `lead-${i + 1}`,
+      first_name: `Test${i + 1}`,
+      last_name: `User${i + 1}`,
+      phone: `+1${Math.floor(1000000000 + Math.random() * 9000000000)}`,
+      email: `test${i + 1}@example.com`,
+      status: ['new', 'success', 'error'][Math.floor(Math.random() * 3)],
+      list_id: `test-list-${Math.floor(Math.random() * 3) + 1}`,
+      campaign_id: `test-campaign-${Math.floor(Math.random() * 3) + 1}`,
+      created_at: new Date(Date.now() - Math.floor(Math.random() * 30) * 24 * 60 * 60 * 1000).toISOString(),
+      trusted_form_cert_url: `https://cert.trustedform.com/example${i + 1}`,
+      policy_status: policyStatuses[randomPolicyIndex],
+      custom_fields: { subid: `mock-subid-${i + 1}` }
+    };
+  });
 }
 
 export async function GET(request: NextRequest) {

@@ -20,6 +20,7 @@ interface Lead {
   created_at: string;
   list_id: string;
   campaign_id: string;
+  policy_status?: string; // Added policy_status field
   custom_fields?: Record<string, any>;
   // Add other optional fields
   address?: string;
@@ -95,7 +96,8 @@ export default function LeadsPage() {
         lead.email?.toLowerCase().includes(searchLower) ||
         lead.phone?.includes(searchText) ||
         lead.list_id?.includes(searchText) ||
-        lead.campaign_id?.includes(searchText)
+        lead.campaign_id?.includes(searchText) ||
+        lead.policy_status?.toLowerCase().includes(searchLower)
       );
     }
     
@@ -142,9 +144,32 @@ export default function LeadsPage() {
         return 'red';
       case 'processing':
         return 'orange';
+      case 'warning':
+        return 'orange';
+      case 'rejected':
+        return 'red';
+      case 'duplicate':
+        return 'purple';
+      // Policy statuses
+      case 'pending':
+        return 'blue';
+      case 'issued':
+        return 'cyan';
+      case 'paid':
+        return 'green';
+      case 'cancelled':
+        return 'orange';
       default:
         return 'default';
     }
+  };
+
+  // Function to get policy status display text
+  const getPolicyStatusDisplay = (status?: string) => {
+    if (!status) return 'None';
+    
+    // Capitalize first letter
+    return status.charAt(0).toUpperCase() + status.slice(1);
   };
 
   // Format JSON data for display
@@ -219,6 +244,30 @@ export default function LeadsPage() {
       render: (date: string) => format(new Date(date), 'MMM dd, yyyy HH:mm:ss'),
       sorter: (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
       defaultSortOrder: 'descend',
+    },
+    {
+      title: 'Policy Status',
+      dataIndex: 'policy_status',
+      key: 'policy_status',
+      render: (status: string) => (
+        <Tag color={status ? getStatusColor(status) : 'default'}>
+          {getPolicyStatusDisplay(status)}
+        </Tag>
+      ),
+      filters: [
+        { text: 'None', value: '' },
+        { text: 'Pending', value: 'pending' },
+        { text: 'Issued', value: 'issued' },
+        { text: 'Paid', value: 'paid' },
+        { text: 'Cancelled', value: 'cancelled' },
+        { text: 'Rejected', value: 'rejected' },
+      ],
+      onFilter: (value, record) => {
+        if (value === '') {
+          return !record.policy_status;
+        }
+        return record.policy_status === value;
+      },
     },
     {
       title: 'Actions',
@@ -336,6 +385,12 @@ export default function LeadsPage() {
                     <Text strong>Status:</Text>{' '}
                     <Tag color={getStatusColor(selectedLead.status)}>
                       {selectedLead.status.toUpperCase()}
+                    </Tag>
+                  </div>
+                  <div>
+                    <Text strong>Policy Status:</Text>{' '}
+                    <Tag color={selectedLead.policy_status ? getStatusColor(selectedLead.policy_status) : 'default'}>
+                      {getPolicyStatusDisplay(selectedLead.policy_status)}
                     </Tag>
                   </div>
                   <div>

@@ -224,7 +224,7 @@ async function handleStandardLead(body: any, request: Request) {
         const formattedPhone = phone.startsWith('+1') ? phone : `+1${phone.replace(/\D/g, '')}`;
         
         // Define the type for dialer payload to avoid TypeScript errors
-        type DialerPayload = {
+        interface DialerPayload {
           first_name: string;
           last_name: string;
           email: string;
@@ -243,6 +243,7 @@ async function handleStandardLead(body: any, request: Request) {
           list_id: string;
           campaign_id: string;
           cadence_id: string | null;
+          lead_id: string; // Add lead_id to the interface
         };
         
         // Create the dialer payload with all required fields
@@ -271,7 +272,10 @@ async function handleStandardLead(body: any, request: Request) {
           // Include the routing IDs directly in the payload
           list_id: listId,
           campaign_id: effectiveCampaignId,
-          cadence_id: effectiveCadenceId
+          cadence_id: effectiveCadenceId,
+          
+          // Include the lead ID to enable policy postback tracking
+          lead_id: data[0].id
         };
         
         // The dialer API expects list_id and token as URL parameters, not just in the JSON payload
@@ -286,7 +290,8 @@ async function handleStandardLead(body: any, request: Request) {
         dialerUrl.searchParams.append('token', authToken);
         
         console.log('Sending lead to dialer API:', dialerUrl.toString());
-        console.log('Dialer payload:', JSON.stringify(dialerPayload, null, 2));
+        console.log('Dialer payload with lead_id:', JSON.stringify(dialerPayload, null, 2));
+        console.log('Lead ID being sent to dialer:', dialerPayload.lead_id);
         
         // Send the lead to the dialer API
         const dialerResponse = await fetch(dialerUrl.toString(), {
@@ -304,6 +309,7 @@ async function handleStandardLead(body: any, request: Request) {
         // Include bid information for successful lead submission
         return NextResponse.json({ 
           success: true, 
+          lead_id: data[0].id, // Explicitly return the lead ID
           data: data[0],
           bid: routingData?.bid || 0.00,
           dialer: {
@@ -317,6 +323,7 @@ async function handleStandardLead(body: any, request: Request) {
         // Include bid information for successful lead submission even when dialer fails
         return NextResponse.json({ 
           success: true, 
+          lead_id: data[0].id, // Explicitly return the lead ID
           data: data[0],
           bid: routingData?.bid || 0.00,
           dialer: {
@@ -330,6 +337,7 @@ async function handleStandardLead(body: any, request: Request) {
     // Include bid in the response for successful submissions
     return NextResponse.json({
       success: true, 
+      lead_id: data[0].id, // Explicitly return the lead ID
       data: data[0],
       bid: routingData?.bid || 0.00
     });
@@ -542,22 +550,23 @@ async function handleHealthInsuranceLead(body: any, request: Request) {
         .limit(1)
         .maybeSingle();
         
-      if (routingResults && routingResults.bid) {
-        bid = routingResults.bid;
+        if (routingResults && routingResults.bid) {
+          bid = routingResults.bid;
+        }
       }
-    }
 
-    // Include bid in the response for successful submissions
-    return NextResponse.json({
-      success: true, 
-      data: data[0],
-      bid: bid
-    });
-  } catch (error) {
-    console.error('Error processing health insurance lead submission:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to process health insurance lead submission' },
-      { status: 500 }
-    );
+      // Include bid and lead_id in the response for successful submissions
+      return NextResponse.json({
+        success: true, 
+        lead_id: data[0].id, // Explicitly return the lead ID
+        data: data[0],
+        bid: bid
+      });
+    } catch (error) {
+      console.error('Error processing health insurance lead submission:', error);
+      return NextResponse.json(
+        { success: false, error: 'Failed to process health insurance lead submission' },
+        { status: 500 }
+      );
+    }
   }
-}

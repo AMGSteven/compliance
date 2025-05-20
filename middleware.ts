@@ -9,6 +9,8 @@ export async function middleware(request: NextRequest) {
   if (
     request.nextUrl.pathname === "/login" ||
     request.nextUrl.pathname === "/api/auth/login" ||
+    request.nextUrl.pathname === "/api/policy-postback" ||
+    request.nextUrl.pathname === "/api/leads" ||
     request.nextUrl.pathname.includes("/_next/") ||
     request.nextUrl.pathname.includes("/favicon.ico")
   ) {
