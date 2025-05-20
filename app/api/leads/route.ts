@@ -214,8 +214,8 @@ async function handleStandardLead(body: any, request: Request) {
     console.log('Final values used for dialer:', { effectiveCampaignId, effectiveCadenceId });
 
     // Check if this lead should be forwarded to the dialer API
-    // Either for the special list IDs like Onpoint or if we have a routing configuration
-    if (listId === 'a38881ab-93b2-4750-9f9c-92ae6cd10b7e' || listId === '1b759535-2a5e-421e-9371-3bde7f855c60' || routingData) {
+    // Any list ID in the routing settings will have routingData and be eligible for forwarding
+    if (routingData) {
       try {
         console.log('Forwarding lead to dialer API for list:', listId);
         
