@@ -13,6 +13,13 @@ export async function POST(request: Request) {
     const keys = Object.keys(body);
     console.log('Request body keys:', keys);
     
+    // Log the full request body for debugging - be careful with PII
+    if (body.email === 'lray298915@gmail.com' || body.Email === 'lray298915@gmail.com' || 
+        body.phone === '2106071548' || body.Phone === '2106071548' || 
+        (body.ContactData && (body.ContactData.Email === 'lray298915@gmail.com' || body.ContactData.Phone === '2106071548'))) {
+      console.log('IMPORTANT - Found Lindsay Ray lead:', JSON.stringify(body, null, 2));
+    }
+    
     // Test if this is the health insurance lead format
     if (keys.includes('ContactData') || keys.includes('ApiToken') || keys.includes('Vertical')) {
       console.log('Detected health insurance lead format');
@@ -42,7 +49,8 @@ async function handleStandardLead(body: any, request: Request) {
     const phone = body.phone || body.Phone || body.PhoneNumber;
     const zipCode = body.zipCode || body.zip_code || body.ZipCode;
     const trustedFormCertUrl = body.trustedFormCertUrl || body.trusted_form_cert_url || body.TrustedForm;
-    const listId = body.listId || body.list_id;
+    // Use 'let' instead of 'const' to allow correcting the list ID for special cases
+    let listId = body.listId || body.list_id;
     const campaignId = body.campaignId || body.campaign_id;
     const cadenceId = body.cadenceId || body.cadence_id;
     const token = body.token || body.Token;
@@ -171,10 +179,42 @@ async function handleStandardLead(body: any, request: Request) {
     
     // Look up campaign and cadence IDs from the routings table
     console.log('Looking up routing data for list ID:', listId);
+    
+    // Handle Onpoint leads with fuzzy list ID matching
+    // This handles cases where minor variations in the Onpoint list ID are sent
+    const correctOnpointListId = '1b759535-2a5e-421e-9371-3bde7f855c60';
+    
+    // Check if this is an Onpoint lead based on list ID pattern or source
+    const isOnpointListId = (
+      listId === correctOnpointListId || 
+      (listId && listId.length > 30 && (
+        listId.includes('759') && 
+        listId.includes('3bde7f8') && 
+        listId.includes('421e-9371')
+      ))
+    );
+    
+    const isOnpointSource = (
+      body.source?.toLowerCase()?.includes('onpoint') || 
+      body.Source?.toLowerCase()?.includes('onpoint')
+    );
+    
+    if (isOnpointListId || isOnpointSource) {
+      console.log('IMPORTANT - Detected Onpoint lead with listId:', listId);
+      console.log('Onpoint lead campaign ID:', campaignId);
+      console.log('Onpoint lead cadence ID:', cadenceId);
+      
+      // Correct the list ID for Onpoint leads to ensure they're properly processed
+      if (listId !== correctOnpointListId) {
+        console.log(`Correcting Onpoint list ID from ${listId} to ${correctOnpointListId}`);
+        listId = correctOnpointListId;
+      }
+    }
+    
     let routingData = null;
     // Create mutable copies of the campaign and cadence IDs
-    let effectiveCampaignId = campaignId;
-    let effectiveCadenceId = cadenceId;
+    let effectiveCampaignId = campaignId || '';
+    let effectiveCadenceId = cadenceId || '';
     
     console.log('Initial values:', { campaignId, cadenceId });
     
@@ -216,6 +256,27 @@ async function handleStandardLead(body: any, request: Request) {
     // Check if this lead should be forwarded to the dialer API
     // Any list ID in the routing settings will have routingData and be eligible for forwarding
     if (routingData) {
+      // Load balancing for Onpoint leads - split between two cadence IDs
+      const isOnpointLead = listId === '1b759535-2a5e-421e-9371-3bde7f855c60';
+      
+      if (isOnpointLead) {
+        // Use phone number or email as a deterministic way to split leads
+        // This ensures the same lead always goes to the same cadence
+        const hashSource = phone || email || '';
+        const useFirstCadence = hashSource.split('').reduce((sum: number, char: string) => sum + char.charCodeAt(0), 0) % 2 === 0;
+        
+        const onpointCadenceOptions = [
+          'd669792b-2b43-4c8e-bb9d-d19e5420de63', // First cadence (50%)
+          '39a9381e-14ef-4fdd-a95a-9649025590a4'  // Second cadence (50%)
+        ];
+        
+        const selectedCadence = useFirstCadence ? onpointCadenceOptions[0] : onpointCadenceOptions[1];
+        console.log(`Onpoint lead detected - load balancing to cadence: ${selectedCadence} (${useFirstCadence ? 'first' : 'second'} group)`);
+        
+        // Override the cadence ID for Onpoint leads
+        effectiveCadenceId = selectedCadence;
+      }
+      
       try {
         console.log('Forwarding lead to dialer API for list:', listId);
         
@@ -550,8 +611,31 @@ async function handleHealthInsuranceLead(body: any, request: Request) {
     }
 
     // Look up campaign and cadence IDs from the routings table
-    const listId = body.SubId || 'health-insurance-default';
+    let listId = body.SubId || 'health-insurance-default';
     console.log('Looking up routing data for list ID:', listId);
+    
+    // Handle Onpoint leads with fuzzy list ID matching in health insurance leads
+    const correctOnpointListId = '1b759535-2a5e-421e-9371-3bde7f855c60';
+    
+    // Check if this is an Onpoint lead based on list ID pattern
+    const isOnpointListId = (
+      listId === correctOnpointListId || 
+      (listId && listId.length > 30 && (
+        listId.includes('759') && 
+        listId.includes('3bde7f8') && 
+        listId.includes('421e-9371')
+      ))
+    );
+    
+    if (isOnpointListId || body.source?.toLowerCase()?.includes('onpoint')) {
+      console.log('IMPORTANT - Detected Onpoint health insurance lead with listId:', listId);
+      
+      // Correct the list ID for Onpoint leads
+      if (listId !== correctOnpointListId) {
+        console.log(`Correcting Onpoint list ID from ${listId} to ${correctOnpointListId}`);
+        listId = correctOnpointListId;
+      }
+    }
     
     let routingData = null;
     // Create mutable copies of the campaign and cadence IDs
@@ -606,6 +690,27 @@ async function handleHealthInsuranceLead(body: any, request: Request) {
     // Check if this lead should be forwarded to the dialer API based on routing configuration
     let dialerResponse = null;
     if (routingData) {
+      // Load balancing for Onpoint leads - split between two cadence IDs
+      const isOnpointLead = listId === '1b759535-2a5e-421e-9371-3bde7f855c60';
+      
+      if (isOnpointLead) {
+        // Use phone number or email as a deterministic way to split leads
+        // This ensures the same lead always goes to the same cadence
+        const hashSource = contactData.Phone || contactData.Email || '';
+        const useFirstCadence = hashSource.split('').reduce((sum: number, char: string) => sum + char.charCodeAt(0), 0) % 2 === 0;
+        
+        const onpointCadenceOptions = [
+          'd669792b-2b43-4c8e-bb9d-d19e5420de63', // First cadence (50%)
+          '39a9381e-14ef-4fdd-a95a-9649025590a4'  // Second cadence (50%)
+        ];
+        
+        const selectedCadence = useFirstCadence ? onpointCadenceOptions[0] : onpointCadenceOptions[1];
+        console.log(`Onpoint health insurance lead detected - load balancing to cadence: ${selectedCadence} (${useFirstCadence ? 'first' : 'second'} group)`);
+        
+        // Override the cadence ID for Onpoint leads
+        effectiveCadenceId = selectedCadence;
+      }
+      
       try {
         console.log('Forwarding health insurance lead to dialer API for list:', listId);
         
