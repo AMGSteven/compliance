@@ -267,7 +267,10 @@ async function handleStandardLead(body: any, request: Request) {
           homeowner_status: homeownerStatus,
           
           // Custom fields passed through as a nested object
-          custom_fields: body.customFields || body.custom_fields || {},
+          custom_fields: {
+            ...(body.customFields || body.custom_fields || {}),
+            compliance_lead_id: data[0].id // Add compliance_lead_id to custom fields
+          },
           
           // Include the routing IDs directly in the payload
           list_id: listId,
@@ -653,7 +656,9 @@ async function handleHealthInsuranceLead(body: any, request: Request) {
           homeowner_status: homeownerStatus,
           
           // Custom fields passed through as a nested object
-          custom_fields: {},
+          custom_fields: {
+            compliance_lead_id: data[0].id // Add compliance_lead_id to custom fields
+          },
           
           // Include the routing IDs directly in the payload
           list_id: listId,
