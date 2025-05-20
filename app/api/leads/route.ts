@@ -502,7 +502,7 @@ async function handleHealthInsuranceLead(body: any, request: Request) {
           
           // Contact details
           day_phone_number: contactData.DayPhoneNumber || '',
-          residence_type: contactData.ResidenceType || '',
+
           years_at_residence: contactData.YearsAtResidence || '',
           months_at_residence: contactData.MonthsAtResidence || '',
           
@@ -519,7 +519,6 @@ async function handleHealthInsuranceLead(body: any, request: Request) {
           student: person.Student === 'true',
           occupation: person.Occupation || '',
           education: person.Education || '',
-          house_hold_income: person.HouseHoldIncome || '',
           house_hold_size: person.HouseHoldSize || '',
           
           // Medical information (as JSON)
@@ -547,32 +546,184 @@ async function handleHealthInsuranceLead(body: any, request: Request) {
       );
     }
 
-    // Look up routing data to get the bid
-    let bid = 0.00;
+    // Look up campaign and cadence IDs from the routings table
     const listId = body.SubId || 'health-insurance-default';
+    console.log('Looking up routing data for list ID:', listId);
     
-    // Try to get the bid from list_routings if a SubId is provided
-    if (listId && listId !== 'health-insurance-default') {
-      const { data: routingResults } = await supabase
-        .from('list_routings')
-        .select('bid')
-        .eq('list_id', listId)
-        .eq('active', true)
-        .limit(1)
-        .maybeSingle();
-        
-        if (routingResults && routingResults.bid) {
-          bid = routingResults.bid;
-        }
+    let routingData = null;
+    // Create mutable copies of the campaign and cadence IDs
+    let effectiveCampaignId = body.Vertical || '';
+    let effectiveCadenceId = body.CadenceID || body.cadenceId || body.cadence_id || null;
+    let bid = 0.00;
+    
+    console.log('Initial values:', { campaignId: effectiveCampaignId, cadenceId: effectiveCadenceId });
+    
+    // Normalize the list ID to ensure consistent matching
+    const normalizedListId = listId.trim().toLowerCase();
+    
+    // Query list_routings to get routing data including the bid
+    const { data: routingResults, error: routingError } = await supabase
+      .from('list_routings')
+      .select('*')
+      .eq('list_id', listId)
+      .eq('active', true)
+      .limit(1)
+      .maybeSingle();
+      
+    if (routingError) {
+      console.error('Error looking up list routing:', routingError);
+    }
+    
+    console.log('Routing results:', routingResults);
+      
+    if (routingResults) {
+      routingData = routingResults;
+      console.log(`Found list routing for ${listId}:`, routingData);
+      
+      // Override campaign_id and cadence_id if provided in the routing
+      if (routingData.campaign_id) {
+        console.log(`Overriding campaign_id from ${effectiveCampaignId} to ${routingData.campaign_id}`);
+        effectiveCampaignId = routingData.campaign_id;
       }
+      
+      if (routingData.cadence_id) {
+        console.log(`Overriding cadence_id from ${effectiveCadenceId} to ${routingData.cadence_id}`);
+        effectiveCadenceId = routingData.cadence_id;
+      }
+      
+      if (routingData.bid) {
+        bid = routingData.bid;
+      }
+    } else {
+      console.log('No routing found for list ID:', listId);
+    }
+    
+    console.log('Final values used for dialer:', { effectiveCampaignId, effectiveCadenceId });
 
-      // Include bid and lead_id in the response for successful submissions
-      return NextResponse.json({
-        success: true, 
-        lead_id: data[0].id, // Explicitly return the lead ID
-        data: data[0],
-        bid: bid
-      });
+    // Check if this lead should be forwarded to the dialer API based on routing configuration
+    let dialerResponse = null;
+    if (routingData) {
+      try {
+        console.log('Forwarding health insurance lead to dialer API for list:', listId);
+        
+        // Format phone number with +1 prefix if it doesn't have it already
+        const formattedPhone = phone.startsWith('+1') ? phone : `+1${phone.replace(/\D/g, '')}`;        
+        
+        // Define the type for dialer payload to avoid TypeScript errors
+        interface DialerPayload {
+          first_name: string;
+          last_name: string;
+          email: string;
+          phone: string;
+          address: string;
+          city: string;
+          state: string;
+          zip_code: string;
+          source: string;
+          trusted_form_cert_url: string;
+          transaction_id: string;
+          income_bracket: string;
+          dob: string;
+          homeowner_status: string;
+          custom_fields: Record<string, any>;
+          list_id: string;
+          campaign_id: string;
+          cadence_id: string | null;
+          compliance_lead_id: string; // Add compliance_lead_id to the interface
+        };
+        
+        // Create the dialer payload with all required fields
+        const dialerPayload: DialerPayload = {
+          // Primary lead fields
+          first_name: firstName,
+          last_name: lastName,
+          email: email,
+          phone: formattedPhone,
+          address: contactData.Address || '',
+          city: contactData.City || '',
+          state: state || '',
+          zip_code: contactData.ZipCode || '',
+          source: 'Health Insurance API',
+          trusted_form_cert_url: body.TrustedForm || '',
+          transaction_id: '',
+          
+          // Important compliance and demographic fields
+          income_bracket: incomeBracket,
+          dob: dob || '',
+          homeowner_status: homeownerStatus,
+          
+          // Custom fields passed through as a nested object
+          custom_fields: {},
+          
+          // Include the routing IDs directly in the payload
+          list_id: listId,
+          campaign_id: effectiveCampaignId,
+          cadence_id: effectiveCadenceId,
+          
+          // Include the lead ID to enable policy postback tracking
+          compliance_lead_id: data[0].id
+        };
+        
+        // The dialer API expects list_id and token as URL parameters, not just in the JSON payload
+        // Use the routing token if available, then the provided token, then fallback to a default
+        let authToken = '';
+        
+        if (routingData && routingData.token) {
+          console.log(`Using token from routing settings: ${routingData.token}`);
+          authToken = routingData.token;
+        } else if (body.ApiToken) {
+          console.log(`Using token from request: ${body.ApiToken}`);
+          authToken = body.ApiToken;
+        } else {
+          console.log('No token available, using default token');
+          authToken = '7f108eff2dbf3ab07d562174da6dbe53';
+        }
+        
+        // Construct the URL with required parameters in the query string
+        const dialerUrl = new URL('https://dialer.juicedmedia.io/api/webhooks/lead-postback');
+        dialerUrl.searchParams.append('list_id', listId);
+        dialerUrl.searchParams.append('campaign_id', effectiveCampaignId);
+        dialerUrl.searchParams.append('cadence_id', effectiveCadenceId);
+        dialerUrl.searchParams.append('token', authToken);
+        
+        console.log('Sending health insurance lead to dialer API:', dialerUrl.toString());
+        console.log('Dialer payload with compliance_lead_id:', JSON.stringify(dialerPayload, null, 2));
+        console.log('Lead ID being sent to dialer:', dialerPayload.compliance_lead_id);
+        
+        // Send the lead to the dialer API
+        const response = await fetch(dialerUrl.toString(), {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(dialerPayload)
+        });
+        
+        dialerResponse = await response.json();
+        console.log('Dialer API response:', dialerResponse);
+        
+      } catch (dialerError: any) {
+        console.error('Error forwarding health insurance lead to dialer:', dialerError);
+        dialerResponse = { error: dialerError?.message || 'Unknown error' };
+      }
+    }
+
+    // Include bid, lead_id, and dialer response in the API response
+    const responseObj: any = {
+      success: true, 
+      lead_id: data[0].id, // Explicitly return the lead ID
+      data: data[0],
+      bid: bid
+    };
+    
+    if (dialerResponse) {
+      responseObj.dialer = {
+        forwarded: true,
+        response: dialerResponse
+      };
+    }
+    
+    return NextResponse.json(responseObj);
     } catch (error) {
       console.error('Error processing health insurance lead submission:', error);
       return NextResponse.json(
