@@ -214,8 +214,8 @@ async function handleStandardLead(body: any, request: Request) {
     console.log('Final values used for dialer:', { effectiveCampaignId, effectiveCadenceId });
 
     // Check if this lead should be forwarded to the dialer API
-    // Either for the original hardcoded list ID or if we have a routing configuration
-    if (listId === 'a38881ab-93b2-4750-9f9c-92ae6cd10b7e' || routingData) {
+    // Either for the special list IDs like Onpoint or if we have a routing configuration
+    if (listId === 'a38881ab-93b2-4750-9f9c-92ae6cd10b7e' || listId === '1b759535-2a5e-421e-9371-3bde7f855c60' || routingData) {
       try {
         console.log('Forwarding lead to dialer API for list:', listId);
         
@@ -243,7 +243,7 @@ async function handleStandardLead(body: any, request: Request) {
           list_id: string;
           campaign_id: string;
           cadence_id: string | null;
-          lead_id: string; // Add lead_id to the interface
+          compliance_lead_id: string; // Add compliance_lead_id to the interface
         };
         
         // Create the dialer payload with all required fields
@@ -275,12 +275,23 @@ async function handleStandardLead(body: any, request: Request) {
           cadence_id: effectiveCadenceId,
           
           // Include the lead ID to enable policy postback tracking
-          lead_id: data[0].id
+          compliance_lead_id: data[0].id
         };
         
         // The dialer API expects list_id and token as URL parameters, not just in the JSON payload
-        // Use the provided token or fallback to the default one
-        const authToken = token || '7f108eff2dbf3ab07d562174da6dbe53';
+        // Use the routing token if available, then the provided token, then fallback to a default
+        let authToken = '';
+        
+        if (routingData && routingData.token) {
+          console.log(`Using token from routing settings: ${routingData.token}`);
+          authToken = routingData.token;
+        } else if (token) {
+          console.log(`Using token from request: ${token}`);
+          authToken = token;
+        } else {
+          console.log('No token available, using default token');
+          authToken = '7f108eff2dbf3ab07d562174da6dbe53';
+        }
         
         // Construct the URL with required parameters in the query string
         const dialerUrl = new URL('https://dialer.juicedmedia.io/api/webhooks/lead-postback');
@@ -290,8 +301,8 @@ async function handleStandardLead(body: any, request: Request) {
         dialerUrl.searchParams.append('token', authToken);
         
         console.log('Sending lead to dialer API:', dialerUrl.toString());
-        console.log('Dialer payload with lead_id:', JSON.stringify(dialerPayload, null, 2));
-        console.log('Lead ID being sent to dialer:', dialerPayload.lead_id);
+        console.log('Dialer payload with compliance_lead_id:', JSON.stringify(dialerPayload, null, 2));
+        console.log('Lead ID being sent to dialer:', dialerPayload.compliance_lead_id);
         
         // Send the lead to the dialer API
         const dialerResponse = await fetch(dialerUrl.toString(), {
