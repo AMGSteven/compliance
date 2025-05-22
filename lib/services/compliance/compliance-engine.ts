@@ -1,6 +1,7 @@
 import type { BaseComplianceChecker, ComplianceOptions } from "./base-compliance-checker"
 import { TCPAComplianceChecker } from "./tcpa-compliance-checker"
 import { BlacklistAllianceChecker } from "./blacklist-alliance-checker"
+import { SynergyDNCChecker } from "./synergy-dnc-checker"
 
 export interface ComplianceCheckSummary {
   phoneNumber: string
@@ -21,7 +22,7 @@ export class ComplianceEngine {
    * Create a new ComplianceEngine with all available checkers
    */
   constructor() {
-    this.checkers = [new TCPAComplianceChecker(), new BlacklistAllianceChecker()]
+    this.checkers = [new TCPAComplianceChecker(), new BlacklistAllianceChecker(), new SynergyDNCChecker()]
   }
 
   /**

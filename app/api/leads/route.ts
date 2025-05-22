@@ -91,22 +91,19 @@ async function handleStandardLead(body: any, request: Request) {
 
     // Perform comprehensive compliance check across all sources - using the same engine as the /compliance page
     console.log('Performing comprehensive compliance check for phone:', phone);
-    
-    // Use the ComplianceEngine that includes all checkers: TCPA, Blacklist, Webrecon, and Internal DNC
     const complianceEngine = new ComplianceEngine();
     const complianceReport = await complianceEngine.checkPhoneNumber(phone);
     
     if (!complianceReport.isCompliant) {
-      console.log('Phone number failed compliance check, rejecting lead:', phone);
-      
-      // Find the failed check(s) to provide more specific details
       const failedChecks = complianceReport.results.filter(result => !result.isCompliant);
       const failedSources = failedChecks.map(check => check.source).join(', ');
       const failedReasons = failedChecks.flatMap(check => check.reasons);
+      console.log('Phone number failed compliance check, rejecting lead with $0 bid:', phone);
       
       return NextResponse.json(
         { 
           success: false, 
+          bid: 0.00, // Force $0 bid for non-compliant leads regardless of routing
           error: `Phone number failed compliance check with: ${failedSources}`, 
           details: {
             failedSources: failedChecks.map(check => check.source),
@@ -115,9 +112,11 @@ async function handleStandardLead(body: any, request: Request) {
             complianceResults: complianceReport.results
           }
         },
-        { status: 403 }
+        { status: 400 }
       );
     }
+    
+    // If the lead passes compliance checks, use the normal bid from routing
     
     // Determine traffic source based on list_id
     let trafficSource = body.trafficSource || body.traffic_source;
@@ -474,22 +473,21 @@ async function handleHealthInsuranceLead(body: any, request: Request) {
       );
     }
     
-    // Check phone compliance for health insurance leads as well
+    // Perform compliance check for health insurance lead phone
     console.log('Performing compliance check for health insurance lead phone:', phone);
-    const complianceEngine = new ComplianceEngine();
-    const complianceReport = await complianceEngine.checkPhoneNumber(phone);
+    const engine = new ComplianceEngine();
+    const complianceReport = await engine.checkPhoneNumber(phone);
     
     if (!complianceReport.isCompliant) {
-      console.log('Health insurance lead phone failed compliance check:', phone);
-      
-      // Find the failed check(s) to provide more specific details
       const failedChecks = complianceReport.results.filter(result => !result.isCompliant);
       const failedSources = failedChecks.map(check => check.source).join(', ');
       const failedReasons = failedChecks.flatMap(check => check.reasons);
+      console.log('Health insurance lead phone failed compliance check:', phone);
       
       return NextResponse.json(
         { 
-          success: false, 
+          success: false,
+          bid: 0.00, // Force $0 bid for non-compliant leads regardless of routing
           error: `Phone number failed compliance check with: ${failedSources}`, 
           details: {
             failedSources: failedChecks.map(check => check.source),
@@ -498,9 +496,11 @@ async function handleHealthInsuranceLead(body: any, request: Request) {
             complianceResults: complianceReport.results
           }
         },
-        { status: 403 }
+        { status: 400 }
       );
     }
+    
+    // If the lead passes compliance checks, use the normal bid from routing
     
     // Create Supabase client
     const supabase = createServerClient();

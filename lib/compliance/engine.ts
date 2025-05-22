@@ -3,6 +3,7 @@ import { TCPAChecker } from './checkers/tcpa-checker';
 import { BlacklistChecker } from './checkers/blacklist-checker';
 import { WebreconChecker } from './checkers/webrecon-checker';
 import { InternalDNCChecker } from './checkers/internal-dnc-checker';
+import { SynergyDNCChecker } from './checkers/synergy-dnc-checker';
 
 export class ComplianceEngine {
   private checkers: ComplianceChecker[];
@@ -13,6 +14,7 @@ export class ComplianceEngine {
       new BlacklistChecker(),
       new WebreconChecker(),
       new InternalDNCChecker(),
+      new SynergyDNCChecker(),
     ];
   }
 
