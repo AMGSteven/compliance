@@ -1,7 +1,7 @@
 import type { BaseComplianceChecker, ComplianceOptions } from "./base-compliance-checker"
 import { TCPAComplianceChecker } from "./tcpa-compliance-checker"
 import { BlacklistAllianceChecker } from "./blacklist-alliance-checker"
-import { SynergyDNCChecker } from "@/lib/services/compliance/synergy-dnc-checker"
+import { SynergyDNCChecker } from "./synergy-dnc-checker"
 
 export interface ComplianceCheckSummary {
   phoneNumber: string
