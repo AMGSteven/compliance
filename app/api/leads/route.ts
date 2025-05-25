@@ -2,13 +2,56 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { ComplianceEngine } from '@/lib/compliance/engine';
 import { checkPhoneCompliance } from '@/app/lib/real-phone-validation';
+import { validatePhoneDirectly } from '@/app/lib/phone-validation-hook';
 
 // Main POST handler for all lead formats
+// Force dynamic routing for Vercel deployment
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: Request) {
   try {
     // Parse the request body
     const body = await request.json();
     console.log('Received lead submission body:', JSON.stringify(body).slice(0, 500) + '...');
+    
+    // CRITICAL IMMEDIATE VALIDATION: Extract phone number from the request
+    let phoneToCheck = '';
+    
+    // Extract phone number from appropriate field based on lead format
+    if (body.ContactData && body.ContactData.Phone) {
+      // Health insurance format
+      phoneToCheck = body.ContactData.Phone;
+    } else {
+      // Standard format
+      phoneToCheck = body.phone || body.Phone || '';
+    }
+    
+    // If we have a phone number, validate it directly to ensure VoIP numbers are blocked
+    if (phoneToCheck) {
+      console.log(`[DIRECT VALIDATION] Validating phone: ${phoneToCheck}`);
+      const validationResult = await validatePhoneDirectly(phoneToCheck);
+      
+      // If validation fails (VoIP or bad status), block the lead immediately
+      if (!validationResult.isValid) {
+        console.log(`[DIRECT VALIDATION] BLOCKING LEAD: ${validationResult.reason}`);
+        return NextResponse.json(
+          {
+            success: false,
+            bid: 0.00,
+            error: `Phone validation failed: ${validationResult.reason}`,
+            details: {
+              phoneNumber: phoneToCheck,
+              phoneType: validationResult.phoneType,
+              status: validationResult.status,
+              reason: validationResult.reason
+            }
+          },
+          { status: 400 }
+        );
+      }
+      
+      console.log(`[DIRECT VALIDATION] Phone passed validation: ${phoneToCheck}`);
+    }
     
     // Log keys to help with debugging
     const keys = Object.keys(body);
@@ -173,7 +216,7 @@ async function handleStandardLead(body: any, request: Request) {
           state: state,
           zip_code: zipCode || '',
           source: body.source || '',
-          bid: bidValue, // Store the bid value from list routing at time of creation
+          // Removed bid field as it's not in the database schema
           trusted_form_cert_url: trustedFormCertUrl || '',
           transaction_id: body.transactionId || body.transaction_id || '',
           custom_fields: body.customFields || body.custom_fields || null,
