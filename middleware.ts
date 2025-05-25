@@ -5,17 +5,42 @@ import { validateApiKey } from "./lib/middleware/api-key-middleware"
 import { cookies } from 'next/headers'
 
 export async function middleware(request: NextRequest) {
-  // Check if the request is for the login page, auth API, or DNC API
+  // All API routes should be accessible without authentication
+  // They'll use API key validation instead
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    // Handle OPTIONS requests for CORS preflight
+    if (request.method === "OPTIONS") {
+      return handleOptions(request)
+    }
+
+    // Apply CORS middleware for API routes
+    const corsResponse = corsMiddleware(request)
+
+    // For protected API routes, validate API key
+    if (
+      request.nextUrl.pathname.startsWith("/api/v1/") &&
+      !request.nextUrl.pathname.includes("/docs") &&
+      !request.nextUrl.pathname.includes("/public")
+    ) {
+      const { valid, response } = await validateApiKey(request)
+      if (!valid && response) {
+        // Copy CORS headers to the error response
+        Object.entries(corsResponse.headers).forEach(([key, value]) => {
+          response.headers.set(key, value)
+        })
+        return response
+      }
+    }
+
+    return corsResponse
+  }
+
+  // For non-API routes, check authentication
   if (
     request.nextUrl.pathname === "/login" ||
     request.nextUrl.pathname === "/api/auth/login" ||
-    request.nextUrl.pathname === "/api/policy-postback" ||
-    request.nextUrl.pathname === "/api/leads" ||
     request.nextUrl.pathname.includes("/_next/") ||
-    request.nextUrl.pathname.includes("/favicon.ico") ||
-    // Exempt dialer DNC endpoints to allow API key only access
-    request.nextUrl.pathname === "/api/dialer/dnc" ||
-    request.nextUrl.pathname === "/api/dialer/dnc/bulk"
+    request.nextUrl.pathname.includes("/favicon.ico")
   ) {
     return NextResponse.next()
   }
