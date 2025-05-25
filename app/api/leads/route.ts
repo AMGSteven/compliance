@@ -3,6 +3,7 @@ import { createServerClient } from '@/lib/supabase/server';
 import { ComplianceEngine } from '@/lib/compliance/engine';
 import { checkPhoneCompliance } from '@/app/lib/real-phone-validation';
 import { validatePhoneDirectly } from '@/app/lib/phone-validation-hook';
+import { checkForDuplicateLead } from '@/app/lib/duplicate-lead-check';
 
 // Main POST handler for all lead formats
 // Force dynamic routing for Vercel deployment
@@ -51,6 +52,29 @@ export async function POST(request: Request) {
       }
       
       console.log(`[DIRECT VALIDATION] Phone passed validation: ${phoneToCheck}`);
+      
+      // Now check if this is a duplicate lead within the past 30 days
+      console.log(`[DUPLICATE CHECK] Checking if phone ${phoneToCheck} was submitted in the past 30 days`);
+      const duplicateCheck = await checkForDuplicateLead(phoneToCheck);
+      
+      if (duplicateCheck.isDuplicate) {
+        console.log(`[DUPLICATE CHECK] BLOCKING LEAD: Phone ${phoneToCheck} was submitted ${duplicateCheck.details?.daysAgo} days ago`);
+        return NextResponse.json(
+          {
+            success: false,
+            bid: 0.00,
+            error: `Duplicate lead: Phone number was submitted within the past 30 days`,
+            details: {
+              phoneNumber: phoneToCheck,
+              originalSubmissionDate: duplicateCheck.details?.originalSubmissionDate,
+              daysAgo: duplicateCheck.details?.daysAgo
+            }
+          },
+          { status: 400 }
+        );
+      }
+      
+      console.log(`[DUPLICATE CHECK] Phone ${phoneToCheck} is not a duplicate`);
     }
     
     // Log keys to help with debugging
