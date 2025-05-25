@@ -22,13 +22,19 @@ export async function middleware(request: NextRequest) {
       !request.nextUrl.pathname.includes("/docs") &&
       !request.nextUrl.pathname.includes("/public")
     ) {
-      const { valid, response } = await validateApiKey(request)
-      if (!valid && response) {
+      const validationResult = await validateApiKey(request)
+      if (!validationResult.valid) {
+        // Create an error response with the status and message
+        const errorResponse = NextResponse.json(
+          { error: validationResult.error },
+          { status: validationResult.status || 401 }
+        )
+        
         // Copy CORS headers to the error response
         Object.entries(corsResponse.headers).forEach(([key, value]) => {
-          response.headers.set(key, value)
+          errorResponse.headers.set(key, value)
         })
-        return response
+        return errorResponse
       }
     }
 
@@ -73,13 +79,19 @@ export async function middleware(request: NextRequest) {
       !request.nextUrl.pathname.includes("/docs") &&
       !request.nextUrl.pathname.includes("/public")
     ) {
-      const { valid, response } = await validateApiKey(request)
-      if (!valid && response) {
+      const validationResult = await validateApiKey(request)
+      if (!validationResult.valid) {
+        // Create an error response with the status and message
+        const errorResponse = NextResponse.json(
+          { error: validationResult.error },
+          { status: validationResult.status || 401 }
+        )
+        
         // Copy CORS headers to the error response
         Object.entries(corsResponse.headers).forEach(([key, value]) => {
-          response.headers.set(key, value)
+          errorResponse.headers.set(key, value)
         })
-        return response
+        return errorResponse
       }
     }
 

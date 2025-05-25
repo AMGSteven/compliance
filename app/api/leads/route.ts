@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { ComplianceEngine } from '@/lib/compliance/engine';
+import { checkPhoneCompliance } from '@/app/lib/real-phone-validation';
 
 // Main POST handler for all lead formats
 export async function POST(request: Request) {
@@ -91,13 +92,31 @@ async function handleStandardLead(body: any, request: Request) {
 
     // Perform comprehensive compliance check across all sources - using the same engine as the /compliance page
     console.log('Performing comprehensive compliance check for phone:', phone);
+    
+    // 1. Check using the five DNC sources (TCPA, Blacklist, WebRecon, Internal DNC, Synergy DNC)
     const complianceEngine = new ComplianceEngine();
     const complianceReport = await complianceEngine.checkPhoneNumber(phone);
     
-    if (!complianceReport.isCompliant) {
+    // 2. Check using RealPhoneValidation API for phone service status
+    console.log('Performing phone validation check for:', phone);
+    const phoneValidationResult = await checkPhoneCompliance(phone);
+    
+    // Combined compliance result from both DNC checks and phone validation
+    const isCompliant = complianceReport.isCompliant && phoneValidationResult.isCompliant;
+    
+    if (!isCompliant) {
+      // Gather failed sources from DNC checkers
       const failedChecks = complianceReport.results.filter(result => !result.isCompliant);
-      const failedSources = failedChecks.map(check => check.source).join(', ');
-      const failedReasons = failedChecks.flatMap(check => check.reasons);
+      let failedSources = failedChecks.map(check => check.source);
+      let failedReasons = failedChecks.flatMap(check => check.reasons);
+      
+      // Add phone validation failure if applicable
+      if (!phoneValidationResult.isCompliant) {
+        failedSources.push('Phone Validation');
+        failedReasons.push(phoneValidationResult.reason || 'Failed phone validation');
+      }
+      
+      const failedSourcesStr = failedSources.join(', ');
       console.log('Phone number failed compliance check, rejecting lead with $0 bid:', phone);
       
       return NextResponse.json(
@@ -106,9 +125,10 @@ async function handleStandardLead(body: any, request: Request) {
           bid: 0.00, // Force $0 bid for non-compliant leads regardless of routing
           error: `Phone number failed compliance check with: ${failedSources}`, 
           details: {
-            failedSources: failedChecks.map(check => check.source),
+            failedSources: failedSources,
             reasons: failedReasons,
             phoneNumber: phone,
+            phoneValidation: phoneValidationResult,
             complianceResults: complianceReport.results
           }
         },
@@ -117,6 +137,10 @@ async function handleStandardLead(body: any, request: Request) {
     }
     
     // If the lead passes compliance checks, use the normal bid from routing
+    let bidValue = 0.00; // Default bid value - will be updated from list routing later
+    let routingData: any = null; // Will store routing data if found
+    let effectiveCampaignId = campaignId; // Default is the one passed in the request
+    let effectiveCadenceId = cadenceId; // Default is the one passed in the request
     
     // Determine traffic source based on list_id
     let trafficSource = body.trafficSource || body.traffic_source;
@@ -149,6 +173,7 @@ async function handleStandardLead(body: any, request: Request) {
           state: state,
           zip_code: zipCode || '',
           source: body.source || '',
+          bid: bidValue, // Store the bid value from list routing at time of creation
           trusted_form_cert_url: trustedFormCertUrl || '',
           transaction_id: body.transactionId || body.transaction_id || '',
           custom_fields: body.customFields || body.custom_fields || null,
@@ -210,10 +235,11 @@ async function handleStandardLead(body: any, request: Request) {
       }
     }
     
-    let routingData = null;
-    // Create mutable copies of the campaign and cadence IDs
-    let effectiveCampaignId = campaignId || '';
-    let effectiveCadenceId = cadenceId || '';
+    // Variables were already declared earlier
+    // Just set their initial values here
+    routingData = null;
+    effectiveCampaignId = campaignId || '';
+    effectiveCadenceId = cadenceId || '';
     
     console.log('Initial values:', { campaignId, cadenceId });
     
@@ -232,9 +258,17 @@ async function handleStandardLead(body: any, request: Request) {
     
     console.log('Routing results:', routingResults);
       
+    // Get the bid value to store with the lead
+    
     if (routingResults) {
       routingData = routingResults;
       console.log(`Found list routing for ${listId}:`, routingData);
+      
+      // Get the bid value from routing data
+      if (routingData.bid) {
+        bidValue = routingData.bid;
+        console.log(`Using bid value from list routing: $${bidValue.toFixed(2)}`);
+      }
       
       // Override campaign_id and cadence_id if provided in the routing
       if (routingData.campaign_id) {
@@ -248,6 +282,15 @@ async function handleStandardLead(body: any, request: Request) {
       }
     } else {
       console.log('No routing found for list ID:', listId);
+      
+      // Set default bid values based on known list IDs if no routing found
+      if (listId === '1b759535-2a5e-421e-9371-3bde7f855c60' || isOnpointListId || isOnpointSource) {
+        bidValue = 0.50; // Default for Onpoint
+        console.log('Using default bid value for Onpoint: $0.50');
+      } else if (listId === 'a38881ab-93b2-4750-9f9c-92ae6cd10b7e') {
+        bidValue = 1.00; // Default for Juiced
+        console.log('Using default bid value for Juiced: $1.00');
+      }
     }
     
     console.log('Final values used for dialer:', { effectiveCampaignId, effectiveCadenceId });
@@ -473,15 +516,33 @@ async function handleHealthInsuranceLead(body: any, request: Request) {
       );
     }
     
-    // Perform compliance check for health insurance lead phone
+    // Perform comprehensive compliance check for health insurance lead phone
     console.log('Performing compliance check for health insurance lead phone:', phone);
+    
+    // 1. Check using the five DNC sources (TCPA, Blacklist, WebRecon, Internal DNC, Synergy DNC)
     const engine = new ComplianceEngine();
     const complianceReport = await engine.checkPhoneNumber(phone);
     
-    if (!complianceReport.isCompliant) {
+    // 2. Check using RealPhoneValidation API for phone service status
+    console.log('Performing phone validation check for:', phone);
+    const phoneValidationResult = await checkPhoneCompliance(phone);
+    
+    // Combined compliance result from both DNC checks and phone validation
+    const isCompliant = complianceReport.isCompliant && phoneValidationResult.isCompliant;
+    
+    if (!isCompliant) {
+      // Gather failed sources from DNC checkers
       const failedChecks = complianceReport.results.filter(result => !result.isCompliant);
-      const failedSources = failedChecks.map(check => check.source).join(', ');
-      const failedReasons = failedChecks.flatMap(check => check.reasons);
+      let failedSources = failedChecks.map(check => check.source);
+      let failedReasons = failedChecks.flatMap(check => check.reasons);
+      
+      // Add phone validation failure if applicable
+      if (!phoneValidationResult.isCompliant) {
+        failedSources.push('Phone Validation');
+        failedReasons.push(phoneValidationResult.reason || 'Failed phone validation');
+      }
+      
+      const failedSourcesStr = failedSources.join(', ');
       console.log('Health insurance lead phone failed compliance check:', phone);
       
       return NextResponse.json(
@@ -490,9 +551,10 @@ async function handleHealthInsuranceLead(body: any, request: Request) {
           bid: 0.00, // Force $0 bid for non-compliant leads regardless of routing
           error: `Phone number failed compliance check with: ${failedSources}`, 
           details: {
-            failedSources: failedChecks.map(check => check.source),
+            failedSources: failedSources,
             reasons: failedReasons,
             phoneNumber: phone,
+            phoneValidation: phoneValidationResult,
             complianceResults: complianceReport.results
           }
         },
