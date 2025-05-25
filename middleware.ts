@@ -5,14 +5,17 @@ import { validateApiKey } from "./lib/middleware/api-key-middleware"
 import { cookies } from 'next/headers'
 
 export async function middleware(request: NextRequest) {
-  // Check if the request is for the login page or auth API
+  // Check if the request is for the login page, auth API, or DNC API
   if (
     request.nextUrl.pathname === "/login" ||
     request.nextUrl.pathname === "/api/auth/login" ||
     request.nextUrl.pathname === "/api/policy-postback" ||
     request.nextUrl.pathname === "/api/leads" ||
     request.nextUrl.pathname.includes("/_next/") ||
-    request.nextUrl.pathname.includes("/favicon.ico")
+    request.nextUrl.pathname.includes("/favicon.ico") ||
+    // Exempt dialer DNC endpoints to allow API key only access
+    request.nextUrl.pathname === "/api/dialer/dnc" ||
+    request.nextUrl.pathname === "/api/dialer/dnc/bulk"
   ) {
     return NextResponse.next()
   }
