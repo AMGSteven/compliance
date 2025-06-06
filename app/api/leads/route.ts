@@ -9,6 +9,117 @@ import { checkForDuplicateLead } from '@/app/lib/duplicate-lead-check';
 // Force dynamic routing for Vercel deployment
 export const dynamic = 'force-dynamic';
 
+// Define allowed states
+const ALLOWED_STATES = ['AL', 'AR', 'AZ', 'IN', 'KS', 'LA', 'MO', 'MS', 'OH', 'SC', 'TN', 'TX'];
+
+// Test constants for bypassing compliance and forcing routing
+const TEST_PHONE_NUMBER = '6507769592'; // User's number for testing
+const PITCH_BPO_TEST_PHONE = '7274883428'; // Special phone number for testing Pitch BPO
+const TEST_JUICED_MEDIA_LIST_ID = 'a38881ab-93b2-4750-9f9c-92ae6cd10b7e'; // Juiced Media List ID
+
+// Dialer type constants
+const DIALER_TYPE_INTERNAL = 1;
+const DIALER_TYPE_PITCH_BPO = 2;
+
+// Pitch BPO constants
+const PITCH_BPO_UUID = '70942646-125b-4ddd-96fc-b9a142c698b8';
+const PITCH_BPO_CAMPAIGN = 'Jade ACA';
+const PITCH_BPO_SUBCAMPAIGN = 'Juiced Real Time'; // Juiced Media List ID
+
+/**
+ * Forward a lead to the Pitch BPO dialer
+ * @param params Parameters for the Pitch BPO dialer
+ * @returns API response with success status and lead data
+ */
+async function forwardToPitchBPO(params: {
+  data: any[],
+  listId: string,
+  phone: string,
+  firstName: string,
+  lastName: string,
+  email: string,
+  zipCode: string,
+  state: string,
+  bidValue: number,
+  routingData?: any
+}) {
+  const { data, phone, firstName, lastName, email, zipCode, state, bidValue } = params;
+  const leadId = data[0].id;
+  
+  console.log('Forwarding lead to Pitch BPO dialer');
+  console.log('Using fixed Pitch BPO token: 70942646-125b-4ddd-96fc-b9a142c698b8');
+  
+  try {
+    // Create the URL with query parameters for Pitch BPO according to their documentation
+    // https://docs.chasedatacorp.com/content-user-guide/docs-page-user-guide-other.html
+    const pitchBPOUrl = new URL('https://api.chasedatacorp.com/HttpImport/InjectLead.php');
+    
+    // Add required parameters
+    pitchBPOUrl.searchParams.append('token', PITCH_BPO_UUID); // Required: security token
+    pitchBPOUrl.searchParams.append('accid', 'pitchperfect'); // Confirmed correct account ID
+    pitchBPOUrl.searchParams.append('Campaign', PITCH_BPO_CAMPAIGN); // Required: existing campaign
+    pitchBPOUrl.searchParams.append('Subcampaign', PITCH_BPO_SUBCAMPAIGN); // Optional: subcampaign
+    
+    // Add lead information
+    pitchBPOUrl.searchParams.append('PrimaryPhone', phone); // Required: phone number
+    pitchBPOUrl.searchParams.append('FirstName', firstName);
+    pitchBPOUrl.searchParams.append('LastName', lastName);
+    pitchBPOUrl.searchParams.append('email', email);
+    pitchBPOUrl.searchParams.append('ZipCode', zipCode);
+    pitchBPOUrl.searchParams.append('State', state);
+    pitchBPOUrl.searchParams.append('ClientId', leadId); // Using compliance_lead_id as ClientId
+    pitchBPOUrl.searchParams.append('Notes', 'Lead from Compliance Engine');
+    
+    // Optional insertion behavior parameters
+    pitchBPOUrl.searchParams.append('ImportOnly', '1'); // Standard insertion (not a Hot Lead)
+    pitchBPOUrl.searchParams.append('DuplicatesCheck', '1'); // Insert without check since we already did duplicate check
+    
+    // Log the details about the Pitch BPO submission
+    console.log('Sending lead to Pitch BPO:', pitchBPOUrl.toString());
+    
+    // Send the lead to Pitch BPO API - using InjectLead.php endpoint with GET method as per documentation
+    const pitchBPOResponse = await fetch(pitchBPOUrl.toString(), {
+      method: 'GET', // Using GET as shown in the documentation examples
+      headers: {
+        'Accept': '*/*' // Accept any content type since the API might return HTML
+      }
+    });
+    
+    // Get response text instead of trying to parse JSON
+    const responseText = await pitchBPOResponse.text();
+    console.log('Pitch BPO API response status:', pitchBPOResponse.status);
+    console.log('Pitch BPO API response (first 100 chars):', responseText.substring(0, 100));
+    
+    // Return the response with lead data and Pitch BPO result
+    return NextResponse.json({
+      success: true,
+      lead_id: data[0].id,
+      data: data[0],
+      bid: bidValue,
+      dialer: {
+        type: 'pitch_bpo',
+        forwarded: true,
+        status: pitchBPOResponse.status,
+        response: responseText.substring(0, 100) // Just include beginning of response
+      }
+    });
+  } catch (dialerError) {
+    console.error('Error forwarding lead to Pitch BPO:', dialerError);
+    // Still return success for the lead insertion, but include the dialer error
+    return NextResponse.json({
+      success: true,
+      lead_id: data[0].id,
+      data: data[0],
+      bid: bidValue,
+      dialer: {
+        type: 'pitch_bpo',
+        forwarded: false,
+        error: dialerError instanceof Error ? dialerError.message : 'Unknown error'
+      }
+    });
+  }
+}
+
 export async function POST(request: Request) {
   try {
     // Parse the request body
@@ -27,12 +138,19 @@ export async function POST(request: Request) {
       phoneToCheck = body.phone || body.Phone || '';
     }
     
-    // If we have a phone number, validate it directly to ensure VoIP numbers are blocked
-    if (phoneToCheck) {
+    // Determine if this is a test call for the specific phone number
+    let isTestModeForPhoneNumber = false;
+    const normalizedPhoneToCheck = phoneToCheck ? phoneToCheck.replace(/\D/g, '') : '';
+    if (normalizedPhoneToCheck === TEST_PHONE_NUMBER) {
+      isTestModeForPhoneNumber = true;
+      console.log(`[TEST MODE] Detected test phone number ${TEST_PHONE_NUMBER}.`);
+    }
+
+    // If we have a phone number AND it's not the test number, validate it directly
+    if (phoneToCheck && !isTestModeForPhoneNumber) {
       console.log(`[DIRECT VALIDATION] Validating phone: ${phoneToCheck}`);
       const validationResult = await validatePhoneDirectly(phoneToCheck);
       
-      // If validation fails (VoIP or bad status), block the lead immediately
       if (!validationResult.isValid) {
         console.log(`[DIRECT VALIDATION] BLOCKING LEAD: ${validationResult.reason}`);
         return NextResponse.json(
@@ -50,7 +168,6 @@ export async function POST(request: Request) {
           { status: 400 }
         );
       }
-      
       console.log(`[DIRECT VALIDATION] Phone passed validation: ${phoneToCheck}`);
       
       // Now check if this is a duplicate lead within the past 30 days
@@ -73,8 +190,9 @@ export async function POST(request: Request) {
           { status: 400 }
         );
       }
-      
       console.log(`[DUPLICATE CHECK] Phone ${phoneToCheck} is not a duplicate`);
+    } else if (phoneToCheck && isTestModeForPhoneNumber) {
+      console.log(`[TEST MODE] Bypassed direct validation and duplicate check for ${TEST_PHONE_NUMBER}.`);
     }
     
     // Log keys to help with debugging
@@ -91,12 +209,12 @@ export async function POST(request: Request) {
     // Test if this is the health insurance lead format
     if (keys.includes('ContactData') || keys.includes('ApiToken') || keys.includes('Vertical')) {
       console.log('Detected health insurance lead format');
-      return await handleHealthInsuranceLead(body, request);
+      return await handleHealthInsuranceLead(body, request, isTestModeForPhoneNumber); 
     }
     // This is the standard lead format
     else {
       console.log('Using standard lead format');
-      return await handleStandardLead(body, request);
+      return await handleStandardLead(body, request, isTestModeForPhoneNumber);
     }
   } catch (error) {
     console.error('Error processing lead submission:', error);
@@ -108,7 +226,7 @@ export async function POST(request: Request) {
 }
 
 // Handle standard lead format
-async function handleStandardLead(body: any, request: Request) {
+async function handleStandardLead(body: any, request: Request, isTestModeForPhoneNumber: boolean = false) {
   try {
     // Support both camelCase and snake_case field names
     const firstName = body.firstName || body.first_name || body.FirstName;
@@ -119,8 +237,18 @@ async function handleStandardLead(body: any, request: Request) {
     const trustedFormCertUrl = body.trustedFormCertUrl || body.trusted_form_cert_url || body.TrustedForm;
     // Use 'let' instead of 'const' to allow correcting the list ID for special cases
     let listId = body.listId || body.list_id;
-    const campaignId = body.campaignId || body.campaign_id;
-    const cadenceId = body.cadenceId || body.cadence_id;
+    let campaignId = body.campaignId || body.campaign_id; // Changed to let
+    let cadenceId = body.cadenceId || body.cadence_id;   // Changed to let
+
+    const normalizedPhone = phone ? phone.replace(/\D/g, '') : '';
+
+    if (isTestModeForPhoneNumber && normalizedPhone === TEST_PHONE_NUMBER) {
+      console.log(`[TEST MODE] In handleStandardLead: Detected test phone number ${TEST_PHONE_NUMBER}. ListId will be forced.`);
+      listId = TEST_JUICED_MEDIA_LIST_ID;
+      // campaignId and cadenceId from request will be used for initial validation,
+      // but will be overridden by list_routings for TEST_JUICED_MEDIA_LIST_ID later.
+      console.log(`[TEST MODE] Set listId to ${listId}. Original campaignId ('${campaignId}') and cadenceId ('${cadenceId}') will be used for initial validation only.`);
+    }
     const token = body.token || body.Token;
     
     // New required compliance fields
@@ -154,22 +282,98 @@ async function handleStandardLead(body: any, request: Request) {
         { status: 400 }
       );
     }
+    
+    // Validate that the state is in the allowed list
+    const normalizedState = state.toUpperCase();
+    if (!ALLOWED_STATES.includes(normalizedState)) {
+      console.log(`[STATE VALIDATION] Rejecting lead with non-allowed state: ${state}`);
+      return NextResponse.json(
+        {
+          success: false,
+          bid: 0.00,
+          error: `State not allowed: ${state}`,
+          details: {
+            state: state,
+            allowedStates: ALLOWED_STATES
+          }
+        },
+        { status: 400 }
+      );
+    }
+    
+    console.log(`[STATE VALIDATION] State ${state} is allowed`);
 
     console.log('Submitting standard lead with validated fields:', { firstName, lastName, email, phone });
-
+    
+    // Clean the phone number for consistency checks
+    const normalizedPhoneForComplianceCheck = phone ? phone.replace(/\D/g, '') : '';
+    
+    // First check if this is a duplicate lead within the past 30 days (unless it's a test phone)
+    if (!isTestModeForPhoneNumber || normalizedPhoneForComplianceCheck !== TEST_PHONE_NUMBER) {
+      console.log(`[DUPLICATE CHECK] Checking if phone ${normalizedPhoneForComplianceCheck} was submitted in the past 30 days`);
+      
+      // Check if this is our special Pitch BPO test number
+      const isPitchBPOTest = normalizedPhoneForComplianceCheck === PITCH_BPO_TEST_PHONE;
+      
+      // Skip duplicate check for Pitch BPO test number
+      if (!isPitchBPOTest) {
+        const duplicateCheck = await checkForDuplicateLead(normalizedPhoneForComplianceCheck);
+        
+        if (duplicateCheck.isDuplicate) {
+          console.log(`[DUPLICATE CHECK] BLOCKING LEAD: Phone ${normalizedPhoneForComplianceCheck} was submitted ${duplicateCheck.details?.daysAgo} days ago`);
+          return NextResponse.json(
+            {
+              success: false,
+              bid: 0.00,
+              error: `Duplicate lead: Phone number was submitted within the past 30 days`,
+              details: {
+                phoneNumber: normalizedPhoneForComplianceCheck,
+                originalSubmissionDate: duplicateCheck.details?.originalSubmissionDate,
+                daysAgo: duplicateCheck.details?.daysAgo,
+                source: 'shift44' // Adding source info for debugging
+              }
+            },
+            { status: 400 }
+          );
+        }
+      } else {
+        console.log(`[PITCH BPO TEST] Bypassing duplicate check for special test number ${PITCH_BPO_TEST_PHONE}`);
+      }
+      
+      console.log(`[DUPLICATE CHECK] Phone ${normalizedPhoneForComplianceCheck} is not a duplicate`);
+    } else {
+      console.log(`[TEST MODE] Bypassing duplicate check for test phone number ${TEST_PHONE_NUMBER}`);
+    }
+    
     // Perform comprehensive compliance check across all sources - using the same engine as the /compliance page
-    console.log('Performing comprehensive compliance check for phone:', phone);
-    
-    // 1. Check using the five DNC sources (TCPA, Blacklist, WebRecon, Internal DNC, Synergy DNC)
-    const complianceEngine = new ComplianceEngine();
-    const complianceReport = await complianceEngine.checkPhoneNumber(phone);
-    
-    // 2. Check using RealPhoneValidation API for phone service status
-    console.log('Performing phone validation check for:', phone);
-    const phoneValidationResult = await checkPhoneCompliance(phone);
-    
-    // Combined compliance result from both DNC checks and phone validation
-    const isCompliant = complianceReport.isCompliant && phoneValidationResult.isCompliant;
+    let complianceReport: { isCompliant: boolean; results: Array<{ source: string; isCompliant: boolean; reasons: string[] }> };
+    let phoneValidationResult: { isCompliant: boolean; reason?: string; details: Record<string, any> };
+    let isCompliant: boolean;
+
+    if ((isTestModeForPhoneNumber && normalizedPhoneForComplianceCheck === TEST_PHONE_NUMBER) || 
+        normalizedPhoneForComplianceCheck === PITCH_BPO_TEST_PHONE) {
+      console.log(`[TEST MODE] In handleStandardLead: Bypassing compliance checks for special test number.`);
+      complianceReport = { 
+        isCompliant: true, 
+        results: [{ source: 'Test Mode Bypass', isCompliant: true, reasons: ["Test phone number bypass"] }] 
+      };
+      phoneValidationResult = { 
+        isCompliant: true, 
+        reason: 'Test Mode Bypass',
+        details: { validationStatus: 'allowed', info: 'Test mode bypass for phone validation' } 
+      };
+      isCompliant = true;
+    } else {
+      console.log('Performing comprehensive compliance check for phone:', phone);
+      
+      const complianceEngine = new ComplianceEngine();
+      complianceReport = await complianceEngine.checkPhoneNumber(phone);
+      
+      console.log('Performing phone validation check for:', phone);
+      phoneValidationResult = await checkPhoneCompliance(phone); // Directly assign
+      
+      isCompliant = complianceReport.isCompliant && phoneValidationResult.isCompliant;
+    }
     
     if (!isCompliant) {
       // Gather failed sources from DNC checkers
@@ -270,6 +474,11 @@ async function handleStandardLead(body: any, request: Request) {
     
     // Look up campaign and cadence IDs from the routings table
     console.log('Looking up routing data for list ID:', listId);
+
+    const normalizedPhoneForRoutingCheck = phone ? phone.replace(/\D/g, '') : '';
+    if (isTestModeForPhoneNumber && normalizedPhoneForRoutingCheck === TEST_PHONE_NUMBER && listId === TEST_JUICED_MEDIA_LIST_ID) {
+      console.log(`[TEST MODE] Proceeding with list_routings lookup for TEST_JUICED_MEDIA_LIST_ID (${TEST_JUICED_MEDIA_LIST_ID}). CampaignId ('${campaignId}') and CadenceId ('${cadenceId}') from the request will be IGNORED if routing data provides its own.`);
+    }
     
     // Handle Onpoint leads with fuzzy list ID matching
     // This handles cases where minor variations in the Onpoint list ID are sent
@@ -361,33 +570,40 @@ async function handleStandardLead(body: any, request: Request) {
     }
     
     console.log('Final values used for dialer:', { effectiveCampaignId, effectiveCadenceId });
+    
+    // Get the dialer type from routing data (default to internal dialer if not specified)
+    const dialerType = routingData?.dialer_type || DIALER_TYPE_INTERNAL;
+    console.log(`Using dialer type: ${dialerType === DIALER_TYPE_INTERNAL ? 'Internal Dialer' : 'Pitch BPO'}`);
 
-    // Check if this lead should be forwarded to the dialer API
+    // Check if this lead should be forwarded to the appropriate dialer API
     // Any list ID in the routing settings will have routingData and be eligible for forwarding
     if (routingData) {
-      // Load balancing for Onpoint leads - split between two cadence IDs
+      // Log the effective cadence ID that will be used for the lead
       const isOnpointLead = listId === '1b759535-2a5e-421e-9371-3bde7f855c60';
       
       if (isOnpointLead) {
-        // Use phone number or email as a deterministic way to split leads
-        // This ensures the same lead always goes to the same cadence
-        const hashSource = phone || email || '';
-        const useFirstCadence = hashSource.split('').reduce((sum: number, char: string) => sum + char.charCodeAt(0), 0) % 2 === 0;
-        
-        const onpointCadenceOptions = [
-          'd669792b-2b43-4c8e-bb9d-d19e5420de63', // First cadence (50%)
-          '39a9381e-14ef-4fdd-a95a-9649025590a4'  // Second cadence (50%)
-        ];
-        
-        const selectedCadence = useFirstCadence ? onpointCadenceOptions[0] : onpointCadenceOptions[1];
-        console.log(`Onpoint lead detected - load balancing to cadence: ${selectedCadence} (${useFirstCadence ? 'first' : 'second'} group)`);
-        
-        // Override the cadence ID for Onpoint leads
-        effectiveCadenceId = selectedCadence;
+        console.log(`Onpoint lead detected - using cadence ID from routing management: ${effectiveCadenceId}`);
       }
       
       try {
-        console.log('Forwarding lead to dialer API for list:', listId);
+        // If this is the Pitch BPO dialer type, route to Pitch BPO instead of internal dialer
+        if (dialerType === DIALER_TYPE_PITCH_BPO) {
+          console.log('Routing lead to Pitch BPO (dialer_type=2)');
+          return await forwardToPitchBPO({
+            data,
+            listId, // We'll still pass this to the function but won't include it in the API payload
+            phone,
+            firstName,
+            lastName,
+            email,
+            zipCode,
+            state,
+            bidValue: bidValue,
+            routingData
+          });
+        }
+        
+        console.log('Forwarding lead to internal dialer API for list:', listId);
         
         // Prepare the lead data for dialer API - follow exact format expected by dialer
         // Format phone number with +1 prefix if it doesn't have it already
@@ -535,8 +751,14 @@ async function handleStandardLead(body: any, request: Request) {
 }
 
 // Handle health insurance lead format
-async function handleHealthInsuranceLead(body: any, request: Request) {
+async function handleHealthInsuranceLead(body: any, request: Request, isTestModeForPhoneNumber: boolean = false) {
   try {
+    if (isTestModeForPhoneNumber) {
+      const phoneFromHealthLead = (body.ContactData && body.ContactData.Phone) ? body.ContactData.Phone.replace(/\D/g, '') : '';
+      if (phoneFromHealthLead === TEST_PHONE_NUMBER) {
+        console.log(`[TEST MODE] handleHealthInsuranceLead called for test phone number ${TEST_PHONE_NUMBER}. Specific compliance bypass for this handler is not fully implemented.`);
+      }
+    }
     console.log('Processing health insurance lead...');
     
     // Create the contact data for health insurance lead
@@ -582,6 +804,26 @@ async function handleHealthInsuranceLead(body: any, request: Request) {
         { status: 400 }
       );
     }
+    
+    // Validate that the state is in the allowed list
+    const normalizedState = state.toUpperCase();
+    if (!ALLOWED_STATES.includes(normalizedState)) {
+      console.log(`[STATE VALIDATION] Rejecting health insurance lead with non-allowed state: ${state}`);
+      return NextResponse.json(
+        {
+          success: false,
+          bid: 0.00,
+          error: `State not allowed: ${state}`,
+          details: {
+            state: state,
+            allowedStates: ALLOWED_STATES
+          }
+        },
+        { status: 400 }
+      );
+    }
+    
+    console.log(`[STATE VALIDATION] State ${state} is allowed for health insurance lead`);
     
     // Perform comprehensive compliance check for health insurance lead phone
     console.log('Performing compliance check for health insurance lead phone:', phone);
