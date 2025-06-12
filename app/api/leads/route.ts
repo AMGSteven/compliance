@@ -71,8 +71,9 @@ async function forwardToPitchBPO(params: {
     pitchBPOUrl.searchParams.append('Notes', 'Lead from Compliance Engine');
     
     // Optional insertion behavior parameters
-    pitchBPOUrl.searchParams.append('ImportOnly', '1'); // Standard insertion (not a Hot Lead)
-    pitchBPOUrl.searchParams.append('DuplicatesCheck', '1'); // Insert without check since we already did duplicate check
+    pitchBPOUrl.searchParams.append('ImportOnly', '0'); // Always ImportOnly=0 per requirements
+    pitchBPOUrl.searchParams.append('DuplicatesCheck', '1'); // Always DuplicatesCheck=1 per requirements
+    pitchBPOUrl.searchParams.append('AllowDialingDups', '1'); // Always AllowDialingDups=1 per requirements
     
     // Log the details about the Pitch BPO submission
     console.log('Sending lead to Pitch BPO:', pitchBPOUrl.toString());
@@ -705,18 +706,42 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
         const dialerResult = await dialerResponse.json();
         console.log('Dialer API response:', dialerResult);
         
+        // Check if dialer response contains a compliance_lead_id to associate with our lead_id
+        if (dialerResult && dialerResult.compliance_lead_id) {
+          console.log('Received compliance_lead_id from dialer:', dialerResult.compliance_lead_id);
+          
+          // Update the lead record with the dialer's compliance_lead_id
+          try {
+            const supabase = createServerClient();
+            await supabase
+              .from('leads')
+              .update({ 
+                dialer_compliance_id: dialerResult.compliance_lead_id,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', data[0].id);
+            
+            console.log('Successfully associated dialer compliance_lead_id with lead record');
+          } catch (updateError) {
+            console.error('Error updating lead with compliance_lead_id:', updateError);
+          }
+        }
+        
         // Include the dialer response in our API response
-        // Include bid information for successful lead submission
-        return NextResponse.json({ 
-          success: true, 
-          lead_id: data[0].id, // Explicitly return the lead ID
+        const responseObj: any = {
+          success: true,
+          lead_id: data[0].id,
           data: data[0],
           bid: routingData?.bid || 0.00,
           dialer: {
+            type: 'internal',
             forwarded: true,
+            status: dialerResponse.status,
             response: dialerResult
           }
-        });
+        };
+        
+        return NextResponse.json(responseObj);
       } catch (dialerError) {
         console.error('Error forwarding lead to dialer:', dialerError);
         // Still return success for the lead insertion, but include the dialer error
@@ -1182,6 +1207,27 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
         
         dialerResponse = await response.json();
         console.log('Dialer API response:', dialerResponse);
+        
+        // Check if dialer response contains a compliance_lead_id to associate with our lead_id
+        if (dialerResponse && dialerResponse.compliance_lead_id) {
+          console.log('Received compliance_lead_id from dialer:', dialerResponse.compliance_lead_id);
+          
+          // Update the lead record with the dialer's compliance_lead_id
+          try {
+            const supabase = createServerClient();
+            await supabase
+              .from('leads')
+              .update({ 
+                dialer_compliance_id: dialerResponse.compliance_lead_id,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', data[0].id);
+            
+            console.log('Successfully associated dialer compliance_lead_id with lead record');
+          } catch (updateError) {
+            console.error('Error updating lead with compliance_lead_id:', updateError);
+          }
+        }
         
       } catch (dialerError: any) {
         console.error('Error forwarding health insurance lead to dialer:', dialerError);
