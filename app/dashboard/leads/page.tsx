@@ -22,6 +22,9 @@ interface Lead {
   list_id: string;
   campaign_id: string;
   policy_status?: string; // Added policy_status field
+  bid?: number | string; // Amount bid for the lead
+  call_status?: string; // Status of the call (answered, voicemail, etc.)
+  call_length?: number | string; // Length of the call in seconds or formatted string
   custom_fields?: Record<string, any>;
   // Add other optional fields
   address?: string;
@@ -38,6 +41,16 @@ interface Lead {
   [key: string]: any; // Allow for dynamic field access
 }
 
+// Define a type for list routing data
+interface ListRouting {
+  id: string;
+  list_id: string;
+  campaign_id: string;
+  description?: string;
+  bid: number;
+  active: boolean;
+}
+
 export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,17 +59,57 @@ export default function LeadsPage() {
   const [jsonModalVisible, setJsonModalVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [dateRange, setDateRange] = useState<[string, string] | null>(null);
-  const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
+  const [currentStatus, setCurrentStatus] = useState<string>('');
+  // Add state for list routings
+  const [listRoutings, setListRoutings] = useState<ListRouting[]>([]);
+  const [listRoutingsLoading, setListRoutingsLoading] = useState(true);
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
     total: 0,
   });
+  
+  // Create a map for quick lookup of list routings by list_id
+  const [listRoutingMap, setListRoutingMap] = useState<Record<string, number>>({});
 
   // Fetch leads on component mount or when pagination changes
   useEffect(() => {
     fetchLeads();
+    fetchListRoutings(); // Also fetch list routings
   }, [pagination.current, pagination.pageSize]);
+  
+  // Fetch list routings and create a lookup map
+  const fetchListRoutings = async () => {
+    try {
+      setListRoutingsLoading(true);
+      const response = await fetch('/api/list-routings', {
+        headers: { 'x-api-key': process.env.NEXT_PUBLIC_API_KEY || 'test_key_123' }
+      });
+      
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        setListRoutings(result.data);
+        
+        // Create a mapping of list_id to bid for quick lookup
+        const routingMap: Record<string, number> = {};
+        result.data.forEach((routing: ListRouting) => {
+          if (routing.active && routing.list_id && routing.bid) {
+            routingMap[routing.list_id] = routing.bid;
+          }
+        });
+        
+        setListRoutingMap(routingMap);
+        console.log('List routing map created:', routingMap);
+      } else {
+        console.error('Failed to fetch list routings:', result.error || 'Unknown error');
+      }
+    } catch (error) {
+      console.error('Error fetching list routings:', error);
+    } finally {
+      setListRoutingsLoading(false);
+    }
+  };
 
   // When search text or date range changes, reset to first page and trigger a new fetch
   useEffect(() => {
@@ -93,8 +146,7 @@ export default function LeadsPage() {
       const result = await response.json();
       
       if (result.success && result.data) {
-        setLeads(result.data);
-        setFilteredLeads(result.data); // Set filtered leads directly from API
+        setLeads(result.data); // Set leads directly from API
         
         // Update pagination with the total from the API
         if (result.pagination) {
@@ -189,6 +241,24 @@ export default function LeadsPage() {
   // Format JSON data for display
   const formatJsonData = (data: any) => {
     return JSON.stringify(data, null, 2);
+  };
+
+  // Format phone number for display
+  const formatPhoneNumber = (phone: string) => {
+    // Handle different phone formats (E.164, etc.)
+    // Remove any non-digit characters
+    const digits = phone.replace(/\D/g, '');
+    
+    // Format as (XXX) XXX-XXXX if it's a 10-digit US number
+    if (digits.length === 10) {
+      return `(${digits.substring(0, 3)}) ${digits.substring(3, 6)}-${digits.substring(6)}`;
+    } else if (digits.length === 11 && digits.startsWith('1')) {
+      // Handle +1 prefixed numbers
+      return `+1 (${digits.substring(1, 4)}) ${digits.substring(4, 7)}-${digits.substring(7)}`;
+    }
+    
+    // Return original if not a standard format
+    return phone;
   };
 
   // Helper function to get value from custom_fields or directly from lead
@@ -437,6 +507,99 @@ export default function LeadsPage() {
       },
     },
     {
+      title: 'Bid',
+      dataIndex: 'bid',
+      key: 'bid',
+      render: (_, record) => {
+        // IMPORTANT: Always prioritize the stored bid value in the lead record
+        // This ensures we display the historical bid value from when the lead was created
+        // even if list routing settings have changed since then
+        const recordBid = record.bid || getLeadField(record, 'bid');
+        if (recordBid !== undefined && recordBid !== null) {
+          return `$${parseFloat(String(recordBid)).toFixed(2)}`;
+        }
+        
+        // Only as a fallback for older leads without stored bid values,
+        // we can look up from current list routing settings
+        if (record.list_id && listRoutingMap[record.list_id]) {
+          return `$${listRoutingMap[record.list_id].toFixed(2)}`;
+        }
+        
+        // Last resort fallback for specific vendors (only for leads created before this update)
+        if (record.list_id) {
+          if (record.list_id.toLowerCase().includes('onpoint')) {
+            return '$0.50';
+          } else if (record.list_id.toLowerCase().includes('juiced')) {
+            return '$1.00';
+          }
+        }
+        
+        return 'N/A';
+      },
+      sorter: (a, b) => {
+        const bidA = parseFloat(a.bid || getLeadField(a, 'bid') || 0);
+        const bidB = parseFloat(b.bid || getLeadField(b, 'bid') || 0);
+        return bidA - bidB;
+      },
+    },
+    {
+      title: 'Call Status',
+      key: 'call_status',
+      render: (_, record) => {
+        const callStatus = record.call_status || getLeadField(record, 'call_status');
+        if (!callStatus) return <Tag color="default">Not Available</Tag>;
+        
+        // Define tag colors based on call status (can be expanded later)
+        const statusColors: Record<string, string> = {
+          'answered': 'green',
+          'completed': 'green',
+          'voicemail': 'orange',
+          'no-answer': 'red',
+          'busy': 'red',
+          'failed': 'red',
+          'in-progress': 'blue',
+          'scheduled': 'purple',
+        };
+        
+        const color = statusColors[callStatus.toLowerCase()] || 'default';
+        return <Tag color={color}>{callStatus}</Tag>;
+      },
+      sorter: (a, b) => {
+        const statusA = (a.call_status || getLeadField(a, 'call_status') || '').toLowerCase();
+        const statusB = (b.call_status || getLeadField(b, 'call_status') || '').toLowerCase();
+        return statusA.localeCompare(statusB);
+      },
+    },
+    {
+      title: 'Call Length',
+      key: 'call_length',
+      render: (_, record) => {
+        const callLength = record.call_length || getLeadField(record, 'call_length');
+        if (!callLength) return 'N/A';
+        
+        // Format seconds to MM:SS format
+        if (typeof callLength === 'number') {
+          const minutes = Math.floor(callLength / 60);
+          const seconds = callLength % 60;
+          return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+        
+        // If already formatted, return as is
+        return callLength;
+      },
+      sorter: (a, b) => {
+        const lengthA = a.call_length || getLeadField(a, 'call_length') || 0;
+        const lengthB = b.call_length || getLeadField(b, 'call_length') || 0;
+        
+        // Handle numeric or string values
+        if (typeof lengthA === 'number' && typeof lengthB === 'number') {
+          return lengthA - lengthB;
+        }
+        
+        return String(lengthA).localeCompare(String(lengthB));
+      },
+    },
+    {
       title: 'Actions',
       key: 'actions',
       render: (_, record) => (
@@ -490,7 +653,7 @@ export default function LeadsPage() {
       <Spin spinning={loading}>
         <Table 
           columns={columns} 
-          dataSource={filteredLeads}
+          dataSource={leads}
           rowKey="id"
           pagination={{
             current: pagination.current,
@@ -512,63 +675,64 @@ export default function LeadsPage() {
       
       {/* Lead Details Modal */}
       <Modal
-        title={selectedLead ? `Lead Details: ${selectedLead.first_name} ${selectedLead.last_name}` : 'Lead Details'}
+        title="Lead Details"
         open={detailModalVisible}
         onCancel={() => setDetailModalVisible(false)}
-        width={800}
         footer={[
-          <Button key="json" onClick={handleViewJson}>
+          <Button key="view-json" onClick={handleViewJson}>
             View Raw JSON
           </Button>,
-          <Button key="close" type="primary" onClick={() => setDetailModalVisible(false)}>
+          <Button key="close" onClick={() => setDetailModalVisible(false)}>
             Close
           </Button>
         ]}
+        width={800}
       >
         {selectedLead && (
-          <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <div>
+            <Space direction="vertical" size="large" style={{ width: '100%' }}>
               <div>
                 <Title level={4}>Contact Information</Title>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                   <div>
-                    <Text strong>First Name:</Text> {selectedLead.first_name}
+                    <Text strong>Name:</Text>{' '}
+                    {selectedLead.first_name} {selectedLead.last_name}
                   </div>
                   <div>
-                    <Text strong>Last Name:</Text> {selectedLead.last_name}
+                    <Text strong>Email:</Text>{' '}
+                    <a href={`mailto:${selectedLead.email}`}>{selectedLead.email}</a>
                   </div>
                   <div>
-                    <Text strong>Email:</Text> {selectedLead.email}
+                    <Text strong>Phone:</Text>{' '}
+                    <a href={`tel:${selectedLead.phone}`}>{formatPhoneNumber(selectedLead.phone)}</a>
                   </div>
                   <div>
-                    <Text strong>Phone:</Text> {selectedLead.phone}
-                  </div>
-                  <div>
-                    <Text strong>Address:</Text> {selectedLead.address || 'N/A'}
-                  </div>
-                  <div>
-                    <Text strong>City:</Text> {selectedLead.city || 'N/A'}
-                  </div>
-                  <div>
-                    <Text strong>State:</Text> {selectedLead.state || getLeadField(selectedLead, 'state') || 'N/A'}
-                  </div>
-                  <div>
-                    <Text strong>Zip Code:</Text> {selectedLead.zip_code || 'N/A'}
+                    <Text strong>Address:</Text>{' '}
+                    {selectedLead.address ? (
+                      <>
+                        {selectedLead.address}, {selectedLead.city}, {selectedLead.state} {selectedLead.zip_code}
+                      </>
+                    ) : (
+                      'N/A'
+                    )}
                   </div>
                 </div>
               </div>
               
               <div>
-                <Title level={4}>Lead Information</Title>
+                <Title level={4}>Tracking Information</Title>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                   <div>
-                    <Text strong>List ID:</Text> {selectedLead.list_id || 'N/A'}
+                    <Text strong>List ID:</Text>{' '}
+                    {selectedLead.list_id}
                   </div>
                   <div>
-                    <Text strong>Campaign ID:</Text> {selectedLead.campaign_id || 'N/A'}
+                    <Text strong>Campaign ID:</Text>{' '}
+                    {selectedLead.campaign_id}
                   </div>
                   <div>
-                    <Text strong>Traffic Source:</Text> {selectedLead.traffic_source || 'N/A'}
+                    <Text strong>Source:</Text>{' '}
+                    {selectedLead.traffic_source || selectedLead.source || 'N/A'}
                   </div>
                   <div>
                     <Text strong>Status:</Text>{' '}
@@ -588,7 +752,7 @@ export default function LeadsPage() {
                   </div>
                 </div>
               </div>
-
+                
               <div>
                 <Title level={4}>Additional Information</Title>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
@@ -615,6 +779,62 @@ export default function LeadsPage() {
                         View Certificate
                       </a>
                     ) : 'N/A'}
+                  </div>
+                  <div>
+                    <Text strong>Bid Amount:</Text>{' '}
+                    {(() => {
+                      // IMPORTANT: Always prioritize the stored bid value in the lead record
+                      // This ensures we display the historical bid value from when the lead was created
+                      // even if list routing settings have changed since then
+                      const recordBid = selectedLead.bid || getLeadField(selectedLead, 'bid');
+                      if (recordBid !== undefined && recordBid !== null) {
+                        return `$${parseFloat(String(recordBid)).toFixed(2)}`;
+                      }
+                      
+                      // Only as a fallback for older leads without stored bid values,
+                      // we can look up from current list routing settings
+                      if (selectedLead.list_id && listRoutingMap[selectedLead.list_id]) {
+                        return `$${listRoutingMap[selectedLead.list_id].toFixed(2)}`;
+                      }
+                      
+                      // Last resort fallback for specific vendors (only for leads created before this update)
+                      if (selectedLead.list_id) {
+                        if (selectedLead.list_id.toLowerCase().includes('onpoint')) {
+                          return '$0.50';
+                        } else if (selectedLead.list_id.toLowerCase().includes('juiced')) {
+                          return '$1.00';
+                        }
+                      }
+                      
+                      return 'N/A';
+                    })()}
+                  </div>
+                </div>
+              </div>
+                
+              <div>
+                <Title level={4}>Call Information</Title>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <div>
+                    <Text strong>Call Status:</Text>{' '}
+                    {selectedLead.call_status || getLeadField(selectedLead, 'call_status') || 'N/A'}
+                  </div>
+                  <div>
+                    <Text strong>Call Length:</Text>{' '}
+                    {(() => {
+                      const callLength = selectedLead.call_length || getLeadField(selectedLead, 'call_length');
+                      if (!callLength) return 'N/A';
+                      
+                      // Format seconds to MM:SS format if it's a number
+                      if (typeof callLength === 'number') {
+                        const minutes = Math.floor(callLength / 60);
+                        const seconds = callLength % 60;
+                        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                      }
+                      
+                      // If already formatted, return as is
+                      return callLength;
+                    })()}
                   </div>
                 </div>
               </div>

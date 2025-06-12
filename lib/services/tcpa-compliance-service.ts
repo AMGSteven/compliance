@@ -131,9 +131,19 @@ export class TCPAComplianceChecker {
   private async makeRequest(url: string, method: string, body: URLSearchParams): Promise<any> {
     let retries = 0
     let delay = this.initialRetryDelay
+    let lastError: Error | null = null
 
-    while (true) {
+    // Limit maximum retries to prevent excessive API calls
+    // This replaces the infinite loop (while true) that was causing millions of API calls
+    const maxAttempts = this.maxRetries + 1
+    
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
+        // Log attempt
+        if (attempt > 0) {
+          console.log(`TCPA API request retry ${attempt}/${this.maxRetries} for ${url}`)
+        }
+        
         const response = await fetch(url, {
           method,
           headers: {
@@ -142,45 +152,77 @@ export class TCPAComplianceChecker {
           body,
         })
 
-        // Handle authentication
+        // Check for authentication errors (don't retry these)
         if (response.status === 401) {
           throw new Error("Authentication failed. Check your API credentials.")
         }
 
-        // Handle rate limiting
+        // Handle rate limiting with Retry-After header
         if (response.status === 429) {
-          if (retries >= this.maxRetries) {
+          const retryAfter = response.headers.get('Retry-After')
+          let waitTime = delay
+          
+          // Use Retry-After header if present
+          if (retryAfter) {
+            const secondsToWait = parseInt(retryAfter, 10)
+            waitTime = isNaN(secondsToWait) ? delay : secondsToWait * 1000
+            console.log(`Rate limited. Waiting ${waitTime}ms as specified by Retry-After header.`)
+          } else {
+            console.log(`Rate limited. Using exponential backoff: waiting ${waitTime}ms.`)
+          }
+          
+          // If we've reached max retries, throw an error
+          if (attempt >= this.maxRetries) {
             throw new Error("Rate limit exceeded. Maximum retries reached.")
           }
-
-          // Wait before retrying
-          await new Promise((resolve) => setTimeout(resolve, delay))
-
-          // Exponential backoff
-          delay = Math.min(delay * 2, this.maxRetryDelay)
-          retries++
+          
+          // Wait and retry
+          await new Promise((resolve) => setTimeout(resolve, waitTime))
+          
+          // Update delay for next retry if needed
+          if (!retryAfter) {
+            delay = Math.min(delay * 2, this.maxRetryDelay)
+          }
+          
           continue
         }
 
-        // Handle other errors
+        // Other error responses
         if (!response.ok) {
           throw new Error(`API request failed with status ${response.status}: ${response.statusText}`)
         }
 
-        return await response.json()
-      } catch (error) {
-        if (retries >= this.maxRetries) {
-          throw error
+        // Try to parse JSON response
+        try {
+          return await response.json()
+        } catch (parseError) {
+          // JSON parsing errors won't be fixed by retrying
+          console.error("JSON parsing error:", parseError)
+          throw new Error(`Failed to parse API response: ${parseError instanceof Error ? parseError.message : 'Unknown parsing error'}`)
         }
-
-        // Wait before retrying
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error))
+        
+        // Don't retry json parsing errors
+        if (lastError.message.includes("parse")) {
+          throw lastError
+        }
+        
+        // If we've reached max retries, throw the last error
+        if (attempt >= this.maxRetries) {
+          throw lastError
+        }
+        
+        // Wait and retry
         await new Promise((resolve) => setTimeout(resolve, delay))
-
-        // Exponential backoff
+        
+        // Increase delay for next retry using exponential backoff
         delay = Math.min(delay * 2, this.maxRetryDelay)
-        retries++
       }
     }
+
+    // This should never be reached due to the loop exit conditions
+    throw lastError || new Error("Unknown error during API request")
   }
 
   /**
@@ -319,8 +361,9 @@ export class TCPAComplianceChecker {
 
         // Process response
         for (const [phone, result] of Object.entries(data.results)) {
-          const isCompliant = result.clean === 1
-          const reasons = isCompliant ? [] : result.status_array || [result.status || "Unknown reason"]
+          const typedResult = result as any
+          const isCompliant = typedResult.clean === 1
+          const reasons = isCompliant ? [] : typedResult.status_array || [typedResult.status || "Unknown reason"]
 
           results.push({
             compliant: isCompliant,

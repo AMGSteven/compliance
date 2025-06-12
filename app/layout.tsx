@@ -46,6 +46,9 @@ export default function RootLayout({
                     <Link href="/dashboard/leads" className="nav-link">
                       Leads
                     </Link>
+                    <Link href="/dashboard/revenue-tracking" className="nav-link">
+                      Revenue Tracking
+                    </Link>
                     <Link href="/docs/api" className="nav-link">
                       API Docs
                     </Link>

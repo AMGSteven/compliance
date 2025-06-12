@@ -1,12 +1,19 @@
-import { ComplianceEngine } from '@/lib/compliance/engine';
 import { NextResponse } from 'next/server';
 import { headers } from 'next/headers';
+import { TCPAChecker } from '@/lib/compliance/checkers/tcpa-checker';
+import { BlacklistChecker } from '@/lib/compliance/checkers/blacklist-checker';
+import { WebreconChecker } from '@/lib/compliance/checkers/webrecon-checker';
+import { InternalDNCChecker } from '@/lib/compliance/checkers/internal-dnc-checker';
+import { SynergyDNCChecker } from '@/lib/compliance/checkers/synergy-dnc-checker';
+import { ComplianceChecker, ComplianceResult } from '@/lib/compliance/types';
+import { checkPhoneCompliance } from '@/app/lib/real-phone-validation';
 
 // Define allowed origins
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
-  'https://compliance.americanhm.com', // Add your production domain here
+  'https://compliance.juicedmedia.io',
+  'https://compliance.americanhm.com',
 ];
 
 export async function POST(request: Request) {
@@ -37,10 +44,97 @@ export async function POST(request: Request) {
       );
     }
 
-    const engine = new ComplianceEngine();
+    // Initialize all five compliance checkers individually to ensure better error handling
+    const checkers: ComplianceChecker[] = [
+      new TCPAChecker(),
+      new BlacklistChecker(),
+      new WebreconChecker(),
+      new InternalDNCChecker(),
+      new SynergyDNCChecker(),
+    ];
+    
+    // Additionally check phone validation
+    const phoneValidationResult = await checkPhoneCompliance(phoneNumber);
+    console.log('Phone validation result:', phoneValidationResult);
+    
     console.log('Checking phone number:', phoneNumber);
-    const report = await engine.checkPhoneNumber(phoneNumber);
-    console.log('Check complete, report:', report);
+    
+    // Run all checks in parallel with improved error handling
+    const results = await Promise.allSettled(
+      checkers.map(async checker => {
+        try {
+          console.log(`Running checker: ${checker.name}`);
+          const result = await checker.checkNumber(phoneNumber);
+          console.log(`Checker ${checker.name} result:`, result);
+          return result;
+        } catch (error) {
+          console.error(`Error in checker ${checker.name}:`, error);
+          // Return a structured error result instead of throwing
+          return {
+            isCompliant: false, // Assume non-compliant on error (fail closed for safety)
+            reasons: [`Error checking ${checker.name}: ${error instanceof Error ? error.message : 'Unknown error'}`],
+            source: checker.name,
+            phoneNumber,
+            details: {},
+            error: error instanceof Error ? error.message : 'Unknown error'
+          };
+        }
+      })
+    );
+
+    // Convert Promise.allSettled results to a usable format
+    const checkResults = results.map(result => {
+      if (result.status === 'fulfilled') {
+        return result.value;
+      } else {
+        // Handle rejected promises (shouldn't happen with our try/catch above)
+        return {
+          isCompliant: false,
+          reasons: [`Failed to check: ${result.reason}`],
+          source: 'Unknown',
+          phoneNumber,
+          details: {},
+          error: result.reason
+        };
+      }
+    });
+
+    // A number is compliant only if all checks pass, including phone validation
+    const isCompliant = checkResults.every(result => result.isCompliant) && phoneValidationResult.isCompliant;
+    
+    // Get list of failed sources for easier analysis
+    const failedSources = checkResults
+      .filter(result => !result.isCompliant)
+      .map(result => ({
+        source: result.source,
+        reasons: result.reasons,
+      }));
+      
+    // Add phone validation results if failed
+    if (!phoneValidationResult.isCompliant) {
+      failedSources.push({
+        source: 'Phone Validation',
+        reasons: [phoneValidationResult.reason || 'Failed phone validation'],
+      });
+    }
+    
+    const report = {
+      phoneNumber,
+      isCompliant,
+      failedSources,
+      results: checkResults,
+      phoneValidation: {
+        isValid: phoneValidationResult.isCompliant,
+        details: phoneValidationResult.details,
+        reason: phoneValidationResult.reason
+      },
+      timestamp: new Date().toISOString(),
+    };
+    
+    console.log('Check complete, report summary:', {
+      isCompliant,
+      failedSources: failedSources.map(s => s.source),
+    });
 
     // Return the response with CORS headers if origin is allowed
     return new NextResponse(JSON.stringify(report), {

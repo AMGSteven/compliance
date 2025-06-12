@@ -15,6 +15,7 @@ interface ListRouting {
   description?: string;
   active: boolean;
   bid?: number;
+  dialer_type?: number; // 1 = Internal Dialer, 2 = Pitch BPO
   created_at: string;
   updated_at: string;
 }
@@ -34,6 +35,10 @@ export default function ListRoutingsPage() {
   const [currentCadenceId, setCurrentCadenceId] = useState<string>('');
   const [currentToken, setCurrentToken] = useState<string>('');
   const [currentBid, setCurrentBid] = useState<number>(0);
+  const [currentDialerType, setCurrentDialerType] = useState<number>(1); // Default to Internal Dialer
+  
+  // Pitch BPO fixed values
+  const PITCH_BPO_TOKEN = '70942646-125b-4ddd-96fc-b9a142c698b8';
 
   // Maps to store cadence ID and token by list+campaign combination
   const [listCampaignCadenceMap, setListCampaignCadenceMap] = useState<Record<ListCampaignKey, string>>({});
@@ -99,16 +104,27 @@ export default function ListRoutingsPage() {
     setCurrentCampaignId('');
     setCurrentCadenceId('');
     setCurrentToken('');
+    setCurrentDialerType(1); // Reset to internal dialer
     setModalVisible(true);
   };
+  
+  // Reset form when modal visibility changes
+  useEffect(() => {
+    if (modalVisible) {
+      fetchListRoutings();
+    }
+  }, [modalVisible]);
 
   // Show modal with form pre-filled for editing an existing routing
   const handleEditRouting = (record: ListRouting) => {
+    setEditMode(true);
+    setCurrentId(record.id);
     setCurrentListId(record.list_id);
     setCurrentCampaignId(record.campaign_id);
     setCurrentCadenceId(record.cadence_id);
     setCurrentToken(record.token || '');
     setCurrentBid(record.bid || 0);
+    setCurrentDialerType(record.dialer_type || 1); // Default to Internal Dialer if not set
     
     form.setFieldsValue({
       list_id: record.list_id,
@@ -117,11 +133,10 @@ export default function ListRoutingsPage() {
       token: record.token || '',
       description: record.description,
       bid: record.bid || 0,
+      dialer_type: record.dialer_type || 1, // Default to Internal Dialer if not set
       active: record.active
     });
     
-    setEditMode(true);
-    setCurrentId(record.id);
     setModalVisible(true);
   };
   
@@ -149,11 +164,18 @@ export default function ListRoutingsPage() {
     setCurrentCampaignId(value);
     
     // Check if this list+campaign combination already exists
-    checkListCampaignCombination(currentListId, value);
+    // Pass the current dialer type to skip for Pitch BPO
+    checkListCampaignCombination(currentListId, value, currentDialerType);
   };
   
   // Check if a list+campaign combination already exists and has a cadence ID
-  const checkListCampaignCombination = (listId: string, campaignId: string) => {
+  const checkListCampaignCombination = (listId: string, campaignId: string, dialerType?: number) => {
+    // Skip this check for Pitch BPO (dialer_type=2)
+    if (dialerType === 2) {
+      console.log('Skipping list+campaign check for Pitch BPO');
+      return;
+    }
+    
     if (listId && campaignId) {
       const key = `${listId}:${campaignId}`;
       const existingCadenceId = listCampaignCadenceMap[key];
@@ -195,50 +217,117 @@ export default function ListRoutingsPage() {
   // Submit form to create or update a routing
   const handleSubmit = async (values: any) => {
     try {
+      setLoading(true);
+      console.log('Starting form submission with values:', values);
+      
       // Parse bid from string to number
       const bidValue = values.bid ? parseFloat(values.bid) : 0.00;
+      console.log('Parsed bid value:', bidValue);
       
+      // For Pitch BPO, set the token automatically and handle empty fields
+      if (values.dialer_type === 2) {
+        console.log('Pitch BPO detected, setting token and handling empty fields');
+        // Always use the hardcoded token for Pitch BPO
+        values.token = PITCH_BPO_TOKEN;
+        console.log('Using hardcoded Pitch BPO token:', PITCH_BPO_TOKEN);
+        
+        // For Pitch BPO, we'll let the backend generate placeholders for all empty fields
+        // Just ensure we're not sending undefined values
+        values.list_id = values.list_id || '';
+        values.campaign_id = values.campaign_id || ''; 
+        values.cadence_id = values.cadence_id || '';
+        
+        console.log('After Pitch BPO adjustments:', { 
+          token: values.token, 
+          list_id: values.list_id,
+          campaign_id: values.campaign_id, 
+          cadence_id: values.cadence_id 
+        });
+      }
+      
+      // Check if the list+campaign combination already has a cadence ID
+      if (!editMode && values.list_id && values.campaign_id) {
+        await checkListCampaignCombination(values.list_id, values.campaign_id, values.dialer_type);
+      }
+      
+      console.log('Form values received:', values);
+      
+      // Prepare the payload, with special handling for Pitch BPO
       const payload = {
-        list_id: values.list_id,
-        campaign_id: values.campaign_id,
-        cadence_id: values.cadence_id,
-        token: values.token || null,
+        // For all dialer types
         description: values.description || '',
         bid: bidValue,
-        active: values.active !== undefined ? values.active : true
+        active: values.active !== undefined ? values.active : true,
+        dialer_type: values.dialer_type || 1, // Default to 1 if missing
+        
+        // For Pitch BPO, these values were already set correctly above
+        list_id: values.list_id || '', 
+        campaign_id: values.campaign_id || '',
+        cadence_id: values.cadence_id || '',
+        
+        // Ensure token is properly set (hardcoded for Pitch BPO)
+        token: values.dialer_type === 2 ? PITCH_BPO_TOKEN : (values.token || null)
       };
+      
+      console.log('Final payload with token and fields:', {
+        token: payload.token,
+        list_id: payload.list_id,
+        campaign_id: payload.campaign_id,
+        cadence_id: payload.cadence_id,
+        dialer_type: payload.dialer_type
+      });
       
       console.log('Bid value being submitted:', bidValue);
 
       const method = editMode ? 'PUT' : 'POST';
       const body = editMode ? { ...payload, id: currentId } : payload;
       
-      console.log('Submitting with method:', method, 'and body:', body);
+      console.log('Submitting with method:', method, 'and body:', JSON.stringify(body, null, 2));
       
-      const response = await fetch('/api/list-routings', {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': process.env.NEXT_PUBLIC_API_KEY || 'test_key_123'
-        },
-        body: JSON.stringify(body)
-      });
-      
-      console.log('Response status:', response.status);
-      
-      const result = await response.json();
-      console.log('API response:', result);
-      
-      if (result.success) {
-        notification.success({
-          message: 'Success',
-          description: editMode ? 'Routing updated successfully' : 'New routing created successfully'
+      try {
+        const response = await fetch('/api/list-routings', {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': process.env.NEXT_PUBLIC_API_KEY || 'test_key_123'
+          },
+          body: JSON.stringify(body)
         });
-        setModalVisible(false);
-        fetchListRoutings();
-      } else {
-        console.error('API returned error:', result);
-        notification.error({ message: 'Error', description: result.error || 'Operation failed' });
+        
+        console.log('Response status:', response.status);
+        
+        // Check if the response is ok before parsing JSON
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Server returned error status:', response.status, errorText);
+          throw new Error(`Server returned ${response.status}: ${errorText}`);
+        }
+        
+        const result = await response.json();
+        console.log('API response:', result);
+        
+        if (result.success) {
+          notification.success({
+            message: 'Success',
+            description: editMode ? 'Routing updated successfully' : 'New routing created successfully'
+          });
+          setModalVisible(false);
+          fetchListRoutings();
+        } else {
+          console.error('API returned error result:', result);
+          notification.error({ 
+            message: 'Error', 
+            description: result.error || 'Operation failed', 
+            duration: 10 // Show longer so user can see the error
+          });
+        }
+      } catch (error: any) {
+        console.error('Failed to submit to API:', error);
+        notification.error({ 
+          message: 'Connection Error', 
+          description: `Could not connect to server: ${error?.message || 'Unknown error'}`,
+          duration: 10
+        });
       }
     } catch (error) {
       console.error('Error submitting form:', error);
@@ -252,17 +341,23 @@ export default function ListRoutingsPage() {
       title: 'List ID',
       dataIndex: 'list_id',
       key: 'list_id',
-      render: (text: string) => (
-        <div style={{ wordBreak: 'break-all', maxWidth: '150px' }}>{text}</div>
-      )
+      render: (text: string) => <span style={{ wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>{text}</span>
+    },
+    {
+      title: 'Dialer',
+      dataIndex: 'dialer_type',
+      key: 'dialer_type',
+      render: (dialer_type: number) => {
+        return dialer_type === 2 ? 
+          <span style={{ color: '#1890ff' }}>Pitch BPO</span> : 
+          <span>Internal Dialer</span>;
+      }
     },
     {
       title: 'Campaign ID',
       dataIndex: 'campaign_id',
       key: 'campaign_id',
-      render: (text: string) => (
-        <div style={{ wordBreak: 'break-all', maxWidth: '150px' }}>{text}</div>
-      )
+      render: (text: string) => <span style={{ wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>{text}</span>
     },
     {
       title: 'Cadence ID',
@@ -390,7 +485,7 @@ export default function ListRoutingsPage() {
           <Form.Item
             name="list_id"
             label="List ID"
-            rules={[{ required: true, message: 'Please enter the list ID' }]}
+            rules={[{ required: currentDialerType !== 2, message: 'Please enter the list ID' }]}
           >
             <Input 
               placeholder="e.g., a38881ab-93b2-4750-9f9c-92ae6cd10b7e" 
@@ -406,29 +501,27 @@ export default function ListRoutingsPage() {
           <Form.Item
             name="campaign_id"
             label="Campaign ID"
-            rules={[{ required: true, message: 'Please enter the campaign ID' }]}
+            rules={[{ required: currentDialerType !== 2, message: 'Please enter a campaign ID' }]}
+            hidden={currentDialerType === 2}
           >
             <Input 
               placeholder="e.g., b2c3d4e5-f6a1-4a1a-bde0-1a733c8d1c00" 
               onChange={handleCampaignIdChange}
-              suffix={
-                <Tooltip title="Campaign ID represents the product type (Health Insurance, Life Insurance, etc.)">
-                  <InfoCircleOutlined style={{ color: 'rgba(0,0,0,.45)' }} />
-                </Tooltip>
-              }
+              disabled={currentDialerType === 2}
             />
           </Form.Item>
           
           <Form.Item
             name="cadence_id"
             label="Cadence ID"
-            rules={[{ required: true, message: 'Please enter the cadence ID' }]}
+            rules={[{ required: currentDialerType !== 2, message: 'Please enter a cadence ID' }]}
             extra={currentListId && currentCampaignId && listCampaignCadenceMap[`${currentListId}:${currentCampaignId}`] && !editMode ? 
               `This List ID + Campaign ID combination is already using cadence ID: ${listCampaignCadenceMap[`${currentListId}:${currentCampaignId}`]}` : null}
+            hidden={currentDialerType === 2}
           >
             <Input 
               placeholder="e.g., 39a9381e-14ef-4fdd-a95a-9649025590a4" 
-              disabled={!editMode && !!currentListId && !!currentCampaignId && !!listCampaignCadenceMap[`${currentListId}:${currentCampaignId}`]} 
+              disabled={currentDialerType === 2 || (!editMode && !!currentListId && !!currentCampaignId && !!listCampaignCadenceMap[`${currentListId}:${currentCampaignId}`])} 
               suffix={
                 <Tooltip title="When editing, you can change the cadence ID. For new entries, if a List ID + Campaign ID combination already exists, the cadence ID will be pre-selected.">
                   <InfoCircleOutlined style={{ color: 'rgba(0,0,0,.45)' }} />
@@ -440,18 +533,33 @@ export default function ListRoutingsPage() {
           <Form.Item
             name="token"
             label="Token"
-            extra={currentListId && listTokenMap[currentListId] && !editMode ? 
-              `This List ID is already associated with token: ${listTokenMap[currentListId]}` : null}
+            extra={currentDialerType === 2 ? 
+              'For Pitch BPO, token is automatically set to 70942646-125b-4ddd-96fc-b9a142c698b8' : 
+              (currentListId && listTokenMap[currentListId] && !editMode ? 
+                `This List ID is already associated with token: ${listTokenMap[currentListId]}` : null)}
           >
-            <Input 
-              placeholder="e.g., 7f108eff2dbf3ab07d562174da6dbe53" 
-              disabled={!editMode && !!currentListId && !!listTokenMap[currentListId]}
-              suffix={
-                <Tooltip title="Authentication token for the dialer API. Each List ID uses the same token across all routings.">
-                  <InfoCircleOutlined style={{ color: 'rgba(0,0,0,.45)' }} />
-                </Tooltip>
-              }
-            />
+             {currentDialerType === 2 ? (
+              <Input 
+                placeholder="e.g., 7f108eff2dbf3ab07d562174da6dbe53"
+                disabled={true}
+                value={PITCH_BPO_TOKEN}
+                suffix={
+                  <Tooltip title="Pitch BPO always uses a fixed token">
+                    <InfoCircleOutlined style={{ color: 'rgba(0,0,0,.45)' }} />
+                  </Tooltip>
+                }
+              />
+            ) : (
+              <Input 
+                placeholder="e.g., 7f108eff2dbf3ab07d562174da6dbe53" 
+                disabled={(!editMode && !!currentListId && !!listTokenMap[currentListId])}
+                suffix={
+                  <Tooltip title="Authentication token for the dialer API. Each List ID uses the same token across all routings.">
+                    <InfoCircleOutlined style={{ color: 'rgba(0,0,0,.45)' }} />
+                  </Tooltip>
+                }
+              />
+            )}
           </Form.Item>
           
           <Form.Item
@@ -497,6 +605,29 @@ export default function ListRoutingsPage() {
             />
           </Form.Item>
           
+          <Form.Item
+            name="dialer_type"
+            label="Dialer"
+            initialValue={1}
+            tooltip="Select which dialer system to route leads to"
+          >
+            <Select onChange={(value) => {
+              // When Pitch BPO is selected, update form fields
+              if (value === 2) {
+                form.setFieldsValue({
+                  token: PITCH_BPO_TOKEN,
+                });
+                // Hide campaign and cadence fields by forcing rerender
+                setCurrentDialerType(2);
+              } else {
+                setCurrentDialerType(1);
+              }
+            }}>
+              <Select.Option value={1}>Internal Dialer</Select.Option>
+              <Select.Option value={2}>Pitch BPO</Select.Option>
+            </Select>
+          </Form.Item>
+
           <Form.Item
             name="active"
             label="Active"

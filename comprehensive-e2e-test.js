@@ -1,4 +1,4 @@
-// Comprehensive end-to-end test for lead posting with compliance checking
+'// Comprehensive end-to-end test for lead posting with compliance checking
 const dirtyNumber = '1234567890'; // Expected to fail compliance
 const cleanNumber = '4083109269'; // Expected to pass compliance
 

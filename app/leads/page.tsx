@@ -23,14 +23,21 @@ export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     fetchLeads();
   }, []);
 
-  const fetchLeads = async () => {
+  const fetchLeads = async (search = '') => {
     try {
-      const response = await fetch('/api/leads/list');
+      setLoading(true);
+      const url = new URL('/api/leads/list', window.location.origin);
+      if (search) {
+        url.searchParams.append('search', search);
+      }
+      
+      const response = await fetch(url);
       const data = await response.json();
       
       if (data.success) {
@@ -43,6 +50,11 @@ export default function LeadsPage() {
     } finally {
       setLoading(false);
     }
+  };
+  
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    fetchLeads(searchTerm);
   };
 
   if (loading) {
@@ -66,6 +78,36 @@ export default function LeadsPage() {
           >
             Add New Lead
           </Link>
+        </div>
+        
+        <div className="mb-6">
+          <form onSubmit={handleSearch} className="flex gap-2">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by ID, name, email, or phone"
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button 
+              type="submit"
+              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+            >
+              Search
+            </button>
+            {searchTerm && (
+              <button 
+                type="button"
+                onClick={() => {
+                  setSearchTerm('');
+                  fetchLeads('');
+                }}
+                className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300"
+              >
+                Clear
+              </button>
+            )}
+          </form>
         </div>
 
         {error && (

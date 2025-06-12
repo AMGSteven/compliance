@@ -4,10 +4,11 @@ import { validateApiKey } from "@/lib/middleware/api-key-middleware"
 
 export async function POST(request: NextRequest) {
   try {
-    // Validate API key
-    const apiKeyValidation = await validateApiKey(request, ["compliance:read", "compliance:write"])
+    // Validate API key using the middleware
+    const apiKeyValidation = await validateApiKey(request);
+    
     if (!apiKeyValidation.valid) {
-      return NextResponse.json({ error: apiKeyValidation.error }, { status: apiKeyValidation.status })
+      return NextResponse.json({ error: apiKeyValidation.error }, { status: apiKeyValidation.status });
     }
 
     // Parse request body

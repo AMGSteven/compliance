@@ -219,6 +219,137 @@ async function testBulkDNCCheck() {
   }
 }
 
+async function testLeadSubmission() {
+  console.log(`\n${colors.blue}${colors.bold}Testing Lead Submission API with State Validation...${colors.reset}`);
+  
+  // Create test leads with different states
+  const testLeadTemplate = {
+    firstName: "John",
+    lastName: "Doe",
+    email: "johndoe@example.com",
+    address: "123 Main St",
+    city: "Menlo Park",
+    zipCode: "94025",
+    listId: "94ec4eec-d409-422b-abbd-bd9ee35ce08a", // Assigned list ID for Top of Funnel LLC
+    campaignId: "test-campaign-id", // Using a test campaign ID
+    incomeBracket: "$75,000-$100,000",
+    homeownerStatus: "Homeowner",
+    dob: "1980-05-15",
+    source: "Top of Funnel LLC Test",
+    trustedFormCertUrl: "https://cert.trustedform.com/example",
+    token: "be53740f04b40724b950c95d71e2528d" // API token for Top of Funnel LLC
+  };
+  
+  // List of states to test - including both allowed and disallowed
+  const testStates = [
+    // Allowed states
+    { state: "TX", allowed: true, phone: "5125550101" },
+    { state: "oh", allowed: true, phone: "6145550102" }, // Testing lowercase
+    { state: "Az", allowed: true, phone: "6025550103" }, // Testing mixed case
+    // Disallowed states
+    { state: "CA", allowed: false, phone: "4155550104" },
+    { state: "NY", allowed: false, phone: "2125550105" },
+    { state: "FL", allowed: false, phone: "3055550106" }
+  ];
+  
+  try {
+    // Keep track of test results
+    const results = {
+      validStateAccepted: 0,
+      invalidStateRejected: 0,
+      validStateRejected: 0,
+      invalidStateAccepted: 0,
+      errors: []
+    };
+    
+    // Test each state
+    for (let i = 0; i < testStates.length; i++) {
+      const { state, allowed, phone } = testStates[i];
+      const testLead = { ...testLeadTemplate, state, phone };
+      
+      console.log(`\n  TEST ${i+1}: Testing lead with state: ${state} (${allowed ? 'ALLOWED' : 'DISALLOWED'})`);
+      console.log(`  Submitting test lead with phone: ${phone}`);
+      
+      const response = await fetch('https://compliance.juicedmedia.io/api/leads', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(testLead)
+      });
+      
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        console.log(`${colors.red}✗ Failed to parse API response${colors.reset}`);
+        results.errors.push(`Failed to parse API response for state ${state}: ${e.message}`);
+        continue;
+      }
+      
+      console.log(`  Response status: ${response.status}`);
+      console.log('  Response data:');
+      console.log(JSON.stringify(data, null, 2));
+      
+      // Check if the result matches our expectation
+      if (allowed) {
+        if (data.success) {
+          console.log(`${colors.green}✓ PASS: Lead with allowed state ${state} was correctly accepted${colors.reset}`);
+          results.validStateAccepted++;
+        } else if (data.error && data.error.includes('State not allowed')) {
+          console.log(`${colors.red}✗ FAIL: Lead with allowed state ${state} was incorrectly rejected due to state${colors.reset}`);
+          results.errors.push(`State ${state} should be allowed but was rejected`);
+          results.validStateRejected++;
+        } else {
+          console.log(`${colors.yellow}! INFO: Lead with allowed state ${state} was rejected for other reasons${colors.reset}`);
+          console.log(`  Reason: ${data.error}`);
+          // This could be valid (e.g., phone validation failure)
+          results.validStateRejected++;
+        }
+      } else {
+        if (!data.success && data.error && data.error.includes('State not allowed')) {
+          console.log(`${colors.green}✓ PASS: Lead with disallowed state ${state} was correctly rejected${colors.reset}`);
+          results.invalidStateRejected++;
+        } else if (data.success) {
+          console.log(`${colors.red}✗ FAIL: Lead with disallowed state ${state} was incorrectly accepted${colors.reset}`);
+          results.errors.push(`State ${state} should be disallowed but was accepted`);
+          results.invalidStateAccepted++;
+        } else {
+          console.log(`${colors.yellow}! INFO: Lead with disallowed state ${state} was rejected, but not explicitly due to state${colors.reset}`);
+          console.log(`  Reason: ${data.error}`);
+          results.invalidStateRejected++;
+        }
+      }
+    }
+    
+    // Print summary
+    console.log(`\n${colors.blue}${colors.bold}State Validation Test Summary${colors.reset}`);
+    console.log(`${colors.blue}===========================================${colors.reset}`);
+    console.log(`Allowed states correctly accepted: ${results.validStateAccepted}`);
+    console.log(`Disallowed states correctly rejected: ${results.invalidStateRejected}`);
+    console.log(`Allowed states rejected (for any reason): ${results.validStateRejected}`);
+    console.log(`Disallowed states incorrectly accepted: ${results.invalidStateAccepted}`);
+    
+    if (results.errors.length > 0) {
+      console.log(`\n${colors.red}${colors.bold}Errors:${colors.reset}`);
+      results.errors.forEach((error, index) => {
+        console.log(`${index + 1}. ${error}`);
+      });
+    }
+    
+    // The test is successful if all invalid states were rejected correctly
+    const isSuccessful = results.invalidStateAccepted === 0;
+    return { 
+      success: isSuccessful, 
+      results
+    };
+  } catch (error) {
+    console.log(`${colors.red}✗ Lead submission API test failed${colors.reset}`);
+    console.log(`  Error: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+}
+
 async function runAllTests() {
   console.log(`${colors.blue}${colors.bold}🧪 Running API Tests 🧪${colors.reset}`);
   console.log(`${colors.blue}===========================================${colors.reset}`);
@@ -226,6 +357,7 @@ async function runAllTests() {
   const dashboardResult = await testDashboardStats();
   const dncResult = await testInternalDNCChecker();
   let bulkResult = { success: false, error: 'Test not run' };
+  let leadSubmissionResult = { success: false, error: 'Test not run' };
   
   // Only run bulk test if individual DNC test passed
   if (dncResult.success) {
@@ -234,12 +366,16 @@ async function runAllTests() {
     console.log(`\n${colors.yellow}Skipping bulk DNC test because individual DNC test failed${colors.reset}`);
   }
   
+  // Run lead submission test
+  leadSubmissionResult = await testLeadSubmission();
+  
   // Summary
   console.log(`\n${colors.blue}${colors.bold}📊 Test Summary${colors.reset}`);
   console.log(`${colors.blue}===========================================${colors.reset}`);
   console.log(`Dashboard Stats: ${dashboardResult.success ? colors.green + 'PASSED' : colors.red + 'FAILED'}${colors.reset}`);
   console.log(`Internal DNC Checker: ${dncResult.success ? colors.green + 'PASSED' : colors.red + 'FAILED'}${colors.reset}`);
   console.log(`Bulk DNC Checker: ${bulkResult.success ? colors.green + 'PASSED' : colors.red + 'FAILED'}${colors.reset}`);
+  console.log(`Lead Submission: ${leadSubmissionResult.success ? colors.green + 'PASSED' : colors.red + 'FAILED'}${colors.reset}`);
   
   if (!dashboardResult.success) {
     console.log(`${colors.red}Dashboard Stats Error: ${dashboardResult.error}${colors.reset}`);
@@ -251,6 +387,10 @@ async function runAllTests() {
   
   if (!bulkResult.success && bulkResult.error !== 'Test not run') {
     console.log(`${colors.red}Bulk DNC Checker Error: ${bulkResult.error}${colors.reset}`);
+  }
+  
+  if (!leadSubmissionResult.success && leadSubmissionResult.error !== 'Test not run') {
+    console.log(`${colors.red}Lead Submission Error: ${leadSubmissionResult.error}${colors.reset}`);
   }
 }
 

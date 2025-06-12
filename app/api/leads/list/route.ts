@@ -51,12 +51,21 @@ export async function GET(request: NextRequest) {
     
     // Apply filters if provided
     if (search) {
-      query = query.or(
-        `first_name.ilike.%${search}%,` +
-        `last_name.ilike.%${search}%,` +
-        `email.ilike.%${search}%,` +
-        `phone.ilike.%${search}%`
-      );
+      // If the search term looks like a UUID, search for exact match on ID
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(search);
+      
+      if (isUuid) {
+        // Search by exact lead ID
+        query = query.eq('id', search);
+      } else {
+        // Search by other fields
+        query = query.or(
+          `first_name.ilike.%${search}%,` +
+          `last_name.ilike.%${search}%,` +
+          `email.ilike.%${search}%,` +
+          `phone.ilike.%${search}%`
+        );
+      }
     }
     
     if (startDate && endDate) {
