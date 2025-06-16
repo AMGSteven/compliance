@@ -23,6 +23,7 @@ export async function POST(request: Request) {
     // Extract fields from the request
     const {
       lead_id,
+      compliance_lead_id,
       transaction_id,
       email,
       phone,
@@ -59,11 +60,16 @@ export async function POST(request: Request) {
       ? normalizedStatus 
       : POLICY_STATUSES.PENDING;
     
-    // Find lead by lead_id, transaction_id, email, or phone (in that order of preference)
+    // Use compliance_lead_id if lead_id is not provided (for backward compatibility)
+    const effectiveLeadId = lead_id || compliance_lead_id;
+
+    console.log(`Lead identification: lead_id=${lead_id}, compliance_lead_id=${compliance_lead_id}, effectiveLeadId=${effectiveLeadId}`);
+
+    // Find lead by lead_id/compliance_lead_id, transaction_id, email, or phone (in that order of preference)
     let leadQuery = supabase.from('leads').select('id');
     
-    if (lead_id) {
-      leadQuery = leadQuery.eq('id', lead_id);
+    if (effectiveLeadId) {
+      leadQuery = leadQuery.eq('id', effectiveLeadId);
     } else if (transaction_id) {
       leadQuery = leadQuery.eq('transaction_id', transaction_id);
     } else if (email) {
@@ -76,7 +82,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { 
           success: false, 
-          error: 'Unable to identify lead. Please provide lead_id, transaction_id, email, or phone.' 
+          error: 'Unable to identify lead. Please provide lead_id, compliance_lead_id, transaction_id, email, or phone.' 
         },
         { status: 400 }
       );

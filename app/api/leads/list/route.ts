@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
     const startDate = url.searchParams.get('startDate');
     const endDate = url.searchParams.get('endDate');
     const status = url.searchParams.get('status');
+    const list_id = url.searchParams.get('list_id'); // Add list_id filter for efficient revenue tracking
     
     // Calculate pagination values
     const from = (page - 1) * pageSize;
@@ -69,11 +70,27 @@ export async function GET(request: NextRequest) {
     }
     
     if (startDate && endDate) {
-      query = query.gte('created_at', startDate).lte('created_at', endDate);
+      // Convert date strings to full day ranges in EST timezone
+      // startDate: beginning of day in EST (e.g., 2025-06-16 00:00:00 EST)
+      // endDate: end of day in EST (e.g., 2025-06-16 23:59:59 EST)
+      
+      // Create start timestamp: YYYY-MM-DD 00:00:00 EST
+      const startTimestamp = `${startDate}T00:00:00-05:00`; // EST is UTC-5 (or UTC-4 during DST)
+      
+      // Create end timestamp: YYYY-MM-DD 23:59:59 EST  
+      const endTimestamp = `${endDate}T23:59:59-05:00`;
+      
+      console.log(`Date filtering: ${startTimestamp} to ${endTimestamp}`);
+      
+      query = query.gte('created_at', startTimestamp).lte('created_at', endTimestamp);
     }
     
     if (status) {
       query = query.eq('status', status);
+    }
+    
+    if (list_id) {
+      query = query.eq('list_id', list_id);
     }
     
     // Apply pagination
