@@ -8,6 +8,8 @@ import { format } from 'date-fns';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 
+// Note: Backend API uses EST timezone (-05:00) for date filtering
+
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 const { Option } = Select;

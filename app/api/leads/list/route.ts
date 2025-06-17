@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
       // Since Supabase doesn't easily support complex date functions in filters,
       // we'll fetch leads and filter them in the application
       
-      // Create a separate query to get ALL leads matching the current filters
+      // Create a separate query to get ALL matching leads
       // Don't use pagination limits - we need ALL matching leads for accurate weekend count
       let weekendQuery = supabase
         .from('leads')
@@ -146,20 +146,26 @@ export async function GET(request: NextRequest) {
         weekendQuery = weekendQuery.eq('policy_status', policy_status);
       }
       
-      // Execute the weekend query to get ALL matching leads
-      const { data: allLeads, error: fetchError } = await weekendQuery;
-      
-      if (fetchError) {
-        console.error('Error fetching leads for weekend filtering:', fetchError);
-        return NextResponse.json({
-          success: false,
-          error: fetchError.message,
-          data: []
-        });
+      // Fetch all pages of results
+      const allResults = [];
+      let offset = 0;
+      while (true) {
+        const { data, error } = await weekendQuery.range(offset, offset + 999);
+        if (error) {
+          console.error('Error fetching leads for weekend filtering:', error);
+          return NextResponse.json({
+            success: false,
+            error: error.message,
+            data: []
+          });
+        }
+        allResults.push(...data);
+        if (data.length < 1000) break;
+        offset += 1000;
       }
       
       // Filter leads to only weekends (Saturday = 6, Sunday = 0)
-      const weekendLeads = (allLeads || []).filter(lead => {
+      const weekendLeads = allResults.filter(lead => {
         // Use timezone-aware date parsing to ensure consistent day-of-week calculation
         const leadDate = new Date(lead.created_at);
         // Get day of week in UTC to avoid timezone issues
@@ -167,7 +173,7 @@ export async function GET(request: NextRequest) {
         return dayOfWeek === 0 || dayOfWeek === 6; // Sunday or Saturday
       });
       
-      console.log(`Weekend filtering for list_id=${list_id}, startDate=${startDate}, endDate=${endDate}: Found ${weekendLeads.length} weekend leads out of ${allLeads?.length || 0} total leads`);
+      console.log(`Weekend filtering for list_id=${list_id}, startDate=${startDate}, endDate=${endDate}: Found ${weekendLeads.length} weekend leads out of ${allResults.length} total leads`);
       
       // For weekend_only requests, we typically only need the count
       // Return the weekend leads but slice to pageSize for consistency
@@ -186,24 +192,27 @@ export async function GET(request: NextRequest) {
       });
     }
     
-    // Apply pagination
-    query = query.range(from, to);
-    
-    // Execute the query
-    const { data: leads, error, count } = await query;
-      
-    if (error) {
-      console.error('Error fetching from leads table:', error);
-      console.log('Falling back to mock leads data');
-      return NextResponse.json({
-        success: false,
-        error: error.message,
-        data: getMockLeads(pageSize)
-      });
+    // Fetch all pages of results
+    const allResults = [];
+    let offset = 0;
+    while (true) {
+      const { data, error, count } = await query.range(offset, offset + 999);
+      if (error) {
+        console.error('Error fetching from leads table:', error);
+        console.log('Falling back to mock leads data');
+        return NextResponse.json({
+          success: false,
+          error: error.message,
+          data: getMockLeads(pageSize)
+        });
+      }
+      allResults.push(...data);
+      if (data.length < 1000) break;
+      offset += 1000;
     }
     
     // Process leads to ensure custom_fields is properly JSON parsed
-    const processedLeads = leads.map(lead => ({
+    const processedLeads = allResults.map(lead => ({
       ...lead,
       custom_fields: lead.custom_fields ? 
         (typeof lead.custom_fields === 'string' ? 
@@ -211,17 +220,17 @@ export async function GET(request: NextRequest) {
         null
     }));
     
-    console.log(`Successfully fetched ${leads?.length || 0} leads (total: ${count || 'unknown'})`);
+    console.log(`Successfully fetched ${processedLeads.length} leads (total: ${processedLeads.length})`);
     // Return in a format that's compatible with the home page expectations
     return NextResponse.json({
       success: true,
-      data: processedLeads || [],
-      leads: processedLeads || [], // For backward compatibility
+      data: processedLeads.slice(from, from + pageSize),
+      leads: processedLeads.slice(from, from + pageSize), // For backward compatibility
       pagination: {
         page,
         pageSize,
-        total: count || 0,
-        totalPages: count ? Math.ceil(count / pageSize) : 0
+        total: processedLeads.length,
+        totalPages: Math.ceil(processedLeads.length / pageSize)
       }
     });
   } catch (error: any) {
