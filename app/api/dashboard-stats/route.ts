@@ -1,9 +1,28 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
-import { startOfDay } from 'date-fns';
 
 // Force dynamic rendering instead of static generation
 export const dynamic = 'force-dynamic';
+
+// Helper function to get "today" in EST timezone consistently
+function getTodayInEST() {
+  const now = new Date();
+  // Convert to EST (UTC-5, or UTC-4 during DST)
+  // For simplicity, we'll use UTC-5 (EST) consistently
+  const estOffset = -5 * 60; // EST is UTC-5
+  const estTime = new Date(now.getTime() + (estOffset * 60 * 1000));
+  
+  // Get start of day in EST
+  const year = estTime.getUTCFullYear();
+  const month = estTime.getUTCMonth();
+  const date = estTime.getUTCDate();
+  
+  // Create start of day in EST, then convert back to UTC for database query
+  const startOfDayEST = new Date(Date.UTC(year, month, date));
+  const startOfDayUTC = new Date(startOfDayEST.getTime() - (estOffset * 60 * 1000));
+  
+  return startOfDayUTC.toISOString();
+}
 
 // Generate mock stats data for fallback in case of errors
 function getMockStats() {
@@ -28,11 +47,14 @@ export async function GET() {
     console.log(`Timestamp: ${new Date().toISOString()}`);
     console.log('Node environment:', process.env.NODE_ENV);
     console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL ? 'Set' : 'Not set');
+    
+    // Define the date boundary for 'today'
+    const today = getTodayInEST();
+    console.log('Using EST-based "today" timestamp:', today);
+    console.log('Current server time:', new Date().toISOString());
     console.log('Fetching dashboard stats with Supabase...');
     const supabase = createServerClient();
     
-    // Define the date boundary for 'today'
-    const today = startOfDay(new Date()).toISOString();
     let phoneOptOutCount = 0;
     let phoneOptInsToday = 0;
     let phoneOptOutsToday = 0;
