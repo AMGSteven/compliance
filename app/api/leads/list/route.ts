@@ -39,6 +39,8 @@ export async function GET(request: NextRequest) {
     const endDate = url.searchParams.get('endDate');
     const status = url.searchParams.get('status');
     const list_id = url.searchParams.get('list_id'); // Add list_id filter for efficient revenue tracking
+    const policy_status = url.searchParams.get('policy_status'); // Add policy_status filter for synergy payout tracking
+    const weekend_only = url.searchParams.get('weekend_only') === 'true'; // Add weekend_only filter for exact weekend counts
     
     // Calculate pagination values
     const from = (page - 1) * pageSize;
@@ -91,6 +93,97 @@ export async function GET(request: NextRequest) {
     
     if (list_id) {
       query = query.eq('list_id', list_id);
+    }
+    
+    if (policy_status) {
+      query = query.eq('policy_status', policy_status);
+    }
+    
+    if (weekend_only) {
+      // For weekend_only requests, we need to filter leads by day of week
+      // Since Supabase doesn't easily support complex date functions in filters,
+      // we'll fetch leads and filter them in the application
+      
+      // Create a separate query to get ALL leads matching the current filters
+      // Don't use pagination limits - we need ALL matching leads for accurate weekend count
+      let weekendQuery = supabase
+        .from('leads')
+        .select('created_at, id', { count: 'exact' }) // Only select what we need for efficiency
+        .order('created_at', { ascending: false });
+      
+      // Apply the SAME filters as the main query (except pagination)
+      if (search) {
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(search);
+        
+        if (isUuid) {
+          weekendQuery = weekendQuery.eq('id', search);
+        } else {
+          weekendQuery = weekendQuery.or(
+            `first_name.ilike.%${search}%,` +
+            `last_name.ilike.%${search}%,` +
+            `email.ilike.%${search}%,` +
+            `phone.ilike.%${search}%`
+          );
+        }
+      }
+      
+      if (startDate && endDate) {
+        const startTimestamp = `${startDate}T00:00:00-05:00`;
+        const endTimestamp = `${endDate}T23:59:59-05:00`;
+        console.log(`Weekend detection - Date filtering: ${startTimestamp} to ${endTimestamp}`);
+        weekendQuery = weekendQuery.gte('created_at', startTimestamp).lte('created_at', endTimestamp);
+      }
+      
+      if (status) {
+        weekendQuery = weekendQuery.eq('status', status);
+      }
+      
+      if (list_id) {
+        weekendQuery = weekendQuery.eq('list_id', list_id);
+      }
+      
+      if (policy_status) {
+        weekendQuery = weekendQuery.eq('policy_status', policy_status);
+      }
+      
+      // Execute the weekend query to get ALL matching leads
+      const { data: allLeads, error: fetchError } = await weekendQuery;
+      
+      if (fetchError) {
+        console.error('Error fetching leads for weekend filtering:', fetchError);
+        return NextResponse.json({
+          success: false,
+          error: fetchError.message,
+          data: []
+        });
+      }
+      
+      // Filter leads to only weekends (Saturday = 6, Sunday = 0)
+      const weekendLeads = (allLeads || []).filter(lead => {
+        // Use timezone-aware date parsing to ensure consistent day-of-week calculation
+        const leadDate = new Date(lead.created_at);
+        // Get day of week in UTC to avoid timezone issues
+        const dayOfWeek = leadDate.getUTCDay(); // 0 = Sunday, 6 = Saturday
+        return dayOfWeek === 0 || dayOfWeek === 6; // Sunday or Saturday
+      });
+      
+      console.log(`Weekend filtering for list_id=${list_id}, startDate=${startDate}, endDate=${endDate}: Found ${weekendLeads.length} weekend leads out of ${allLeads?.length || 0} total leads`);
+      
+      // For weekend_only requests, we typically only need the count
+      // Return the weekend leads but slice to pageSize for consistency
+      const paginatedWeekendLeads = weekendLeads.slice(from, from + pageSize);
+      
+      return NextResponse.json({
+        success: true,
+        data: paginatedWeekendLeads,
+        leads: paginatedWeekendLeads,
+        pagination: {
+          page,
+          pageSize,
+          total: weekendLeads.length, // This is the key - the total count of weekend leads
+          totalPages: Math.ceil(weekendLeads.length / pageSize)
+        }
+      });
     }
     
     // Apply pagination

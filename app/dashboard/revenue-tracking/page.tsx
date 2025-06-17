@@ -31,6 +31,7 @@ interface Lead {
   created_at: string;
   list_id: string;
   campaign_id: string;
+  policy_status?: string;
   [key: string]: any;
 }
 
@@ -43,6 +44,8 @@ interface RevenueData {
   total_revenue: number;
   weekend_leads?: number;
   weekday_leads?: number;
+  synergy_issued_leads?: number;
+  synergy_payout?: number;
 }
 
 export default function RevenueTrackingPage() {
@@ -54,6 +57,8 @@ export default function RevenueTrackingPage() {
   const [totalLeads, setTotalLeads] = useState<number>(0);
   const [totalWeekdayLeads, setTotalWeekdayLeads] = useState<number>(0);
   const [totalWeekendLeads, setTotalWeekendLeads] = useState<number>(0);
+  const [totalSynergyIssuedLeads, setTotalSynergyIssuedLeads] = useState<number>(0);
+  const [totalSynergyPayout, setTotalSynergyPayout] = useState<number>(0);
 
   useEffect(() => {
     fetchRevenueData();
@@ -174,21 +179,23 @@ export default function RevenueTrackingPage() {
         }
       });
       
-      // Now we need to get weekend lead counts and subtract them from revenue
+      // Now we need to get exact weekend lead counts from database (no sampling!)
       // Weekend leads (Saturday/Sunday) should have $0 payout
-      console.log('Calculating weekend leads to exclude from revenue...');
+      console.log('Getting exact weekend lead counts from database...');
       
       const weekendLeadPromises = Object.keys(routingMap).map(async (listId) => {
         try {
-          // Get a sample of leads for this list to check weekend dates
-          const sampleUrl = new URL('/api/leads/list', window.location.origin);
-          sampleUrl.searchParams.append('pageSize', '1000'); // Get more leads to check dates
-          sampleUrl.searchParams.append('list_id', listId);
+          // Create URL to get EXACT weekend lead count for this specific list_id
+          const weekendUrl = new URL('/api/leads/list', window.location.origin);
+          weekendUrl.searchParams.append('pageSize', '1'); // Only need 1 lead to get total count
+          weekendUrl.searchParams.append('page', '1');
+          weekendUrl.searchParams.append('list_id', listId); // Filter by exact list_id
+          weekendUrl.searchParams.append('weekend_only', 'true'); // NEW: Filter for weekend leads only
           
-          // Apply same date filtering as main query
+          // Apply EXACT same date filtering logic as lead count query
           if (timeFrame === 'custom' && dateRange && dateRange[0] && dateRange[1]) {
-            sampleUrl.searchParams.append('startDate', dateRange[0].format('YYYY-MM-DD'));
-            sampleUrl.searchParams.append('endDate', dateRange[1].format('YYYY-MM-DD'));
+            weekendUrl.searchParams.append('startDate', dateRange[0].format('YYYY-MM-DD'));
+            weekendUrl.searchParams.append('endDate', dateRange[1].format('YYYY-MM-DD'));
           } else if (timeFrame !== 'all') {
             const now = dayjs();
             let startDate = now;
@@ -208,47 +215,34 @@ export default function RevenueTrackingPage() {
                 break;
             }
             
-            sampleUrl.searchParams.append('startDate', startDate.format('YYYY-MM-DD'));
-            sampleUrl.searchParams.append('endDate', now.format('YYYY-MM-DD'));
+            weekendUrl.searchParams.append('startDate', startDate.format('YYYY-MM-DD'));
+            weekendUrl.searchParams.append('endDate', now.format('YYYY-MM-DD'));
           }
+          // For 'all' time frame: NO date filters - same as lead count query
           
-          const response = await fetch(sampleUrl.toString(), {
+          console.log(`Weekend count for ${listId} (${timeFrame}): ${weekendUrl.toString()}`);
+          
+          const response = await fetch(weekendUrl.toString(), {
             headers: { 'x-api-key': process.env.NEXT_PUBLIC_API_KEY || 'test_key_123' }
           });
           
           const result = await response.json();
           
-          if (result.success && result.data) {
-            // Count weekend leads (Saturday = 6, Sunday = 0)
-            let weekendCount = 0;
+          if (result.success && result.pagination) {
+            // The pagination.total gives us the EXACT count of weekend leads for this list_id
+            const weekendCount = result.pagination.total;
+            const totalLeads = revenueByListId[listId]?.leads_count || 0;
             
-            result.data.forEach((lead: Lead) => {
-              const leadDate = new Date(lead.created_at);
-              const dayOfWeek = leadDate.getDay(); // 0 = Sunday, 6 = Saturday
-              
-              if (dayOfWeek === 0 || dayOfWeek === 6) {
-                weekendCount++;
-              }
-            });
+            console.log(`${listId}: ${weekendCount} weekend leads out of ${totalLeads} total leads (exact count from database)`);
             
-            // If we have more leads than our sample, estimate weekend count proportionally
-            const totalLeadsForList = revenueByListId[listId]?.leads_count || 0;
-            const sampleSize = result.data.length;
-            
-            if (totalLeadsForList > sampleSize && sampleSize > 0) {
-              const weekendRatio = weekendCount / sampleSize;
-              weekendCount = Math.round(totalLeadsForList * weekendRatio);
-            }
-            
-            console.log(`List ${listId}: ${weekendCount} weekend leads out of ${totalLeadsForList} total`);
             return { listId, weekendCount };
-            
           } else {
+            console.error(`Failed to get weekend count for List ID ${listId}:`, result.error);
             return { listId, weekendCount: 0 };
           }
           
         } catch (error) {
-          console.error(`Error counting weekend leads for List ID ${listId}:`, error);
+          console.error(`Error getting weekend count for List ID ${listId}:`, error);
           return { listId, weekendCount: 0 };
         }
       });
@@ -272,6 +266,75 @@ export default function RevenueTrackingPage() {
         }
       });
       
+      // Now we need to get issued lead counts for synergy payout
+      console.log('Calculating issued leads for synergy payout...');
+      
+      const issuedLeadPromises = Object.keys(routingMap).map(async (listId) => {
+        try {
+          // Get issued lead count for this list using pagination total
+          const issuedUrl = new URL('/api/leads/list', window.location.origin);
+          issuedUrl.searchParams.append('pageSize', '1'); // We only need the pagination total
+          issuedUrl.searchParams.append('list_id', listId);
+          issuedUrl.searchParams.append('policy_status', 'issued');
+          
+          // Apply same date filtering as main query
+          if (timeFrame === 'custom' && dateRange && dateRange[0] && dateRange[1]) {
+            issuedUrl.searchParams.append('startDate', dateRange[0].format('YYYY-MM-DD'));
+            issuedUrl.searchParams.append('endDate', dateRange[1].format('YYYY-MM-DD'));
+          } else if (timeFrame !== 'all') {
+            const now = dayjs();
+            let startDate = now;
+            
+            switch (timeFrame) {
+              case 'week':
+                startDate = now.subtract(7, 'days');
+                break;
+              case 'month':
+                startDate = now.subtract(30, 'days');
+                break;
+              case 'quarter':
+                startDate = now.subtract(90, 'days');
+                break;
+              case 'year':
+                startDate = now.subtract(365, 'days');
+                break;
+            }
+            
+            issuedUrl.searchParams.append('startDate', startDate.format('YYYY-MM-DD'));
+            issuedUrl.searchParams.append('endDate', now.format('YYYY-MM-DD'));
+          }
+          
+          const response = await fetch(issuedUrl.toString(), {
+            headers: { 'x-api-key': process.env.NEXT_PUBLIC_API_KEY || 'test_key_123' }
+          });
+          
+          const result = await response.json();
+          
+          if (result.success && result.pagination) {
+            // Use pagination.total for exact count of issued leads
+            const issuedCount = result.pagination.total;
+            console.log(`List ${listId}: ${issuedCount} issued leads`);
+            return { listId, issuedCount };
+          } else {
+            return { listId, issuedCount: 0 };
+          }
+          
+        } catch (error) {
+          console.error(`Error counting issued leads for List ID ${listId}:`, error);
+          return { listId, issuedCount: 0 };
+        }
+      });
+      
+      const issuedCounts = await Promise.all(issuedLeadPromises);
+      
+      // Update revenue data with issued lead counts for synergy payout
+      issuedCounts.forEach(({ listId, issuedCount }) => {
+        if (revenueByListId[listId]) {
+          revenueByListId[listId].synergy_issued_leads = issuedCount;
+          revenueByListId[listId].synergy_payout = issuedCount * 120;
+        }
+      });
+      
       // Convert to array and sort by revenue
       const revenueArray = Object.values(revenueByListId)
         .sort((a, b) => b.total_revenue - a.total_revenue);
@@ -283,11 +346,15 @@ export default function RevenueTrackingPage() {
       const totalLeadsCount = revenueArray.reduce((sum, item) => sum + item.leads_count, 0);
       const totalWeekdayLeadsCount = revenueArray.reduce((sum, item) => sum + (item.weekday_leads || item.leads_count), 0);
       const totalWeekendLeadsCount = revenueArray.reduce((sum, item) => sum + (item.weekend_leads || 0), 0);
+      const totalSynergyIssuedLeadsCount = revenueArray.reduce((sum, item) => sum + (item.synergy_issued_leads || 0), 0);
+      const totalSynergyPayoutCount = revenueArray.reduce((sum, item) => sum + (item.synergy_payout || 0), 0);
       
       setTotalRevenue(totalRev);
       setTotalLeads(totalLeadsCount);
       setTotalWeekdayLeads(totalWeekdayLeadsCount);
       setTotalWeekendLeads(totalWeekendLeadsCount);
+      setTotalSynergyIssuedLeads(totalSynergyIssuedLeadsCount);
+      setTotalSynergyPayout(totalSynergyPayoutCount);
       
       console.log(`Revenue calculation complete:`, {
         totalRevenue: totalRev,
@@ -321,9 +388,9 @@ export default function RevenueTrackingPage() {
   const handleExport = () => {
     // Export functionality
     const csvContent = [
-      'List ID,Description,Total Leads,Weekday Leads,Weekend Leads,Cost Per Lead,Total Revenue',
+      'List ID,Description,Total Leads,Weekday Leads,Weekend Leads,Cost Per Lead,Total Revenue,Synergy Issued Leads,Synergy Payout',
       ...revenueData.map(item => 
-        `${item.list_id},"${item.description}",${item.leads_count},${item.weekday_leads || item.leads_count},${item.weekend_leads || 0},$${item.cost_per_lead.toFixed(2)},$${item.total_revenue.toFixed(2)}`
+        `${item.list_id},"${item.description}",${item.leads_count},${item.weekday_leads || item.leads_count},${item.weekend_leads || 0},$${item.cost_per_lead.toFixed(2)},$${item.total_revenue.toFixed(2)},${item.synergy_issued_leads || 0},$${(item.synergy_payout || 0).toFixed(2)}`
       )
     ].join('\n');
     
@@ -392,14 +459,34 @@ export default function RevenueTrackingPage() {
       render: (value: number) => `$${value.toFixed(2)}`,
       sorter: (a: RevenueData, b: RevenueData) => a.total_revenue - b.total_revenue,
     },
+    {
+      title: 'Synergy Issued Leads',
+      dataIndex: 'synergy_issued_leads',
+      key: 'synergy_issued_leads',
+      width: '12%',
+      render: (value: number | undefined) => 
+        value !== undefined ? value : 0,
+      sorter: (a: RevenueData, b: RevenueData) => 
+        (a.synergy_issued_leads || 0) - (b.synergy_issued_leads || 0),
+    },
+    {
+      title: 'Synergy Payout',
+      dataIndex: 'synergy_payout',
+      key: 'synergy_payout',
+      width: '12%',
+      render: (value: number | undefined) => 
+        value !== undefined ? `$${value.toFixed(2)}` : '$0.00',
+      sorter: (a: RevenueData, b: RevenueData) => 
+        (a.synergy_payout || 0) - (b.synergy_payout || 0),
+    },
   ];
 
   return (
     <div style={{ padding: '20px' }}>
       <Title level={2}>Revenue Tracking Dashboard</Title>
       
-      <Row gutter={16} style={{ marginBottom: '24px' }}>
-        <Col span={6}>
+      <Row gutter={12} style={{ marginBottom: '24px' }}>
+        <Col span={4}>
           <Card>
             <Statistic
               title="Total Revenue"
@@ -411,7 +498,7 @@ export default function RevenueTrackingPage() {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col span={4}>
           <Card>
             <Statistic
               title="Total Leads Processed"
@@ -421,7 +508,7 @@ export default function RevenueTrackingPage() {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col span={4}>
           <Card>
             <Statistic
               title="Average Revenue Per Lead"
@@ -429,17 +516,40 @@ export default function RevenueTrackingPage() {
               precision={2}
               valueStyle={{ color: '#722ed1' }}
               prefix={<DollarOutlined />}
-              suffix="per lead"
+              suffix=""
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col span={4}>
+          <Card>
+            <Statistic
+              title="Total Synergy Payout"
+              value={totalSynergyPayout}
+              precision={2}
+              valueStyle={{ color: '#fa8c16' }}
+              prefix={<DollarOutlined />}
+              suffix=""
+            />
+          </Card>
+        </Col>
+        <Col span={4}>
+          <Card>
+            <Statistic
+              title="Issued Rate"
+              value={totalLeads > 0 ? (totalSynergyIssuedLeads / totalLeads) * 100 : 0}
+              precision={2}
+              valueStyle={{ color: '#13c2c2' }}
+              suffix="%"
+            />
+          </Card>
+        </Col>
+        <Col span={4}>
           <Card>
             <Statistic
               title="Active Lists"
-              value={revenueData.length}
-              valueStyle={{ color: '#f5222d' }}
-              suffix="lists"
+              value={5}
+              valueStyle={{ color: '#cf1322' }}
+              suffix="routings"
             />
           </Card>
         </Col>
@@ -506,6 +616,8 @@ export default function RevenueTrackingPage() {
                 <Table.Summary.Cell index={4}><strong>{totalWeekendLeads}</strong></Table.Summary.Cell>
                 <Table.Summary.Cell index={5}><strong>-</strong></Table.Summary.Cell>
                 <Table.Summary.Cell index={6}><strong>${totalRevenue.toFixed(2)}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={7}><strong>{totalSynergyIssuedLeads}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={8}><strong>${totalSynergyPayout.toFixed(2)}</strong></Table.Summary.Cell>
               </Table.Summary.Row>
             )}
           />
