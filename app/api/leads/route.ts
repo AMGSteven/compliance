@@ -14,7 +14,6 @@ const ALLOWED_STATES = ['AL', 'AR', 'AZ', 'IN', 'KS', 'LA', 'MO', 'MS', 'OH', 'S
 
 // Test constants for bypassing compliance and forcing routing
 const TEST_PHONE_NUMBER = '6507769592'; // User's number for testing
-const PITCH_BPO_TEST_PHONE = '7274883428'; // Special phone number for testing Pitch BPO
 const TEST_JUICED_MEDIA_LIST_ID = 'a38881ab-93b2-4750-9f9c-92ae6cd10b7e'; // Juiced Media List ID
 
 // Dialer type constants
@@ -43,11 +42,21 @@ async function forwardToPitchBPO(params: {
   bidValue: number,
   routingData?: any
 }) {
-  const { data, phone, firstName, lastName, email, zipCode, state, bidValue } = params;
+  const { data, listId, phone, firstName, lastName, email, zipCode, state, bidValue } = params;
   const leadId = data[0].id;
   
   console.log('Forwarding lead to Pitch BPO dialer');
   console.log('Using fixed Pitch BPO token: 70942646-125b-4ddd-96fc-b9a142c698b8');
+  
+  // Determine SubID based on list_id
+  let subId = '';
+  if (listId === 'pitch-bpo-list-1750179149747') {
+    subId = 'shf';
+  } else if (listId === 'pitch-bpo-list-1749233817305') {
+    subId = 'opg';
+  }
+  
+  console.log(`Using SubID: "${subId}" for list_id: ${listId}`);
   
   try {
     // Create the URL with query parameters for Pitch BPO according to their documentation
@@ -59,6 +68,11 @@ async function forwardToPitchBPO(params: {
     pitchBPOUrl.searchParams.append('accid', 'pitchperfect'); // Confirmed correct account ID
     pitchBPOUrl.searchParams.append('Campaign', PITCH_BPO_CAMPAIGN); // Required: existing campaign
     pitchBPOUrl.searchParams.append('Subcampaign', PITCH_BPO_SUBCAMPAIGN); // Optional: subcampaign
+    
+    // Add SubID parameter if determined
+    if (subId) {
+      pitchBPOUrl.searchParams.append('SubID', subId);
+    }
     
     // Add lead information
     pitchBPOUrl.searchParams.append('PrimaryPhone', phone); // Required: phone number
@@ -313,32 +327,24 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     if (!isTestModeForPhoneNumber || normalizedPhoneForComplianceCheck !== TEST_PHONE_NUMBER) {
       console.log(`[DUPLICATE CHECK] Checking if phone ${normalizedPhoneForComplianceCheck} was submitted in the past 30 days`);
       
-      // Check if this is our special Pitch BPO test number
-      const isPitchBPOTest = normalizedPhoneForComplianceCheck === PITCH_BPO_TEST_PHONE;
+      const duplicateCheck = await checkForDuplicateLead(normalizedPhoneForComplianceCheck);
       
-      // Skip duplicate check for Pitch BPO test number
-      if (!isPitchBPOTest) {
-        const duplicateCheck = await checkForDuplicateLead(normalizedPhoneForComplianceCheck);
-        
-        if (duplicateCheck.isDuplicate) {
-          console.log(`[DUPLICATE CHECK] BLOCKING LEAD: Phone ${normalizedPhoneForComplianceCheck} was submitted ${duplicateCheck.details?.daysAgo} days ago`);
-          return NextResponse.json(
-            {
-              success: false,
-              bid: 0.00,
-              error: `Duplicate lead: Phone number was submitted within the past 30 days`,
-              details: {
-                phoneNumber: normalizedPhoneForComplianceCheck,
-                originalSubmissionDate: duplicateCheck.details?.originalSubmissionDate,
-                daysAgo: duplicateCheck.details?.daysAgo,
-                source: 'shift44' // Adding source info for debugging
-              }
-            },
-            { status: 400 }
-          );
-        }
-      } else {
-        console.log(`[PITCH BPO TEST] Bypassing duplicate check for special test number ${PITCH_BPO_TEST_PHONE}`);
+      if (duplicateCheck.isDuplicate) {
+        console.log(`[DUPLICATE CHECK] BLOCKING LEAD: Phone ${normalizedPhoneForComplianceCheck} was submitted ${duplicateCheck.details?.daysAgo} days ago`);
+        return NextResponse.json(
+          {
+            success: false,
+            bid: 0.00,
+            error: `Duplicate lead: Phone number was submitted within the past 30 days`,
+            details: {
+              phoneNumber: normalizedPhoneForComplianceCheck,
+              originalSubmissionDate: duplicateCheck.details?.originalSubmissionDate,
+              daysAgo: duplicateCheck.details?.daysAgo,
+              source: 'shift44' // Adding source info for debugging
+            }
+          },
+          { status: 400 }
+        );
       }
       
       console.log(`[DUPLICATE CHECK] Phone ${normalizedPhoneForComplianceCheck} is not a duplicate`);
@@ -351,8 +357,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     let phoneValidationResult: { isCompliant: boolean; reason?: string; details: Record<string, any> };
     let isCompliant: boolean;
 
-    if ((isTestModeForPhoneNumber && normalizedPhoneForComplianceCheck === TEST_PHONE_NUMBER) || 
-        normalizedPhoneForComplianceCheck === PITCH_BPO_TEST_PHONE) {
+    if ((isTestModeForPhoneNumber && normalizedPhoneForComplianceCheck === TEST_PHONE_NUMBER)) {
       console.log(`[TEST MODE] In handleStandardLead: Bypassing compliance checks for special test number.`);
       complianceReport = { 
         isCompliant: true, 
