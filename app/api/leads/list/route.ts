@@ -41,10 +41,15 @@ export async function GET(request: NextRequest) {
     const list_id = url.searchParams.get('list_id'); // Add list_id filter for efficient revenue tracking
     const policy_status = url.searchParams.get('policy_status'); // Add policy_status filter for synergy payout tracking
     const weekend_only = url.searchParams.get('weekend_only') === 'true'; // Add weekend_only filter for exact weekend counts
+    const use_postback_date = url.searchParams.get('use_postback_date') === 'true'; // Filter by postback date instead of creation date for revenue attribution
     
     // Calculate pagination values
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
+    
+    // Determine which date field to use for filtering
+    const dateField = use_postback_date ? 'policy_postback_date' : 'created_at';
+    console.log(`Using date field: ${dateField} (use_postback_date=${use_postback_date})`);
     
     // Start building the query
     let query = supabase
@@ -84,7 +89,7 @@ export async function GET(request: NextRequest) {
       
       console.log(`Date filtering: ${startTimestamp} to ${endTimestamp}`);
       
-      query = query.gte('created_at', startTimestamp).lte('created_at', endTimestamp);
+      query = query.gte(dateField, startTimestamp).lte(dateField, endTimestamp);
     }
     
     if (status) {
@@ -108,8 +113,8 @@ export async function GET(request: NextRequest) {
       // Don't use pagination limits - we need ALL matching leads for accurate weekend count
       let weekendQuery = supabase
         .from('leads')
-        .select('created_at, id', { count: 'exact' }) // Only select what we need for efficiency
-        .order('created_at', { ascending: false });
+        .select('created_at, policy_postback_date, id', { count: 'exact' }) // Select both date fields to support either filtering mode
+        .order(dateField, { ascending: false });
       
       // Apply the SAME filters as the main query (except pagination)
       if (search) {
@@ -131,7 +136,7 @@ export async function GET(request: NextRequest) {
         const startTimestamp = `${startDate}T00:00:00-05:00`;
         const endTimestamp = `${endDate}T23:59:59-05:00`;
         console.log(`Weekend detection - Date filtering: ${startTimestamp} to ${endTimestamp}`);
-        weekendQuery = weekendQuery.gte('created_at', startTimestamp).lte('created_at', endTimestamp);
+        weekendQuery = weekendQuery.gte(dateField, startTimestamp).lte(dateField, endTimestamp);
       }
       
       if (status) {
@@ -167,7 +172,7 @@ export async function GET(request: NextRequest) {
       // Filter leads to only weekends (Saturday = 6, Sunday = 0)
       const weekendLeads = allResults.filter(lead => {
         // Use timezone-aware date parsing to ensure consistent day-of-week calculation
-        const leadDate = new Date(lead.created_at);
+        const leadDate = use_postback_date ? new Date(lead.policy_postback_date) : new Date(lead.created_at);
         // Get day of week in UTC to avoid timezone issues
         const dayOfWeek = leadDate.getUTCDay(); // 0 = Sunday, 6 = Saturday
         return dayOfWeek === 0 || dayOfWeek === 6; // Sunday or Saturday

@@ -28,6 +28,13 @@ export async function POST(request: Request) {
       email,
       phone,
       policy_status,
+      policy_id,
+      policy_carrier,
+      policy_type,
+      policy_premium,
+      policy_commission,
+      policy_effective_date,
+      policy_notes,
       api_key
     } = body;
 
@@ -108,13 +115,17 @@ export async function POST(request: Request) {
     }
     
     const leadId = leads[0].id;
+    const postbackDate = new Date().toISOString();
+    
     console.log(`Found lead with ID ${leadId} for policy status update: ${validStatus}`);
     
-    // Update the lead record with the policy status
+    // Update the lead record with the policy status and postback date
     const { error: updateError } = await supabase
       .from('leads')
       .update({
-        policy_status: validStatus
+        policy_status: validStatus,
+        updated_at: postbackDate,
+        policy_postback_date: postbackDate  // Track when postback was received for revenue attribution
       })
       .eq('id', leadId);
     
@@ -126,11 +137,30 @@ export async function POST(request: Request) {
       );
     }
     
+    // Record the postback event in policy_postbacks table for audit trail
+    const { error: postbackError } = await supabase
+      .from('policy_postbacks')
+      .insert([{
+        lead_id: leadId,
+        compliance_lead_id: compliance_lead_id || null,
+        policy_status: validStatus,
+        payload: body,
+        created_at: postbackDate
+      }]);
+    
+    if (postbackError) {
+      console.error('Error recording postback event:', postbackError);
+      // Don't fail the request if audit logging fails, but log the error
+    }
+    
+    console.log(`✅ Policy postback processed successfully: ${validStatus} for lead ${leadId} at ${postbackDate}`);
+    
     return NextResponse.json({
       success: true,
       message: 'Policy status updated successfully',
       policy_status: validStatus,
-      lead_id: leadId
+      lead_id: leadId,
+      postback_date: postbackDate
     });
   } catch (error) {
     console.error('Error processing policy postback:', error);

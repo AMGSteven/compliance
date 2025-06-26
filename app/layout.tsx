@@ -40,6 +40,12 @@ export default function RootLayout({
                     <Link href="/compliance" className="nav-link">
                       Multi Source Compliance
                     </Link>
+                    <Link href="/compliance/batch" className="nav-link">
+                      CSV Batch Compliance
+                    </Link>
+                    <Link href="/compliance/batch-fast" className="nav-link">
+                      Fast Batch (25k+ Records)
+                    </Link>
                     <Link href="/dashboard/list-routings" className="nav-link">
                       List Routings
                     </Link>

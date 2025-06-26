@@ -71,7 +71,8 @@ async function forwardToPitchBPO(params: {
     
     // Add SubID parameter if determined
     if (subId) {
-      pitchBPOUrl.searchParams.append('SubID', subId);
+      pitchBPOUrl.searchParams.append('adv_SubID', subId);
+      pitchBPOUrl.searchParams.append('adv_SubID2', subId);
     }
     
     // Add lead information

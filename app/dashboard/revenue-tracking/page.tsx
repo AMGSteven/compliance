@@ -43,24 +43,28 @@ interface RevenueData {
   description: string;
   leads_count: number;
   cost_per_lead: number;
-  total_revenue: number;
+  total_lead_costs: number;
   weekend_leads?: number;
   weekday_leads?: number;
   synergy_issued_leads?: number;
   synergy_payout?: number;
+  ai_costs_allocated?: number;
+  net_profit?: number;
 }
 
 export default function RevenueTrackingPage() {
   const [revenueData, setRevenueData] = useState<RevenueData[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null);
-  const [timeFrame, setTimeFrame] = useState<string>('all');
-  const [totalRevenue, setTotalRevenue] = useState<number>(0);
+  const [timeFrame, setTimeFrame] = useState<string>('today');
+  const [totalLeadCosts, setTotalLeadCosts] = useState<number>(0);
   const [totalLeads, setTotalLeads] = useState<number>(0);
   const [totalWeekdayLeads, setTotalWeekdayLeads] = useState<number>(0);
   const [totalWeekendLeads, setTotalWeekendLeads] = useState<number>(0);
   const [totalSynergyIssuedLeads, setTotalSynergyIssuedLeads] = useState<number>(0);
   const [totalSynergyPayout, setTotalSynergyPayout] = useState<number>(0);
+  const [blandAICosts, setBlandAICosts] = useState<number>(0);
+  const [blandAILoading, setBlandAILoading] = useState<boolean>(false);
 
   useEffect(() => {
     fetchRevenueData();
@@ -107,7 +111,7 @@ export default function RevenueTrackingPage() {
           description: routing.description || listId,
           leads_count: 0,
           cost_per_lead: routing.bid,
-          total_revenue: 0
+          total_lead_costs: 0
         };
       });
       
@@ -140,6 +144,9 @@ export default function RevenueTrackingPage() {
                 break;
               case 'year':
                 startDate = now.subtract(365, 'days');
+                break;
+              case 'today':
+                startDate = now.startOf('day');
                 break;
             }
             
@@ -177,7 +184,7 @@ export default function RevenueTrackingPage() {
       leadCounts.forEach(({ listId, count }) => {
         if (revenueByListId[listId]) {
           revenueByListId[listId].leads_count = count;
-          revenueByListId[listId].total_revenue = count * revenueByListId[listId].cost_per_lead;
+          revenueByListId[listId].total_lead_costs = count * revenueByListId[listId].cost_per_lead;
         }
       });
       
@@ -214,6 +221,9 @@ export default function RevenueTrackingPage() {
                 break;
               case 'year':
                 startDate = now.subtract(365, 'days');
+                break;
+              case 'today':
+                startDate = now.startOf('day');
                 break;
             }
             
@@ -258,7 +268,7 @@ export default function RevenueTrackingPage() {
           const weekdayLeads = totalLeads - weekendCount;
           
           // Update to show weekday leads only in revenue calculation
-          revenueByListId[listId].total_revenue = weekdayLeads * revenueByListId[listId].cost_per_lead;
+          revenueByListId[listId].total_lead_costs = weekdayLeads * revenueByListId[listId].cost_per_lead;
           
           // Add weekend info for display
           revenueByListId[listId].weekend_leads = weekendCount;
@@ -278,30 +288,38 @@ export default function RevenueTrackingPage() {
           issuedUrl.searchParams.append('pageSize', '1'); // We only need the pagination total
           issuedUrl.searchParams.append('list_id', listId);
           issuedUrl.searchParams.append('policy_status', 'issued');
-          
-          // Apply same date filtering as main query
-          if (timeFrame === 'custom' && dateRange && dateRange[0] && dateRange[1]) {
+          issuedUrl.searchParams.append('use_postback_date', 'true'); // Use postback date for revenue attribution
+
+          // Add date filtering based on the selected range
+          if (dateRange && dateRange.length === 2) {
             issuedUrl.searchParams.append('startDate', dateRange[0].format('YYYY-MM-DD'));
             issuedUrl.searchParams.append('endDate', dateRange[1].format('YYYY-MM-DD'));
-          } else if (timeFrame !== 'all') {
-            const now = dayjs();
-            let startDate = now;
-            
+          } else {
+            // Default date range logic for synergy calculation
+            let startDate;
             switch (timeFrame) {
-              case 'week':
-                startDate = now.subtract(7, 'days');
+              case 'today':
+                startDate = dayjs().startOf('day');
                 break;
-              case 'month':
-                startDate = now.subtract(30, 'days');
+              case 'yesterday':
+                startDate = dayjs().subtract(1, 'day').startOf('day');
                 break;
-              case 'quarter':
-                startDate = now.subtract(90, 'days');
+              case 'thisWeek':
+                startDate = dayjs().startOf('week');
                 break;
-              case 'year':
-                startDate = now.subtract(365, 'days');
+              case 'lastWeek':
+                startDate = dayjs().subtract(1, 'week').startOf('week');
                 break;
+              case 'thisMonth':
+                startDate = dayjs().startOf('month');
+                break;
+              case 'lastMonth':
+                startDate = dayjs().subtract(1, 'month').startOf('month');
+                break;
+              default:
+                startDate = dayjs().startOf('month'); // Default to this month
             }
-            
+            const now = dayjs();
             issuedUrl.searchParams.append('startDate', startDate.format('YYYY-MM-DD'));
             issuedUrl.searchParams.append('endDate', now.format('YYYY-MM-DD'));
           }
@@ -339,35 +357,86 @@ export default function RevenueTrackingPage() {
       
       // Convert to array and sort by revenue
       const revenueArray = Object.values(revenueByListId)
-        .sort((a, b) => b.total_revenue - a.total_revenue);
+        .sort((a, b) => b.total_lead_costs - a.total_lead_costs);
+      
+      // Calculate AI costs allocation and net profit for each list ID
+      const totalWeekdayLeadsForAllocation = revenueArray.reduce((sum, item) => sum + (item.weekday_leads || item.leads_count), 0);
+      
+      revenueArray.forEach(item => {
+        // Allocate AI costs proportionally based on weekday leads
+        const weekdayLeadsForThisList = item.weekday_leads || item.leads_count;
+        item.ai_costs_allocated = totalWeekdayLeadsForAllocation > 0 
+          ? (weekdayLeadsForThisList / totalWeekdayLeadsForAllocation) * blandAICosts 
+          : 0;
+        
+        // Calculate net profit: Synergy Payout - Lead Costs - AI Costs Allocated
+        item.net_profit = (item.synergy_payout || 0) - item.total_lead_costs - item.ai_costs_allocated;
+      });
       
       setRevenueData(revenueArray);
       
       // Calculate totals
-      const totalRev = revenueArray.reduce((sum, item) => sum + item.total_revenue, 0);
+      const totalRev = revenueArray.reduce((sum, item) => sum + item.total_lead_costs, 0);
       const totalLeadsCount = revenueArray.reduce((sum, item) => sum + item.leads_count, 0);
       const totalWeekdayLeadsCount = revenueArray.reduce((sum, item) => sum + (item.weekday_leads || item.leads_count), 0);
       const totalWeekendLeadsCount = revenueArray.reduce((sum, item) => sum + (item.weekend_leads || 0), 0);
       const totalSynergyIssuedLeadsCount = revenueArray.reduce((sum, item) => sum + (item.synergy_issued_leads || 0), 0);
       const totalSynergyPayoutCount = revenueArray.reduce((sum, item) => sum + (item.synergy_payout || 0), 0);
       
-      setTotalRevenue(totalRev);
+      setTotalLeadCosts(totalRev);
       setTotalLeads(totalLeadsCount);
       setTotalWeekdayLeads(totalWeekdayLeadsCount);
       setTotalWeekendLeads(totalWeekendLeadsCount);
       setTotalSynergyIssuedLeads(totalSynergyIssuedLeadsCount);
       setTotalSynergyPayout(totalSynergyPayoutCount);
       
-      console.log(`Revenue calculation complete:`, {
-        totalRevenue: totalRev,
-        totalLeads: totalLeadsCount,
-        listIds: revenueArray.length
-      });
-      
     } catch (error) {
       console.error('Error fetching revenue data:', error);
     } finally {
       setLoading(false);
+    }
+    
+    // Fetch Bland AI costs asynchronously to not block dashboard loading
+    fetchBlandAICosts();
+  };
+
+  const fetchBlandAICosts = async () => {
+    setBlandAILoading(true);
+      
+    try {
+      console.log('Fetching Bland AI costs using balance tracking...');
+
+      // Use simple balance-based endpoint
+      let period = 'today';
+      if (timeFrame === 'week') period = 'week';
+      else if (timeFrame === 'month') period = 'month';
+      else if (timeFrame === 'all') period = 'all';
+
+      const costUrl = `/api/bland-ai-costs-simple?period=${period}`;
+      const response = await fetch(costUrl, {
+        headers: { 'x-api-key': process.env.NEXT_PUBLIC_API_KEY || 'test_key_123' }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          console.log(`✅ Balance-based costs for ${period}: $${data.totalCost} (${data.totalRecords} records)`);
+          console.log(`💰 Current balance: $${data.currentBalance}, Refill to: $${data.refillTo}`);
+          setBlandAICosts(data.totalCost || 0);
+        } else {
+          console.warn('Balance API returned unsuccessful response:', data.error);
+          setBlandAICosts(0);
+        }
+      } else {
+        console.error('Balance API request failed:', response.status);
+        setBlandAICosts(0);
+      }
+        
+    } catch (error: unknown) {
+      console.error('Error fetching Bland AI costs:', error);
+      setBlandAICosts(0);
+    } finally {
+      setBlandAILoading(false);
     }
   };
 
@@ -390,9 +459,9 @@ export default function RevenueTrackingPage() {
   const handleExport = () => {
     // Export functionality
     const csvContent = [
-      'List ID,Description,Total Leads,Weekday Leads,Weekend Leads,Cost Per Lead,Total Revenue,Synergy Issued Leads,Synergy Payout',
+      'List ID,Description,Total Leads,Weekday Leads,Weekend Leads,Cost Per Lead,Total Lead Costs,Synergy Issued Leads,Synergy Payout,AI Costs Allocated,Net Profit',
       ...revenueData.map(item => 
-        `${item.list_id},"${item.description}",${item.leads_count},${item.weekday_leads || item.leads_count},${item.weekend_leads || 0},$${item.cost_per_lead.toFixed(2)},$${item.total_revenue.toFixed(2)},${item.synergy_issued_leads || 0},$${(item.synergy_payout || 0).toFixed(2)}`
+        `${item.list_id},"${item.description}",${item.leads_count},${item.weekday_leads || item.leads_count},${item.weekend_leads || 0},$${item.cost_per_lead.toFixed(2)},$${item.total_lead_costs.toFixed(2)},${item.synergy_issued_leads || 0},$${(item.synergy_payout || 0).toFixed(2)},$${(item.ai_costs_allocated || 0).toFixed(2)},$${(item.net_profit || 0).toFixed(2)}`
       )
     ].join('\n');
     
@@ -454,12 +523,12 @@ export default function RevenueTrackingPage() {
       sorter: (a: RevenueData, b: RevenueData) => a.cost_per_lead - b.cost_per_lead,
     },
     {
-      title: 'Revenue (Weekdays Only)',
-      dataIndex: 'total_revenue',
-      key: 'total_revenue',
+      title: 'Total Lead Costs',
+      dataIndex: 'total_lead_costs',
+      key: 'total_lead_costs',
       width: '12%',
       render: (value: number) => `$${value.toFixed(2)}`,
-      sorter: (a: RevenueData, b: RevenueData) => a.total_revenue - b.total_revenue,
+      sorter: (a: RevenueData, b: RevenueData) => a.total_lead_costs - b.total_lead_costs,
     },
     {
       title: 'Synergy Issued Leads',
@@ -481,6 +550,26 @@ export default function RevenueTrackingPage() {
       sorter: (a: RevenueData, b: RevenueData) => 
         (a.synergy_payout || 0) - (b.synergy_payout || 0),
     },
+    {
+      title: 'AI Costs Allocated',
+      dataIndex: 'ai_costs_allocated',
+      key: 'ai_costs_allocated',
+      width: '12%',
+      render: (value: number | undefined) => 
+        value !== undefined ? `$${value.toFixed(2)}` : '$0.00',
+      sorter: (a: RevenueData, b: RevenueData) => 
+        (a.ai_costs_allocated || 0) - (b.ai_costs_allocated || 0),
+    },
+    {
+      title: 'Net Profit',
+      dataIndex: 'net_profit',
+      key: 'net_profit',
+      width: '12%',
+      render: (value: number | undefined) => 
+        value !== undefined ? `$${value.toFixed(2)}` : '$0.00',
+      sorter: (a: RevenueData, b: RevenueData) => 
+        (a.net_profit || 0) - (b.net_profit || 0),
+    },
   ];
 
   return (
@@ -491,8 +580,8 @@ export default function RevenueTrackingPage() {
         <Col span={4}>
           <Card>
             <Statistic
-              title="Total Revenue"
-              value={totalRevenue}
+              title="Total Lead Costs"
+              value={totalLeadCosts}
               precision={2}
               valueStyle={{ color: '#3f8600' }}
               prefix={<DollarOutlined />}
@@ -513,8 +602,8 @@ export default function RevenueTrackingPage() {
         <Col span={4}>
           <Card>
             <Statistic
-              title="Average Revenue Per Lead"
-              value={totalWeekdayLeads > 0 ? totalRevenue / totalWeekdayLeads : 0}
+              title="Average Lead Cost"
+              value={totalWeekdayLeads > 0 ? totalLeadCosts / totalWeekdayLeads : 0}
               precision={2}
               valueStyle={{ color: '#722ed1' }}
               prefix={<DollarOutlined />}
@@ -557,6 +646,58 @@ export default function RevenueTrackingPage() {
         </Col>
       </Row>
       
+      {/* Bland AI Costs Section */}
+      <Row gutter={12} style={{ marginBottom: '24px' }}>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Bland AI Costs (Today)"
+              value={blandAICosts}
+              precision={2}
+              valueStyle={{ color: '#cf1322' }}
+              prefix={<DollarOutlined />}
+              suffix=""
+              loading={blandAILoading}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Net Profit"
+              value={totalSynergyPayout - totalLeadCosts - blandAICosts}
+              precision={2}
+              valueStyle={{ color: totalSynergyPayout - totalLeadCosts - blandAICosts >= 0 ? '#3f8600' : '#cf1322' }}
+              prefix={<DollarOutlined />}
+              suffix=""
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="AI Cost Per Lead"
+              value={totalWeekdayLeads > 0 ? blandAICosts / totalWeekdayLeads : 0}
+              precision={4}
+              valueStyle={{ color: '#722ed1' }}
+              prefix={<DollarOutlined />}
+              suffix=""
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="AI Cost/Revenue Ratio"
+              value={totalSynergyPayout > 0 ? (blandAICosts / totalSynergyPayout) * 100 : 0}
+              precision={1}
+              valueStyle={{ color: '#fa8c16' }}
+              suffix="%"
+            />
+          </Card>
+        </Col>
+      </Row>
+      
       <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between' }}>
         <Space>
           <Select 
@@ -564,12 +705,13 @@ export default function RevenueTrackingPage() {
             onChange={handleTimeFrameChange}
             style={{ width: 120 }}
           >
-            <Option value="all">All Time</Option>
+            <Option value="today">Today</Option>
             <Option value="week">Last Week</Option>
             <Option value="month">Last Month</Option>
             <Option value="quarter">Last Quarter</Option>
             <Option value="year">Last Year</Option>
             <Option value="custom">Custom Range</Option>
+            <Option value="all">All Time</Option>
           </Select>
           
           <RangePicker 
@@ -617,9 +759,11 @@ export default function RevenueTrackingPage() {
                 <Table.Summary.Cell index={3}><strong>{totalWeekdayLeads}</strong></Table.Summary.Cell>
                 <Table.Summary.Cell index={4}><strong>{totalWeekendLeads}</strong></Table.Summary.Cell>
                 <Table.Summary.Cell index={5}><strong>-</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={6}><strong>${totalRevenue.toFixed(2)}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={6}><strong>${totalLeadCosts.toFixed(2)}</strong></Table.Summary.Cell>
                 <Table.Summary.Cell index={7}><strong>{totalSynergyIssuedLeads}</strong></Table.Summary.Cell>
                 <Table.Summary.Cell index={8}><strong>${totalSynergyPayout.toFixed(2)}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={9}><strong>${blandAICosts.toFixed(2)}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={10}><strong>${(totalSynergyPayout - totalLeadCosts - blandAICosts).toFixed(2)}</strong></Table.Summary.Cell>
               </Table.Summary.Row>
             )}
           />

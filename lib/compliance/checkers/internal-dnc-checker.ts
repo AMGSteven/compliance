@@ -50,33 +50,35 @@ export class InternalDNCChecker implements ComplianceChecker {
   async checkNumber(phoneNumber: string): Promise<ComplianceResult> {
     await this.initialized;
     const normalizedNumber = this.normalizePhoneNumber(phoneNumber);
+    const maxRetries = 3;
+    const retryDelayMs = 500; // 500ms between retries for database calls
     
-    try {
-      console.log('Checking DNC for number:', normalizedNumber);
-      const supabase = createServerClient();
-      
-      // Force-block test number 9999999999
-      if (normalizedNumber.includes('9999999999') || phoneNumber.includes('9999999999')) {
-        console.log('Test number detected, returning blocked result');
-        return {
-          isCompliant: false,  // Not compliant = blocked
-          reasons: ['Test number - automatically blocked'],
-          source: this.name,
-          details: { isTestNumber: true },
-          phoneNumber: normalizedNumber,
-          rawResponse: { 
-            phone_number: normalizedNumber, 
-            reason: 'Test number - automatically blocked',
-            status: 'active' 
-          }
-        };
-      }
-      
-      // Use the correct dnc_entries table as defined in the schema
-      let dncEntry = null;
-      
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        // Query the dnc_entries table
+        console.log(`Checking Internal DNC for: ${normalizedNumber} (attempt ${attempt}/${maxRetries})`);
+        const supabase = createServerClient();
+        
+        // Force-block test number 9999999999
+        if (normalizedNumber.includes('9999999999') || phoneNumber.includes('9999999999')) {
+          console.log('Test number detected, returning blocked result');
+          return {
+            isCompliant: false,  // Not compliant = blocked
+            reasons: ['Test number - automatically blocked'],
+            source: this.name,
+            details: { isTestNumber: true },
+            phoneNumber: normalizedNumber,
+            rawResponse: { 
+              phone_number: normalizedNumber, 
+              reason: 'Test number - automatically blocked',
+              status: 'active' 
+            }
+          };
+        }
+        
+        // Use the correct dnc_entries table as defined in the schema
+        let dncEntry = null;
+        
+        // Query the dnc_entries table with timeout
         console.log('Querying dnc_entries table for:', normalizedNumber);
         const { data: entriesData, error: entriesError } = await supabase
           .from('dnc_entries')
@@ -87,38 +89,66 @@ export class InternalDNCChecker implements ComplianceChecker {
         
         if (entriesError) {
           console.error('Error querying dnc_entries table:', entriesError);
-        } else {
-          console.log('Query result:', entriesData);
-          dncEntry = entriesData;
+          throw new Error(`Database query failed: ${entriesError.message}`);
         }
-      } catch (e) {
-        console.error('Exception querying dnc_entries table:', e);
-      }
+        
+        console.log('Query result:', entriesData);
+        dncEntry = entriesData;
 
-      console.log('DNC check result:', dncEntry ? 'Found in DNC' : 'Not found in DNC');
-      
-      // If it's the test number, force block it
-      const isTestNumber = normalizedNumber.includes('9999999999') || phoneNumber.includes('9999999999');
-      
-      return {
-        isCompliant: !dncEntry && !isTestNumber, // Not compliant = blocked
-        reasons: dncEntry ? [dncEntry.reason || 'No reason provided'] : isTestNumber ? ['Test number - automatically blocked'] : [],
-        source: this.name,
-        details: dncEntry?.metadata || (isTestNumber ? { isTestNumber: true } : {}),
-        phoneNumber: normalizedNumber,
-        rawResponse: dncEntry || (isTestNumber ? { phone_number: normalizedNumber, status: 'active' } : null)
-      };
-    } catch (error) {
-      console.error('Error checking DNC:', error);
-      return {
-        isCompliant: true, // Default to compliant on error
-        reasons: [],
-        source: this.name,
-        details: { error: 'Error checking DNC status' },
-        phoneNumber: normalizedNumber,
-        rawResponse: null
-      };
+        console.log('DNC check result:', dncEntry ? 'Found in DNC' : 'Not found in DNC');
+        
+        // If it's the test number, force block it
+        const isTestNumber = normalizedNumber.includes('9999999999') || phoneNumber.includes('9999999999');
+        
+        return {
+          isCompliant: !dncEntry && !isTestNumber, // Not compliant = blocked
+          reasons: dncEntry ? [dncEntry.reason || 'No reason provided'] : isTestNumber ? ['Test number - automatically blocked'] : [],
+          source: this.name,
+          details: { 
+            ...dncEntry?.metadata || (isTestNumber ? { isTestNumber: true } : {}),
+            attempt
+          },
+          phoneNumber: normalizedNumber,
+          rawResponse: dncEntry || (isTestNumber ? { phone_number: normalizedNumber, status: 'active' } : null)
+        };
+        
+      } catch (error) {
+        console.error(`Internal DNC check attempt ${attempt} failed:`, error);
+        
+        // If this is the last attempt, fail closed (reject the number)
+        if (attempt === maxRetries) {
+          console.error(`Internal DNC check failed after ${maxRetries} attempts. FAILING CLOSED.`);
+          return {
+            isCompliant: false, // FAIL CLOSED - reject on error
+            reasons: [`Internal DNC check failed after ${maxRetries} attempts: ${error instanceof Error ? error.message : 'Unknown error'}`],
+            source: this.name,
+            details: { 
+              error: error instanceof Error ? error.message : 'Unknown error',
+              attempts: maxRetries,
+              failedClosed: true
+            },
+            phoneNumber: normalizedNumber,
+            rawResponse: null
+          };
+        }
+        
+        // Wait before retrying (unless it's the last attempt)
+        if (attempt < maxRetries) {
+          console.log(`Internal DNC check retrying in ${retryDelayMs}ms...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+        }
+      }
     }
+    
+    // This should never be reached, but fail closed if it somehow does
+    return {
+      isCompliant: false,
+      reasons: ['Unexpected error in Internal DNC checker'],
+      source: this.name,
+      details: { unexpectedError: true },
+      phoneNumber: normalizedNumber,
+      rawResponse: null
+    };
   }
 
   async addToDNC(entry: Partial<DNCEntry>): Promise<DNCEntry> {
