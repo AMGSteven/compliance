@@ -48,15 +48,14 @@ async function forwardToPitchBPO(params: {
   console.log('Forwarding lead to Pitch BPO dialer');
   console.log('Using fixed Pitch BPO token: 70942646-125b-4ddd-96fc-b9a142c698b8');
   
-  // Determine SubID based on list_id
-  let subId = '';
-  if (listId === 'pitch-bpo-list-1750179149747') {
-    subId = 'shf';
-  } else if (listId === 'pitch-bpo-list-1749233817305') {
-    subId = 'opg';
-  }
+  // Extract the subID from lead's custom_fields if available
+  const leadCustomFields = data[0].custom_fields || {};
+  const leadSubId = typeof leadCustomFields === 'string'
+    ? JSON.parse(leadCustomFields)?.subid || ''
+    : leadCustomFields?.subid || '';
   
-  console.log(`Using SubID: "${subId}" for list_id: ${listId}`);
+  console.log(`List ID to use for adv_SubID: ${listId}`);
+  console.log(`SubId from custom_fields to use for adv_SubID2: ${leadSubId}`);
   
   try {
     // Create the URL with query parameters for Pitch BPO according to their documentation
@@ -69,10 +68,12 @@ async function forwardToPitchBPO(params: {
     pitchBPOUrl.searchParams.append('Campaign', PITCH_BPO_CAMPAIGN); // Required: existing campaign
     pitchBPOUrl.searchParams.append('Subcampaign', PITCH_BPO_SUBCAMPAIGN); // Optional: subcampaign
     
-    // Add SubID parameter if determined
-    if (subId) {
-      pitchBPOUrl.searchParams.append('adv_SubID', subId);
-      pitchBPOUrl.searchParams.append('adv_SubID2', subId);
+    // Always add list ID as adv_SubID parameter
+    pitchBPOUrl.searchParams.append('adv_SubID', listId);
+    
+    // Only add adv_SubID2 if we have a subid in custom_fields
+    if (leadSubId) {
+      pitchBPOUrl.searchParams.append('adv_SubID2', leadSubId);
     }
     
     // Add lead information
