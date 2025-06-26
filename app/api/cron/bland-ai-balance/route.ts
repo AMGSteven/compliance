@@ -6,9 +6,9 @@ import { createClient } from '@supabase/supabase-js';
  * This should be called every hour to track spending accurately
  */
 export async function POST(request: NextRequest) {
-  // Add cron authentication header check
-  const cronSecret = request.headers.get('x-cron-secret');
-  if (process.env.CRON_SECRET && cronSecret !== process.env.CRON_SECRET) {
+  // Vercel cron jobs include this header automatically
+  const authHeader = request.headers.get('authorization');
+  if (process.env.NODE_ENV === 'production' && !authHeader?.startsWith('Bearer ')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
