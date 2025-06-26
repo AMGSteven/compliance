@@ -119,15 +119,40 @@ export async function POST(request: Request) {
     
     console.log(`Found lead with ID ${leadId} for policy status update: ${validStatus}`);
     
-    // Update the lead record with the policy status and postback date
-    const { error: updateError } = await supabase
+    // First check if the policy_postback_date is already set
+    const { data: leadBeforeUpdate } = await supabase
       .from('leads')
-      .update({
-        policy_status: validStatus,
-        updated_at: postbackDate,
-        policy_postback_date: postbackDate  // Track when postback was received for revenue attribution
-      })
-      .eq('id', leadId);
+      .select('policy_status, policy_postback_date')
+      .eq('id', leadId)
+      .single();
+    
+    console.log(`Before update - Lead ${leadId} status: ${leadBeforeUpdate?.policy_status}, postback date: ${leadBeforeUpdate?.policy_postback_date || 'null'}`); 
+
+    // Create update payload - ensure policy_postback_date is set
+    const updatePayload: {
+      policy_status: string;
+      updated_at: string;
+      policy_postback_date?: string;
+    } = {
+      policy_status: validStatus,
+      updated_at: postbackDate
+    };
+    
+    // Always set policy_postback_date for "issued" status, or if it's null for any status
+    if (validStatus === POLICY_STATUSES.ISSUED || !leadBeforeUpdate?.policy_postback_date) {
+      updatePayload.policy_postback_date = postbackDate;
+    }
+    
+    console.log(`Updating lead ${leadId} with payload:`, updatePayload);
+    
+    // Update the lead record with the policy status and postback date
+    const { data: updateData, error: updateError } = await supabase
+      .from('leads')
+      .update(updatePayload)
+      .eq('id', leadId)
+      .select('id, policy_status, policy_postback_date');
+    
+    console.log(`Lead update result: ${JSON.stringify(updateData)}, Error: ${updateError ? JSON.stringify(updateError) : 'None'}`);
     
     if (updateError) {
       console.error('Error updating lead with policy status:', updateError);
@@ -138,7 +163,7 @@ export async function POST(request: Request) {
     }
     
     // Record the postback event in policy_postbacks table for audit trail
-    const { error: postbackError } = await supabase
+    const { data: postbackData, error: postbackError } = await supabase
       .from('policy_postbacks')
       .insert([{
         lead_id: leadId,
@@ -146,14 +171,25 @@ export async function POST(request: Request) {
         policy_status: validStatus,
         payload: body,
         created_at: postbackDate
-      }]);
+      }])
+      .select('id');
+      
+    console.log(`Postback record created: ${postbackData ? JSON.stringify(postbackData) : 'None'}, Error: ${postbackError ? JSON.stringify(postbackError) : 'None'}`);
     
     if (postbackError) {
       console.error('Error recording postback event:', postbackError);
       // Don't fail the request if audit logging fails, but log the error
     }
     
+    // Double-check the final state of the lead after all operations
+    const { data: finalLeadState } = await supabase
+      .from('leads')
+      .select('policy_status, policy_postback_date, updated_at')
+      .eq('id', leadId)
+      .single();
+      
     console.log(`✅ Policy postback processed successfully: ${validStatus} for lead ${leadId} at ${postbackDate}`);
+    console.log(`Final lead state: ${JSON.stringify(finalLeadState)}`);
     
     return NextResponse.json({
       success: true,
