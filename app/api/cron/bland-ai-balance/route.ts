@@ -1,19 +1,18 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 /**
- * Cron job endpoint to automatically record Bland AI balance
- * This should be called every few hours to track spending
+ * Cron job endpoint to automatically record Bland AI balance and calculate costs
+ * This should be called every hour to track spending accurately
  */
 export async function POST(request: NextRequest) {
-  // Optional: Add cron authentication header check
+  // Add cron authentication header check
   const cronSecret = request.headers.get('x-cron-secret');
-  // Temporarily disabled for testing
-  // if (process.env.CRON_SECRET && cronSecret !== process.env.CRON_SECRET) {
-  //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  // }
+  if (process.env.CRON_SECRET && cronSecret !== process.env.CRON_SECRET) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
-  console.log('🕐 Cron job: Recording Bland AI balance...');
+  console.log('🕐 Cron job: Recording Bland AI balance and calculating costs...');
 
   try {
     // Initialize Supabase client inside function to avoid build-time evaluation
@@ -55,26 +54,28 @@ export async function POST(request: NextRequest) {
 
     let calculatedCost = 0;
     let periodHours = 0;
+    let currentRecord = null;
+    let previousRecord = null;
 
     if (lastRecord && lastRecord.length >= 2) {
-      const current = lastRecord[0]; // Most recent
-      const previous = lastRecord[1]; // Previous record
+      currentRecord = lastRecord[0]; // Most recent
+      previousRecord = lastRecord[1]; // Previous record
 
       // Calculate time elapsed
-      const currentTime = new Date(current.recorded_at);
-      const previousTime = new Date(previous.recorded_at);
+      const currentTime = new Date(currentRecord.recorded_at);
+      const previousTime = new Date(previousRecord.recorded_at);
       periodHours = (currentTime.getTime() - previousTime.getTime()) / (1000 * 60 * 60);
 
       // Calculate cost based on balance difference
-      if (current.current_balance > previous.current_balance) {
+      if (currentRecord.current_balance > previousRecord.current_balance) {
         // Refill happened - cost is previous balance + refill amount - current balance
-        const refillAmount = current.refill_to || previous.refill_to || 0;
-        calculatedCost = previous.current_balance + refillAmount - current.current_balance;
-        console.log(`💰 Refill detected: $${previous.current_balance} + $${refillAmount} - $${current.current_balance} = $${calculatedCost} spent`);
+        const refillAmount = currentRecord.refill_to || previousRecord.refill_to || 0;
+        calculatedCost = previousRecord.current_balance + refillAmount - currentRecord.current_balance;
+        console.log(`💰 Refill detected: $${previousRecord.current_balance} + $${refillAmount} - $${currentRecord.current_balance} = $${calculatedCost} spent`);
       } else {
         // Normal spending - cost is previous balance - current balance
-        calculatedCost = previous.current_balance - current.current_balance;
-        console.log(`💸 Normal spend: $${previous.current_balance} - $${current.current_balance} = $${calculatedCost} spent`);
+        calculatedCost = previousRecord.current_balance - currentRecord.current_balance;
+        console.log(`💸 Normal spend: $${previousRecord.current_balance} - $${currentRecord.current_balance} = $${calculatedCost} spent`);
       }
 
       // Update the current record with calculated cost
@@ -84,10 +85,33 @@ export async function POST(request: NextRequest) {
           calculated_cost: calculatedCost,
           period_hours: Math.round(periodHours * 100) / 100 // Round to 2 decimals
         })
-        .eq('id', current.id);
+        .eq('id', currentRecord.id);
 
       if (updateError) {
         console.error('❌ Failed to update calculated cost:', updateError);
+      }
+
+      // Now also populate the bland_ai_costs_calculated table for the dashboard
+      const { error: insertError } = await supabase
+        .from('bland_ai_costs_calculated')
+        .insert([
+          {
+            recorded_at: currentRecord.recorded_at,
+            current_balance: currentRecord.current_balance,
+            refill_to: currentRecord.refill_to,
+            total_calls: currentRecord.total_calls,
+            previous_balance: previousRecord.current_balance,
+            previous_refill_to: previousRecord.refill_to,
+            previous_recorded_at: previousRecord.recorded_at,
+            calculated_cost_period: calculatedCost,
+            hours_elapsed: periodHours
+          }
+        ]);
+
+      if (insertError) {
+        console.error('❌ Failed to insert into bland_ai_costs_calculated:', insertError);
+      } else {
+        console.log('✅ Successfully inserted cost data into bland_ai_costs_calculated');
       }
     }
 
@@ -95,7 +119,7 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json({
       success: true,
-      message: 'Balance recorded successfully',
+      message: 'Balance recorded and costs calculated successfully',
       data: {
         current_balance: balanceData.current_balance,
         refill_to: balanceData.refill_to,
