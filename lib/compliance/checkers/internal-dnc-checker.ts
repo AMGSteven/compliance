@@ -307,8 +307,16 @@ export class InternalDNCChecker implements ComplianceChecker {
   }
 
   private async notifyWebhooks(dncEntry: DNCEntry) {
-    const webhookUrl = process.env.DNC_WEBHOOK_URL;
+    let webhookUrl = process.env.DNC_WEBHOOK_URL;
     if (!webhookUrl) return;
+
+    // Debug and sanitize the URL
+    console.log('Raw webhook URL:', JSON.stringify(webhookUrl));
+    
+    // Remove quotes and trim whitespace/newlines
+    webhookUrl = webhookUrl.replace(/^"|"$/g, '').trim();
+    
+    console.log('Sanitized webhook URL:', webhookUrl);
 
     try {
       const response = await fetch(webhookUrl, {
