@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
       // Initialize Supabase client inside function to avoid build-time evaluation
       const supabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
+        process.env.DATABASE_SUPABASE_SERVICE_ROLE_KEY!
       );
 
       const { error: insertError } = await supabase
