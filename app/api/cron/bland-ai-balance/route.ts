@@ -31,16 +31,16 @@ export async function POST(req: NextRequest) {
   try {
     // Check Supabase environment variables
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseKey = process.env.DATABASE_SUPABASE_SERVICE_ROLE_KEY;
     
     if (!supabaseUrl || !supabaseKey) {
       console.error('[BLAND-AI-DEBUG] Missing Supabase environment variables:', {
         'NEXT_PUBLIC_SUPABASE_URL': supabaseUrl ? 'set' : 'missing',
-        'SUPABASE_SERVICE_ROLE_KEY': supabaseKey ? 'set' : 'missing',
+        'DATABASE_SUPABASE_SERVICE_ROLE_KEY': supabaseKey ? 'set' : 'missing',
       });
       return NextResponse.json({ 
         success: false, 
-        error: `Supabase environment variables missing: ${!supabaseUrl ? 'NEXT_PUBLIC_SUPABASE_URL ' : ''}${!supabaseKey ? 'SUPABASE_SERVICE_ROLE_KEY' : ''}`
+        error: `Supabase environment variables missing: ${!supabaseUrl ? 'NEXT_PUBLIC_SUPABASE_URL ' : ''}${!supabaseKey ? 'DATABASE_SUPABASE_SERVICE_ROLE_KEY' : ''}`
       }, { status: 500 });
     }
     
