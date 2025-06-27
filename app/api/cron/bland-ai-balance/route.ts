@@ -8,39 +8,25 @@ const INTERNAL_TRIGGER_SECRET = process.env.INTERNAL_TRIGGER_SECRET;
  * Cron job endpoint to automatically record Bland AI balance and calculate costs
  * This should be called every hour to track spending accurately
  */
-export async function POST(request: NextRequest) {
-  // Check for Vercel cron authorization OR Supabase cron source
-  const authHeader = request.headers.get('authorization');
-  const userAgent = request.headers.get('user-agent') || '';
-  
-  console.log(`🔍 Debug - Auth: ${authHeader ? 'present' : 'missing'}, UA: ${userAgent}`);
-  
-  // Try to parse request body to check source
-  let body: any = {};
-  let source = 'unknown';
-  
+export async function POST(req: NextRequest) {
   try {
-    const bodyText = await request.text();
-    if (bodyText) {
-      body = JSON.parse(bodyText);
-      source = body?.source || 'unknown';
-    }
+    const body = await req.json();
   } catch (e) {
-    console.log('Could not parse request body');
+    console.log('[BLAND-AI-DEBUG] API: No request body or invalid JSON');
   }
-  
-  console.log(`🔍 Debug - Source: ${source}`);
-  
-  // Allow Vercel cron (with Bearer token) OR Supabase cron calls
-  const isVercelCron = authHeader?.startsWith('Bearer ');
-  const isSupabaseCron = source.includes('supabase-cron') || userAgent.includes('pgsql') || userAgent.includes('postgresql');
-  
-  if (process.env.NODE_ENV === 'production' && !isVercelCron && !isSupabaseCron) {
-    console.log(`❌ Unauthorized - Auth: ${authHeader ? 'present' : 'missing'}, Source: ${source}, UA: ${userAgent}`);
+
+  // 1. Security Check
+  const incomingSecret = req.headers.get('X-Internal-Trigger-Secret');
+  if (!INTERNAL_TRIGGER_SECRET) {
+    console.error('[BLAND-AI-DEBUG] API: INTERNAL_TRIGGER_SECRET environment variable is not set.');
+    return NextResponse.json({ error: 'Internal Server Configuration Error' }, { status: 500 });
+  }
+  if (incomingSecret !== INTERNAL_TRIGGER_SECRET) {
+    console.error('[BLAND-AI-DEBUG] API: Unauthorized attempt to trigger Bland AI balance. Secret mismatch.');
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  console.log(`✅ Authorized ${isVercelCron ? 'Vercel' : 'Supabase'} cron job: Recording Bland AI balance and calculating costs...`);
+  console.log('[BLAND-AI-DEBUG] API: Authorized request - Recording Bland AI balance and calculating costs...');
 
   try {
     // Initialize Supabase client inside function to avoid build-time evaluation
@@ -50,7 +36,7 @@ export async function POST(request: NextRequest) {
     );
 
     // Get current balance from Bland AI
-    const balanceUrl = new URL('/api/bland-ai-balance', request.url);
+    const balanceUrl = new URL('/api/bland-ai-balance', req.url);
     balanceUrl.searchParams.set('record', 'true');
     
     const balanceResponse = await fetch(balanceUrl.toString());
@@ -168,6 +154,6 @@ export async function POST(request: NextRequest) {
 }
 
 // Also allow GET for manual testing
-export async function GET(request: NextRequest) {
-  return POST(request);
+export async function GET(req: NextRequest) {
+  return POST(req);
 }
