@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
       console.log('Recording balance data to database...');
       
       // Initialize Supabase client inside function to avoid build-time evaluation
-      if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.DATABASE_SUPABASE_SERVICE_ROLE_KEY) {
+      if (!process.env.NEXT_PUBLIC_SUPABASE_URL || (!process.env.DATABASE_SUPABASE_SERVICE_ROLE_KEY && !process.env.DATABASE_SUPABASE_ANON_KEY && !process.env.SUPABASE_SERVICE_ROLE_KEY)) {
         console.error('Supabase environment variables not configured');
         return NextResponse.json({ 
           ...result,
@@ -57,10 +57,9 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.DATABASE_SUPABASE_SERVICE_ROLE_KEY!
-      );
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+      const supabaseKey = process.env.DATABASE_SUPABASE_SERVICE_ROLE_KEY || process.env.DATABASE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY!;
+      const supabase = createClient(supabaseUrl, supabaseKey);
 
       try {
         const { error: insertError } = await supabase
