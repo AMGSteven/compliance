@@ -22,13 +22,10 @@ export async function POST(request: NextRequest) {
 
     // Allow requests with proper secret OR from Supabase cron
     const isValidSecret = triggerSecret === process.env.INTERNAL_TRIGGER_SECRET;
-    const isSupabaseCron = source.includes('supabase-cron') && (
-      userAgent.includes('pgsql-http') || 
-      userAgent.includes('postgresql') ||
-      forwardedFor.includes('supabase') ||
-      source === 'supabase-cron-direct'
-    );
-
+    const isSupabaseCron = source.includes('supabase-cron');
+    
+    console.log(`🔍 Debug - isValidSecret: ${isValidSecret}, isSupabaseCron: ${isSupabaseCron}, source: ${source}`);
+    
     if (!isValidSecret && !isSupabaseCron) {
       console.log('❌ Unauthorized request - missing valid authentication');
       return new NextResponse(JSON.stringify({ error: 'Unauthorized' }), { 
