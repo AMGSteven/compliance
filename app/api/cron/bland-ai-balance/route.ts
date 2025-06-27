@@ -6,13 +6,24 @@ import { createClient } from '@supabase/supabase-js';
  * This should be called every hour to track spending accurately
  */
 export async function POST(request: NextRequest) {
-  // Vercel cron jobs include this header automatically
+  // Check for Vercel cron authorization OR Supabase cron source
   const authHeader = request.headers.get('authorization');
-  if (process.env.NODE_ENV === 'production' && !authHeader?.startsWith('Bearer ')) {
+  const userAgent = request.headers.get('user-agent') || '';
+  
+  // Parse request body to check source
+  const body = await request.json().catch(() => ({}));
+  const source = body?.source || 'unknown';
+  
+  // Allow Vercel cron (with Bearer token) OR Supabase cron calls
+  const isVercelCron = authHeader?.startsWith('Bearer ');
+  const isSupabaseCron = source.includes('supabase-cron') || userAgent.includes('pgsql');
+  
+  if (process.env.NODE_ENV === 'production' && !isVercelCron && !isSupabaseCron) {
+    console.log(`❌ Unauthorized - Auth: ${authHeader ? 'present' : 'missing'}, Source: ${source}, UA: ${userAgent}`);
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  console.log('🕐 Cron job: Recording Bland AI balance and calculating costs...');
+  console.log(`✅ Authorized ${isVercelCron ? 'Vercel' : 'Supabase'} cron job: Recording Bland AI balance and calculating costs...`);
 
   try {
     // Initialize Supabase client inside function to avoid build-time evaluation
