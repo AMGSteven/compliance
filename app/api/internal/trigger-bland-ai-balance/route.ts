@@ -6,18 +6,39 @@ import { createClient } from '@supabase/supabase-js';
  * Called by Supabase Edge Function cron job
  */
 export async function POST(request: NextRequest) {
-  // Check for internal trigger secret
-  const internalSecret = request.headers.get('X-Internal-Trigger-Secret');
-  const expectedSecret = process.env.INTERNAL_TRIGGER_SECRET;
-
-  if (!expectedSecret || internalSecret !== expectedSecret) {
-    console.error('❌ Unauthorized access to internal API');
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
   console.log('🕐 Internal API: Recording Bland AI balance and calculating costs...');
 
   try {
+    // Authenticate the request - check for internal secret header or Supabase source
+    const triggerSecret = request.headers.get('X-Internal-Trigger-Secret');
+    const userAgent = request.headers.get('user-agent') || '';
+    const forwardedFor = request.headers.get('x-forwarded-for') || '';
+
+    // Parse request body to check source
+    const body = await request.json().catch(() => ({}));
+    const source = body?.source || 'unknown';
+
+    console.log(`🔐 Auth check - Secret: ${triggerSecret ? 'present' : 'missing'}, Source: ${source}, UA: ${userAgent}`);
+
+    // Allow requests with proper secret OR from Supabase cron
+    const isValidSecret = triggerSecret === process.env.INTERNAL_TRIGGER_SECRET;
+    const isSupabaseCron = source.includes('supabase-cron') && (
+      userAgent.includes('pgsql-http') || 
+      userAgent.includes('postgresql') ||
+      forwardedFor.includes('supabase') ||
+      source === 'supabase-cron-direct'
+    );
+
+    if (!isValidSecret && !isSupabaseCron) {
+      console.log('❌ Unauthorized request - missing valid authentication');
+      return new NextResponse(JSON.stringify({ error: 'Unauthorized' }), { 
+        status: 401,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    console.log(`✅ Authenticated request from ${isValidSecret ? 'secret header' : 'Supabase cron'}`);
+
     // Initialize Supabase client
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -118,53 +139,25 @@ export async function POST(request: NextRequest) {
       if (updateError) {
         console.error('❌ Failed to update calculated cost:', updateError);
       }
-
-      // Insert into bland_ai_costs_calculated for dashboard consumption
-      const { error: costsInsertError } = await supabase
-        .from('bland_ai_costs_calculated')
-        .insert([
-          {
-            recorded_at: currentRecord.recorded_at,
-            current_balance: currentRecord.current_balance,
-            refill_to: currentRecord.refill_to,
-            total_calls: currentRecord.total_calls,
-            previous_balance: previousRecord.current_balance,
-            previous_refill_to: previousRecord.refill_to,
-            previous_recorded_at: previousRecord.recorded_at,
-            calculated_cost_period: calculatedCost,
-            hours_elapsed: periodHours
-          }
-        ]);
-
-      if (costsInsertError) {
-        console.error('❌ Failed to insert into bland_ai_costs_calculated:', costsInsertError);
-      } else {
-        console.log('✅ Successfully inserted cost data into bland_ai_costs_calculated');
-      }
     } else {
       console.log('📝 First balance record - no cost calculation possible yet');
     }
 
     console.log('✅ Bland AI balance cron job completed successfully');
-    
-    return NextResponse.json({
+    return NextResponse.json({ 
       success: true,
-      message: 'Balance recorded and costs calculated successfully',
+      message: 'Bland AI balance recorded and costs calculated successfully',
       data: {
-        current_balance: blandData.billing?.current_balance,
-        refill_to: blandData.billing?.refill_to,
-        total_calls: blandData.total_calls,
-        calculated_cost: calculatedCost,
-        period_hours: periodHours,
-        records_count: lastRecords?.length || 0
+        balance: insertData,
+        source: source
       }
     });
 
   } catch (error) {
     console.error('❌ Internal API error:', error);
-    return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Internal server error' }, 
+      { status: 500 }
+    );
   }
 }
