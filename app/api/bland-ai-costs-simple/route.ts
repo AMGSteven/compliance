@@ -5,6 +5,8 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const period = searchParams.get('period') || 'today'; // today, week, month, all
   const hours = searchParams.get('hours'); // Custom hours (e.g., last 24 hours)
+  const startDate = searchParams.get('startDate'); // Custom start date (YYYY-MM-DD)
+  const endDate = searchParams.get('endDate'); // Custom end date (YYYY-MM-DD)
 
   try {
     // Initialize Supabase client inside function to avoid build-time evaluation
@@ -28,8 +30,16 @@ export async function GET(request: NextRequest) {
     // Apply time filters
     const now = new Date();
     let startTime: Date;
+    let endTime: Date;
 
-    if (hours) {
+    if (startDate && endDate) {
+      // Custom date range filter
+      startTime = new Date(startDate + 'T00:00:00-05:00'); // EST timezone
+      endTime = new Date(endDate + 'T23:59:59-05:00'); // EST timezone
+      query = query
+        .gte('recorded_at', startTime.toISOString())
+        .lte('recorded_at', endTime.toISOString());
+    } else if (hours) {
       // Custom hours filter
       startTime = new Date(now.getTime() - (parseInt(hours) * 60 * 60 * 1000));
       query = query.gte('recorded_at', startTime.toISOString());
@@ -81,7 +91,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      period,
+      period: startDate && endDate ? `${startDate} to ${endDate}` : period,
       totalCost: Math.round(totalCost * 100) / 100, // Round to 2 decimals
       totalRecords,
       currentBalance: Math.round(currentBalance * 100) / 100,

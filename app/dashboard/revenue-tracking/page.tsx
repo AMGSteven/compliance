@@ -69,6 +69,28 @@ export default function RevenueTrackingPage() {
   const [pitchPerfectCosts, setPitchPerfectCosts] = useState<number>(0);
   const [ppLoading, setPpLoading] = useState<boolean>(false);
 
+  // Helper function to generate dynamic cost titles based on timeFrame
+  const getCostTitle = (baseName: string) => {
+    if (timeFrame === 'custom' && dateRange && dateRange[0] && dateRange[1]) {
+      const startDate = dateRange[0].format('MMM D');
+      const endDate = dateRange[1].format('MMM D, YYYY');
+      return `${baseName} (${startDate} - ${endDate})`;
+    }
+    
+    switch (timeFrame) {
+      case 'today':
+        return `${baseName} (Today)`;
+      case 'week':
+        return `${baseName} (This Week)`;
+      case 'month':
+        return `${baseName} (This Month)`;
+      case 'all':
+        return `${baseName} (All Time)`;
+      default:
+        return `${baseName} (Today)`;
+    }
+  };
+
   useEffect(() => {
     fetchRevenueData();
   }, [dateRange, timeFrame]);
@@ -410,13 +432,28 @@ export default function RevenueTrackingPage() {
     try {
       console.log('Fetching Bland AI costs using balance tracking...');
 
-      // Use simple balance-based endpoint
-      let period = 'today';
-      if (timeFrame === 'week') period = 'week';
-      else if (timeFrame === 'month') period = 'month';
-      else if (timeFrame === 'all') period = 'all';
+      // Build URL based on timeFrame (same logic as other cost functions)
+      let costUrl = '/api/bland-ai-costs-simple';
+      const params = new URLSearchParams();
 
-      const costUrl = `/api/bland-ai-costs-simple?period=${period}`;
+      if (timeFrame === 'custom' && dateRange && dateRange[0] && dateRange[1]) {
+        // Custom date range
+        const startDate = dateRange[0].format('YYYY-MM-DD');
+        const endDate = dateRange[1].format('YYYY-MM-DD');
+        params.append('startDate', startDate);
+        params.append('endDate', endDate);
+        console.log(`Using custom date range: ${startDate} to ${endDate}`);
+      } else {
+        // Predefined periods
+        let period = 'today';
+        if (timeFrame === 'week') period = 'week';
+        else if (timeFrame === 'month') period = 'month';
+        else if (timeFrame === 'all') period = 'all';
+        params.append('period', period);
+        console.log(`Using predefined period: ${period}`);
+      }
+
+      costUrl += '?' + params.toString();
       const response = await fetch(costUrl, {
         headers: { 'x-api-key': process.env.NEXT_PUBLIC_API_KEY || 'test_key_123' }
       });
@@ -424,7 +461,7 @@ export default function RevenueTrackingPage() {
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
-          console.log(`✅ Balance-based costs for ${period}: $${data.totalCost} (${data.totalRecords} records)`);
+          console.log(`✅ Balance-based costs for ${params.get('period') || 'custom'}: $${data.totalCost} (${data.totalRecords} records)`);
           console.log(`💰 Current balance: $${data.currentBalance}, Refill to: $${data.refillTo}`);
           setBlandAICosts(data.totalCost || 0);
         } else {
@@ -726,7 +763,7 @@ export default function RevenueTrackingPage() {
         <Col span={6}>
           <Card>
             <Statistic
-              title="Bland AI Costs (Today)"
+              title={getCostTitle('Bland AI Costs')}
               value={blandAICosts}
               precision={2}
               valueStyle={{ color: '#cf1322' }}
@@ -739,7 +776,7 @@ export default function RevenueTrackingPage() {
         <Col span={6}>
           <Card>
             <Statistic
-              title="Pitch Perfect Costs (Today)"
+              title={getCostTitle('Pitch Perfect Costs')}
               value={pitchPerfectCosts}
               precision={2}
               valueStyle={{ color: '#cf1322' }}
