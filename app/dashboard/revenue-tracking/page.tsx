@@ -7,6 +7,7 @@ import { DollarOutlined, DownloadOutlined, FilterOutlined, ReloadOutlined } from
 import { format } from 'date-fns';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
+import { createClient } from '@supabase/supabase-js';
 
 // Note: Backend API uses EST timezone (-05:00) for date filtering
 
@@ -65,6 +66,8 @@ export default function RevenueTrackingPage() {
   const [totalSynergyPayout, setTotalSynergyPayout] = useState<number>(0);
   const [blandAICosts, setBlandAICosts] = useState<number>(0);
   const [blandAILoading, setBlandAILoading] = useState<boolean>(false);
+  const [pitchPerfectCosts, setPitchPerfectCosts] = useState<number>(0);
+  const [ppLoading, setPpLoading] = useState<boolean>(false);
 
   useEffect(() => {
     fetchRevenueData();
@@ -398,6 +401,7 @@ export default function RevenueTrackingPage() {
     
     // Fetch Bland AI costs asynchronously to not block dashboard loading
     fetchBlandAICosts();
+    fetchPitchPerfectCosts();
   };
 
   const fetchBlandAICosts = async () => {
@@ -437,6 +441,77 @@ export default function RevenueTrackingPage() {
       setBlandAICosts(0);
     } finally {
       setBlandAILoading(false);
+    }
+  };
+
+  const fetchPitchPerfectCosts = async () => {
+    setPpLoading(true);
+      
+    try {
+      console.log('Fetching Pitch Perfect costs directly from database...');
+      
+      // Create Supabase client for direct database query
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
+
+      // Build date filter based on timeFrame (same logic as leads)
+      let query = supabase
+        .from('pitch_perfect_costs')
+        .select('billable_cost')
+        .eq('billable_status', 'billable');
+
+      if (timeFrame === 'custom' && dateRange && dateRange[0] && dateRange[1]) {
+        query = query
+          .gte('created_at', dateRange[0].startOf('day').toISOString())
+          .lte('created_at', dateRange[1].endOf('day').toISOString());
+      } else if (timeFrame !== 'all') {
+        const now = dayjs();
+        let startDate = now;
+        
+        switch (timeFrame) {
+          case 'week':
+            startDate = now.subtract(7, 'days');
+            break;
+          case 'month':
+            startDate = now.subtract(30, 'days');
+            break;
+          case 'quarter':
+            startDate = now.subtract(90, 'days');
+            break;
+          case 'year':  
+            startDate = now.subtract(365, 'days');
+            break;
+          case 'today':
+            startDate = now.startOf('day');
+            break;
+        }
+        
+        query = query
+          .gte('created_at', startDate.toISOString())
+          .lte('created_at', now.toISOString());
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Error fetching Pitch Perfect costs:', error);
+        setPitchPerfectCosts(0);
+        return;
+      }
+
+      // Sum all billable costs
+      const totalCosts = data?.reduce((sum, record) => sum + (record.billable_cost || 0), 0) || 0;
+      
+      console.log(`✅ Pitch Perfect costs for ${timeFrame}: $${totalCosts} (${data?.length || 0} records)`);
+      setPitchPerfectCosts(totalCosts);
+        
+    } catch (error: unknown) {
+      console.error('Error fetching Pitch Perfect costs:', error);
+      setPitchPerfectCosts(0);
+    } finally {
+      setPpLoading(false);
     }
   };
 
@@ -664,10 +739,23 @@ export default function RevenueTrackingPage() {
         <Col span={6}>
           <Card>
             <Statistic
-              title="Net Profit"
-              value={totalSynergyPayout - totalLeadCosts - blandAICosts}
+              title="Pitch Perfect Costs (Today)"
+              value={pitchPerfectCosts}
               precision={2}
-              valueStyle={{ color: totalSynergyPayout - totalLeadCosts - blandAICosts >= 0 ? '#3f8600' : '#cf1322' }}
+              valueStyle={{ color: '#cf1322' }}
+              prefix={<DollarOutlined />}
+              suffix=""
+              loading={ppLoading}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Net Profit"
+              value={totalSynergyPayout - totalLeadCosts - blandAICosts - pitchPerfectCosts}
+              precision={2}
+              valueStyle={{ color: totalSynergyPayout - totalLeadCosts - blandAICosts - pitchPerfectCosts >= 0 ? '#3f8600' : '#cf1322' }}
               prefix={<DollarOutlined />}
               suffix=""
             />
@@ -677,22 +765,11 @@ export default function RevenueTrackingPage() {
           <Card>
             <Statistic
               title="AI Cost Per Lead"
-              value={totalWeekdayLeads > 0 ? blandAICosts / totalWeekdayLeads : 0}
+              value={totalWeekdayLeads > 0 ? (blandAICosts + pitchPerfectCosts) / totalWeekdayLeads : 0}
               precision={4}
               valueStyle={{ color: '#722ed1' }}
               prefix={<DollarOutlined />}
               suffix=""
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic
-              title="AI Cost/Revenue Ratio"
-              value={totalSynergyPayout > 0 ? (blandAICosts / totalSynergyPayout) * 100 : 0}
-              precision={1}
-              valueStyle={{ color: '#fa8c16' }}
-              suffix="%"
             />
           </Card>
         </Col>
@@ -762,8 +839,8 @@ export default function RevenueTrackingPage() {
                 <Table.Summary.Cell index={6}><strong>${totalLeadCosts.toFixed(2)}</strong></Table.Summary.Cell>
                 <Table.Summary.Cell index={7}><strong>{totalSynergyIssuedLeads}</strong></Table.Summary.Cell>
                 <Table.Summary.Cell index={8}><strong>${totalSynergyPayout.toFixed(2)}</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={9}><strong>${blandAICosts.toFixed(2)}</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={10}><strong>${(totalSynergyPayout - totalLeadCosts - blandAICosts).toFixed(2)}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={9}><strong>${(blandAICosts + pitchPerfectCosts).toFixed(2)}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={10}><strong>${(totalSynergyPayout - totalLeadCosts - blandAICosts - pitchPerfectCosts).toFixed(2)}</strong></Table.Summary.Cell>
               </Table.Summary.Row>
             )}
           />
