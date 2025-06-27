@@ -1,10 +1,4 @@
 {
   "version": 2,
-  "framework": "nextjs",
-  "crons": [
-    {
-      "path": "/api/cron/bland-ai-balance",
-      "schedule": "0 * * * *"
-    }
-  ]
+  "framework": "nextjs"
 }
