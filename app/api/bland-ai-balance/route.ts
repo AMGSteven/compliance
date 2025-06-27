@@ -49,29 +49,45 @@ export async function GET(request: NextRequest) {
       console.log('Recording balance data to database...');
       
       // Initialize Supabase client inside function to avoid build-time evaluation
+      if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.DATABASE_SUPABASE_SERVICE_ROLE_KEY) {
+        console.error('Supabase environment variables not configured');
+        return NextResponse.json({ 
+          ...result,
+          warning: 'Failed to record balance in database: Supabase environment variables not configured'
+        });
+      }
+
       const supabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.DATABASE_SUPABASE_SERVICE_ROLE_KEY!
       );
 
-      const { error: insertError } = await supabase
-        .from('bland_ai_balance_history')
-        .insert([{
-          current_balance: result.current_balance,
-          refill_to: result.refill_to,
-          total_calls: result.total_calls,
-          status: result.status
-        }]);
+      try {
+        const { error: insertError } = await supabase
+          .from('bland_ai_balance_history')
+          .insert([{
+            current_balance: result.current_balance,
+            refill_to: result.refill_to,
+            total_calls: result.total_calls,
+            status: result.status
+          }]);
 
-      if (insertError) {
-        console.error('Error recording balance:', insertError);
+        if (insertError) {
+          console.error('Error recording balance:', insertError);
+          return NextResponse.json({ 
+            ...result,
+            warning: 'Failed to record balance in database'
+          });
+        }
+
+        console.log('✅ Balance recorded successfully');
+      } catch (error) {
+        console.error('Error recording balance:', error);
         return NextResponse.json({ 
           ...result,
           warning: 'Failed to record balance in database'
         });
       }
-
-      console.log('✅ Balance recorded successfully');
     }
 
     return NextResponse.json(result);
