@@ -313,8 +313,14 @@ export class InternalDNCChecker implements ComplianceChecker {
     // Debug and sanitize the URL
     console.log('Raw webhook URL:', JSON.stringify(webhookUrl));
     
-    // Remove quotes and trim whitespace/newlines
-    webhookUrl = webhookUrl.replace(/^"|"$/g, '').trim();
+    // Remove quotes, escape sequences, and trim all whitespace/newlines
+    webhookUrl = webhookUrl
+      .replace(/^"|"$/g, '')  // Remove leading/trailing quotes
+      .replace(/\\n/g, '')    // Remove escaped newlines
+      .replace(/\n/g, '')     // Remove actual newlines
+      .replace(/\\r/g, '')    // Remove escaped carriage returns
+      .replace(/\r/g, '')     // Remove actual carriage returns
+      .trim();                // Remove any remaining whitespace
     
     console.log('Sanitized webhook URL:', webhookUrl);
 
