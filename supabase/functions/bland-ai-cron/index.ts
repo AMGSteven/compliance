@@ -22,7 +22,7 @@ async function triggerNextJsApi(): Promise<CronResponse> {
       throw new Error('Edge Function environment configuration error.');
     }
 
-    const targetUrl = `${nextAppUrl}/api/internal/trigger-bland-ai-balance`;
+    const targetUrl = `${nextAppUrl}/api/cron/bland-ai-balance`;
     console.log(`Targeting Next.js API endpoint: ${targetUrl}`);
 
     // Make the POST request to the Next.js API endpoint

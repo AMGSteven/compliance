@@ -1,6 +1,9 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+// Shared secret between Edge Function and this API route
+const INTERNAL_TRIGGER_SECRET = process.env.INTERNAL_TRIGGER_SECRET;
+
 /**
  * Cron job endpoint to automatically record Bland AI balance and calculate costs
  * This should be called every hour to track spending accurately
@@ -10,13 +13,27 @@ export async function POST(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
   const userAgent = request.headers.get('user-agent') || '';
   
-  // Parse request body to check source
-  const body = await request.json().catch(() => ({}));
-  const source = body?.source || 'unknown';
+  console.log(`🔍 Debug - Auth: ${authHeader ? 'present' : 'missing'}, UA: ${userAgent}`);
+  
+  // Try to parse request body to check source
+  let body: any = {};
+  let source = 'unknown';
+  
+  try {
+    const bodyText = await request.text();
+    if (bodyText) {
+      body = JSON.parse(bodyText);
+      source = body?.source || 'unknown';
+    }
+  } catch (e) {
+    console.log('Could not parse request body');
+  }
+  
+  console.log(`🔍 Debug - Source: ${source}`);
   
   // Allow Vercel cron (with Bearer token) OR Supabase cron calls
   const isVercelCron = authHeader?.startsWith('Bearer ');
-  const isSupabaseCron = source.includes('supabase-cron') || userAgent.includes('pgsql');
+  const isSupabaseCron = source.includes('supabase-cron') || userAgent.includes('pgsql') || userAgent.includes('postgresql');
   
   if (process.env.NODE_ENV === 'production' && !isVercelCron && !isSupabaseCron) {
     console.log(`❌ Unauthorized - Auth: ${authHeader ? 'present' : 'missing'}, Source: ${source}, UA: ${userAgent}`);
