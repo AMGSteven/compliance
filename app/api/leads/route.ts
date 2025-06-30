@@ -9,8 +9,9 @@ import { checkForDuplicateLead } from '@/app/lib/duplicate-lead-check';
 // Force dynamic routing for Vercel deployment
 export const dynamic = 'force-dynamic';
 
-// Define allowed states
-const ALLOWED_STATES = ['AL', 'AR', 'AZ', 'IN', 'KS', 'LA', 'MO', 'MS', 'OH', 'SC', 'TN', 'TX'];
+// Define allowed states per dialer type
+const INTERNAL_DIALER_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'IN', 'KS', 'LA', 'MO', 'MS', 'OH', 'SC', 'TN', 'TX'];
+const PITCH_BPO_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'FL', 'IN', 'KS', 'LA', 'MI', 'MO', 'MS', 'OH', 'OK', 'SC', 'TN', 'TX'];
 
 // Test constants for bypassing compliance and forcing routing
 const TEST_PHONE_NUMBER = '6507769592'; // User's number for testing
@@ -300,25 +301,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
       );
     }
     
-    // Validate that the state is in the allowed list
-    const normalizedState = state.toUpperCase();
-    if (!ALLOWED_STATES.includes(normalizedState)) {
-      console.log(`[STATE VALIDATION] Rejecting lead with non-allowed state: ${state}`);
-      return NextResponse.json(
-        {
-          success: false,
-          bid: 0.00,
-          error: `State not allowed: ${state}`,
-          details: {
-            state: state,
-            allowedStates: ALLOWED_STATES
-          }
-        },
-        { status: 400 }
-      );
-    }
-    
-    console.log(`[STATE VALIDATION] State ${state} is allowed`);
+    // Note: State validation will be performed after dialer routing is determined
 
     console.log('Submitting standard lead with validated fields:', { firstName, lastName, email, phone });
     
@@ -583,6 +566,30 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     const dialerType = routingData?.dialer_type || DIALER_TYPE_INTERNAL;
     console.log(`Using dialer type: ${dialerType === DIALER_TYPE_INTERNAL ? 'Internal Dialer' : 'Pitch BPO'}`);
 
+    // Validate state based on dialer type
+    const normalizedState = state.toUpperCase();
+    const allowedStates = dialerType === DIALER_TYPE_PITCH_BPO ? PITCH_BPO_ALLOWED_STATES : INTERNAL_DIALER_ALLOWED_STATES;
+    const dialerName = dialerType === DIALER_TYPE_PITCH_BPO ? 'Pitch BPO' : 'Internal Dialer';
+    
+    if (!allowedStates.includes(normalizedState)) {
+      console.log(`[STATE VALIDATION] Rejecting lead with non-allowed state: ${state} for ${dialerName}`);
+      return NextResponse.json(
+        {
+          success: false,
+          bid: 0.00,
+          error: `State ${state} not allowed for ${dialerName}`,
+          details: {
+            state: state,
+            dialerType: dialerName,
+            allowedStates: allowedStates
+          }
+        },
+        { status: 400 }
+      );
+    }
+    
+    console.log(`[STATE VALIDATION] State ${state} is allowed for ${dialerName}`);
+
     // Check if this lead should be forwarded to the appropriate dialer API
     // Any list ID in the routing settings will have routingData and be eligible for forwarding
     if (routingData) {
@@ -837,25 +844,26 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
       );
     }
     
-    // Validate that the state is in the allowed list
+    // Validate that the state is in the allowed list (health insurance leads use internal dialer)
     const normalizedState = state.toUpperCase();
-    if (!ALLOWED_STATES.includes(normalizedState)) {
+    if (!INTERNAL_DIALER_ALLOWED_STATES.includes(normalizedState)) {
       console.log(`[STATE VALIDATION] Rejecting health insurance lead with non-allowed state: ${state}`);
       return NextResponse.json(
         {
           success: false,
           bid: 0.00,
-          error: `State not allowed: ${state}`,
+          error: `State ${state} not allowed for Internal Dialer`,
           details: {
             state: state,
-            allowedStates: ALLOWED_STATES
+            dialerType: 'Internal Dialer',
+            allowedStates: INTERNAL_DIALER_ALLOWED_STATES
           }
         },
         { status: 400 }
       );
     }
     
-    console.log(`[STATE VALIDATION] State ${state} is allowed for health insurance lead`);
+    console.log(`[STATE VALIDATION] State ${state} is allowed for health insurance lead (Internal Dialer)`);
     
     // Perform comprehensive compliance check for health insurance lead phone
     console.log('Performing compliance check for health insurance lead phone:', phone);
