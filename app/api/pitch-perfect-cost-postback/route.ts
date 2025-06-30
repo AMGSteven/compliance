@@ -21,10 +21,34 @@ function createServerClient() {
  * Receives cost postbacks from Pitch Perfect dialer and attributes costs to leads
  */
 export async function POST(request: NextRequest) {
+  let rawBody: string = '';
+  
   try {
-    // Parse the request body
-    const body = await request.json();
-    console.log('Received Pitch Perfect cost postback:', JSON.stringify(body));
+    // First, get the raw body text for debugging
+    rawBody = await request.text();
+    console.log('Raw request body received:', rawBody);
+    console.log('Raw body length:', rawBody.length);
+    console.log('Raw body first 100 chars:', rawBody.substring(0, 100));
+    
+    // Try to parse as JSON
+    let body;
+    try {
+      body = JSON.parse(rawBody);
+      console.log('Successfully parsed JSON:', JSON.stringify(body));
+    } catch (parseError) {
+      console.error('JSON parsing failed:', parseError);
+      console.error('Raw body causing parse error:', JSON.stringify(rawBody));
+      console.error('Raw body hex dump:', Buffer.from(rawBody).toString('hex'));
+      
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: `Invalid JSON format: ${parseError instanceof Error ? parseError.message : 'Unknown JSON error'}`,
+          rawBody: rawBody.substring(0, 200) // First 200 chars for debugging
+        },
+        { status: 400 }
+      );
+    }
     
     // Create Supabase client
     const supabase = createServerClient();
@@ -151,10 +175,12 @@ export async function POST(request: NextRequest) {
     
   } catch (error) {
     console.error('Error processing Pitch Perfect cost postback:', error);
+    console.error('Raw body when error occurred:', rawBody);
     return NextResponse.json(
       { 
         success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        rawBody: rawBody ? rawBody.substring(0, 200) : 'No raw body captured'
       },
       { status: 500 }
     );
