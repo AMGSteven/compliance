@@ -46,6 +46,9 @@ export default function RootLayout({
                     <Link href="/compliance/batch-fast" className="nav-link">
                       Fast Batch (25k+ Records)
                     </Link>
+                    <Link href="/dnc/csv-upload" className="nav-link">
+                      DNC CSV Upload
+                    </Link>
                     <Link href="/dashboard/list-routings" className="nav-link">
                       List Routings
                     </Link>
