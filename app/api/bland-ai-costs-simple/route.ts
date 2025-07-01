@@ -27,8 +27,10 @@ export async function GET(request: NextRequest) {
       .select('*')
       .order('recorded_at', { ascending: false });
 
-    // Apply time filters
+    // Apply time filters - all calculations in EST timezone
     const now = new Date();
+    // Convert current time to EST for consistent date calculations
+    const nowEST = new Date(now.toLocaleString("en-US", {timeZone: "America/New_York"}));
     let startTime: Date;
     let endTime: Date;
 
@@ -46,15 +48,22 @@ export async function GET(request: NextRequest) {
     } else {
       switch (period) {
         case 'today':
-          startTime = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          // Start of today in EST
+          startTime = new Date(nowEST.getFullYear(), nowEST.getMonth(), nowEST.getDate());
+          // Convert back to UTC for database query
+          startTime = new Date(startTime.getTime() + (5 * 60 * 60 * 1000)); // Add 5 hours to convert EST to UTC
           query = query.gte('recorded_at', startTime.toISOString());
           break;
         case 'week':
+          // 7 days ago from now
           startTime = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000));
           query = query.gte('recorded_at', startTime.toISOString());
           break;
         case 'month':
-          startTime = new Date(now.getFullYear(), now.getMonth(), 1);
+          // Start of current month in EST
+          startTime = new Date(nowEST.getFullYear(), nowEST.getMonth(), 1);
+          // Convert back to UTC for database query
+          startTime = new Date(startTime.getTime() + (5 * 60 * 60 * 1000)); // Add 5 hours to convert EST to UTC
           query = query.gte('recorded_at', startTime.toISOString());
           break;
         case 'all':
@@ -62,7 +71,9 @@ export async function GET(request: NextRequest) {
           break;
         default:
           // Default to today
-          startTime = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          startTime = new Date(nowEST.getFullYear(), nowEST.getMonth(), nowEST.getDate());
+          // Convert back to UTC for database query
+          startTime = new Date(startTime.getTime() + (5 * 60 * 60 * 1000)); // Add 5 hours to convert EST to UTC
           query = query.gte('recorded_at', startTime.toISOString());
       }
     }

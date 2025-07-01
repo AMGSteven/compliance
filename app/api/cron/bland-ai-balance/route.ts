@@ -15,18 +15,24 @@ export async function POST(req: NextRequest) {
     console.log('[BLAND-AI-DEBUG] API: No request body or invalid JSON');
   }
 
-  // 1. Security Check
+  // 1. Security Check - Handle both Vercel cron and internal triggers
   const incomingSecret = req.headers.get('X-Internal-Trigger-Secret');
-  if (!INTERNAL_TRIGGER_SECRET) {
-    console.error('[BLAND-AI-DEBUG] API: INTERNAL_TRIGGER_SECRET environment variable is not set.');
-    return NextResponse.json({ error: 'Internal Server Configuration Error' }, { status: 500 });
-  }
-  if (incomingSecret !== INTERNAL_TRIGGER_SECRET) {
-    console.error('[BLAND-AI-DEBUG] API: Unauthorized attempt to trigger Bland AI balance. Secret mismatch.');
+  const authHeader = req.headers.get('Authorization');
+  const vercelCronSecret = process.env.CRON_SECRET;
+  
+  // Check if it's a Vercel cron request
+  const isVercelCron = authHeader === `Bearer ${vercelCronSecret}`;
+  const isInternalTrigger = incomingSecret === INTERNAL_TRIGGER_SECRET;
+  
+  if (!isVercelCron && !isInternalTrigger) {
+    console.error('[BLAND-AI-DEBUG] API: Unauthorized attempt to trigger Bland AI balance.');
+    console.error('[BLAND-AI-DEBUG] API: Auth header:', authHeader ? 'present' : 'missing');
+    console.error('[BLAND-AI-DEBUG] API: Internal secret:', incomingSecret ? 'present' : 'missing');
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-
-  console.log('[BLAND-AI-DEBUG] API: Authorized request - Recording Bland AI balance and calculating costs...');
+  
+  const triggerSource = isVercelCron ? 'Vercel cron' : 'internal trigger';
+  console.log(`[BLAND-AI-DEBUG] API: Authorized ${triggerSource} request - Recording Bland AI balance and calculating costs...`);
 
   try {
     // Check Supabase environment variables
