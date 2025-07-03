@@ -216,6 +216,22 @@ export class TrustedFormService {
 
       console.log(`[TrustedForm] Retaining certificate: ${certificateId}`);
 
+      // Build request body - match_lead is always required for v4.0 retain operations
+      const requestBody = {
+        match_lead: {
+          // Include actual data if available, otherwise use minimal structure
+          ...(leadData.email && leadData.email.trim() && { email: leadData.email.trim() }),
+          ...(leadData.phone && leadData.phone.trim() && { phone: leadData.phone.trim() }),
+          // If no lead data, TrustedForm might still require the parameter present
+        },
+        retain: {
+          ...(options.reference && { reference: options.reference }),
+          ...(options.vendor && { vendor: options.vendor }),
+        },
+      };
+
+      console.log(`[TrustedForm] Request body:`, JSON.stringify(requestBody, null, 2));
+
       // Call TrustedForm Retain API v4.0
       const response = await fetch(`https://cert.trustedform.com/${certificateId}`, {
         method: 'POST',
@@ -224,16 +240,7 @@ export class TrustedFormService {
           'Content-Type': 'application/json',
           'Api-Version': '4.0',
         },
-        body: JSON.stringify({
-          match_lead: {
-            ...(leadData.email && { email: leadData.email }),
-            ...(leadData.phone && { phone: leadData.phone }),
-          },
-          retain: {
-            ...(options.reference && { reference: options.reference }),
-            ...(options.vendor && { vendor: options.vendor }),
-          },
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const result = await response.json();

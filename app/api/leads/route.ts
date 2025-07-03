@@ -311,10 +311,9 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     // Clean the phone number for consistency checks
     const normalizedPhoneForComplianceCheck = phone ? phone.replace(/\D/g, '') : '';
     
-    // First check if this is a duplicate lead within the past 30 days (unless it's a test phone)
+    // Check for duplicate leads in the last 30 days - using normalized phone number for compliance
     if (!isTestModeForPhoneNumber || normalizedPhoneForComplianceCheck !== TEST_PHONE_NUMBER) {
-      console.log(`[DUPLICATE CHECK] Checking if phone ${normalizedPhoneForComplianceCheck} was submitted in the past 30 days`);
-      
+      console.log(`[DUPLICATE CHECK] Checking for duplicates for phone: ${normalizedPhoneForComplianceCheck}`);
       const duplicateCheck = await checkForDuplicateLead(normalizedPhoneForComplianceCheck);
       
       if (duplicateCheck.isDuplicate) {
@@ -340,7 +339,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
       console.log(`[TEST MODE] Bypassing duplicate check for test phone number ${TEST_PHONE_NUMBER}`);
     }
     
-    // Perform comprehensive compliance check across all sources - using the same engine as the /compliance page
+    // STEP 2: Perform comprehensive compliance check across all sources - using the same engine as the /compliance page
     let complianceReport: { isCompliant: boolean; results: Array<{ source: string; isCompliant: boolean; reasons: string[] }> };
     let phoneValidationResult: { isCompliant: boolean; reason?: string; details: Record<string, any> };
     let isCompliant: boolean;
@@ -540,6 +539,88 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
       routingData = routingResults;
       console.log(`Found list routing for ${listId}:`, routingData);
       
+      // STEP 1: TrustedForm Certificate Claiming (BEFORE compliance checks)
+      // This must happen first - if claiming fails, reject the lead
+      if (routingData?.auto_claim_trusted_form && trustedFormCertUrl) {
+        console.log('[TrustedForm Pre-Claim] Starting BLOCKING auto-claim process for certificate:', trustedFormCertUrl);
+        
+        try {
+          const claimResult = await TrustedFormService.retainCertificate(
+            trustedFormCertUrl,
+            {
+              email: email,
+              phone: phone,
+              firstName: firstName,
+              lastName: lastName,
+            },
+            {
+              reference: 'pre-claim-validation',
+              vendor: 'compliance-system',
+            }
+          );
+          
+          if (!claimResult.success) {
+            console.error('[TrustedForm Pre-Claim] BLOCKING LEAD: Failed to claim certificate:', {
+              error: claimResult.error,
+              certificateUrl: trustedFormCertUrl,
+              status: claimResult.status
+            });
+            
+            return NextResponse.json(
+              {
+                success: false,
+                bid: 0.00,
+                error: `TrustedForm certificate claiming failed: ${claimResult.error}`,
+                details: {
+                  certificateUrl: trustedFormCertUrl,
+                  claimStatus: claimResult.status,
+                  source: 'trustedform-pre-claim'
+                }
+              },
+              { status: 400 }
+            );
+          }
+          
+          console.log('[TrustedForm Pre-Claim] Certificate claimed successfully:', {
+            certificateId: claimResult.certificateId,
+            status: claimResult.status
+          });
+          
+        } catch (claimError: any) {
+          console.error('[TrustedForm Pre-Claim] BLOCKING LEAD: Unexpected error during claiming:', {
+            error: claimError.message,
+            certificateUrl: trustedFormCertUrl
+          });
+          
+          return NextResponse.json(
+            {
+              success: false,
+              bid: 0.00,
+              error: `TrustedForm certificate claiming error: ${claimError.message}`,
+              details: {
+                certificateUrl: trustedFormCertUrl,
+                source: 'trustedform-pre-claim-exception'
+              }
+            },
+            { status: 500 }
+          );
+        }
+      } else if (routingData?.auto_claim_trusted_form && !trustedFormCertUrl) {
+        console.log('[TrustedForm Pre-Claim] BLOCKING LEAD: Auto-claim enabled but no TrustedForm certificate URL found in lead data');
+        
+        return NextResponse.json(
+          {
+            success: false,
+            bid: 0.00,
+            error: 'TrustedForm auto-claim enabled but no certificate URL provided',
+            details: {
+              source: 'trustedform-missing-url'
+            }
+          },
+          { status: 400 }
+        );
+      }
+      
       // Get the bid value from routing data
       if (routingData.bid) {
         bidValue = routingData.bid;
@@ -572,45 +653,8 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     console.log('Final values used for dialer:', { effectiveCampaignId, effectiveCadenceId });
     
     // Auto-claim TrustedForm certificate if enabled for this routing (async, non-blocking)
-    if (routingData?.auto_claim_trusted_form && trustedFormCertUrl) {
-      console.log('[TrustedForm Auto-Claim] Starting auto-claim process for certificate:', trustedFormCertUrl);
-      
-      // Run auto-claim asynchronously without blocking lead processing
-      TrustedFormService.retainCertificate(
-        trustedFormCertUrl,
-        {
-          email: email,
-          phone: phone,
-          firstName: firstName,
-          lastName: lastName,
-        },
-        {
-          reference: data[0]?.id || 'unknown',
-          vendor: 'compliance-system',
-        }
-      ).then((result) => {
-        if (result.success) {
-          console.log('[TrustedForm Auto-Claim] Certificate retained successfully:', {
-            certificateId: result.certificateId,
-            leadId: data[0]?.id
-          });
-        } else {
-          console.error('[TrustedForm Auto-Claim] Failed to retain certificate:', {
-            error: result.error,
-            certificateUrl: trustedFormCertUrl,
-            leadId: data[0]?.id
-          });
-        }
-      }).catch((error) => {
-        console.error('[TrustedForm Auto-Claim] Unexpected error during auto-claim:', {
-          error: error.message,
-          certificateUrl: trustedFormCertUrl,
-          leadId: data[0]?.id
-        });
-      });
-    } else if (routingData?.auto_claim_trusted_form && !trustedFormCertUrl) {
-      console.log('[TrustedForm Auto-Claim] Auto-claim enabled but no TrustedForm certificate URL found in lead data');
-    }
+    // TrustedForm claiming now happens BEFORE compliance checks (above)
+    // This section has been moved to the beginning of the function
     
     // Get the dialer type from routing data (default to internal dialer if not specified)
     const dialerType = routingData?.dialer_type || DIALER_TYPE_INTERNAL;
@@ -1133,6 +1177,89 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
       routingData = routingResults;
       console.log(`Found list routing for ${listId}:`, routingData);
       
+      // STEP 1: TrustedForm Certificate Claiming (BEFORE compliance checks)
+      // This must happen first - if claiming fails, reject the lead
+      const trustedFormUrl = body.TrustedForm;
+      if (routingData?.auto_claim_trusted_form && trustedFormUrl) {
+        console.log('[TrustedForm Pre-Claim] Starting BLOCKING auto-claim process for health insurance certificate:', trustedFormUrl);
+        
+        try {
+          const claimResult = await TrustedFormService.retainCertificate(
+            trustedFormUrl,
+            {
+              email: email,
+              phone: phone,
+              firstName: firstName,
+              lastName: lastName,
+            },
+            {
+              reference: 'pre-claim-validation-health',
+              vendor: 'compliance-system',
+            }
+          );
+          
+          if (!claimResult.success) {
+            console.error('[TrustedForm Pre-Claim] BLOCKING HEALTH LEAD: Failed to claim certificate:', {
+              error: claimResult.error,
+              certificateUrl: trustedFormUrl,
+              status: claimResult.status
+            });
+            
+            return NextResponse.json(
+              {
+                success: false,
+                bid: 0.00,
+                error: `TrustedForm certificate claiming failed: ${claimResult.error}`,
+                details: {
+                  certificateUrl: trustedFormUrl,
+                  claimStatus: claimResult.status,
+                  source: 'trustedform-pre-claim-health'
+                }
+              },
+              { status: 400 }
+            );
+          }
+          
+          console.log('[TrustedForm Pre-Claim] Health insurance certificate claimed successfully:', {
+            certificateId: claimResult.certificateId,
+            status: claimResult.status
+          });
+          
+        } catch (claimError: any) {
+          console.error('[TrustedForm Pre-Claim] BLOCKING HEALTH LEAD: Unexpected error during claiming:', {
+            error: claimError.message,
+            certificateUrl: trustedFormUrl
+          });
+          
+          return NextResponse.json(
+            {
+              success: false,
+              bid: 0.00,
+              error: `TrustedForm certificate claiming error: ${claimError.message}`,
+              details: {
+                certificateUrl: trustedFormUrl,
+                source: 'trustedform-pre-claim-exception-health'
+              }
+            },
+            { status: 500 }
+          );
+        }
+      } else if (routingData?.auto_claim_trusted_form && !trustedFormUrl) {
+        console.log('[TrustedForm Pre-Claim] BLOCKING HEALTH LEAD: Auto-claim enabled but no TrustedForm certificate URL found in lead data');
+        
+        return NextResponse.json(
+          {
+            success: false,
+            bid: 0.00,
+            error: 'TrustedForm auto-claim enabled but no certificate URL provided',
+            details: {
+              source: 'trustedform-missing-url-health'
+            }
+          },
+          { status: 400 }
+        );
+      }
+      
       // Override campaign_id and cadence_id if provided in the routing
       if (routingData.campaign_id) {
         console.log(`Overriding campaign_id from ${effectiveCampaignId} to ${routingData.campaign_id}`);
@@ -1153,46 +1280,40 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
     
     console.log('Final values used for dialer:', { effectiveCampaignId, effectiveCadenceId });
     
-    // Auto-claim TrustedForm certificate if enabled for this routing (async, non-blocking)
-    const trustedFormUrl = body.TrustedForm;
-    if (routingData?.auto_claim_trusted_form && trustedFormUrl) {
-      console.log('[TrustedForm Auto-Claim] Starting auto-claim process for health insurance certificate:', trustedFormUrl);
+    // TrustedForm claiming now happens BEFORE compliance checks (above)
+    // This section has been moved to occur immediately after routingData is loaded
+    
+    // Check for duplicate leads in the last 30 days - using normalized phone number for compliance
+    const normalizedPhoneForComplianceCheck = phone ? phone.replace(/\D/g, '') : '';
+    
+    if (!isTestModeForPhoneNumber) {
+      console.log(`[DUPLICATE CHECK] Checking for duplicates for health insurance phone: ${normalizedPhoneForComplianceCheck}`);
+      const duplicateCheck = await checkForDuplicateLead(normalizedPhoneForComplianceCheck);
       
-      // Run auto-claim asynchronously without blocking lead processing
-      TrustedFormService.retainCertificate(
-        trustedFormUrl,
-        {
-          email: email,
-          phone: phone,
-          firstName: firstName,
-          lastName: lastName,
-        },
-        {
-          reference: data[0]?.id || 'unknown',
-          vendor: 'compliance-system',
-        }
-      ).then((result) => {
-        if (result.success) {
-          console.log('[TrustedForm Auto-Claim] Health insurance certificate retained successfully:', {
-            certificateId: result.certificateId,
-            leadId: data[0]?.id
-          });
-        } else {
-          console.error('[TrustedForm Auto-Claim] Failed to retain health insurance certificate:', {
-            error: result.error,
-            certificateUrl: trustedFormUrl,
-            leadId: data[0]?.id
-          });
-        }
-      }).catch((error) => {
-        console.error('[TrustedForm Auto-Claim] Unexpected error during health insurance auto-claim:', {
-          error: error.message,
-          certificateUrl: trustedFormUrl,
-          leadId: data[0]?.id
+      if (duplicateCheck.isDuplicate) {
+        console.log('[DUPLICATE CHECK] BLOCKING HEALTH INSURANCE LEAD: Duplicate phone number found:', {
+          phone: normalizedPhoneForComplianceCheck,
+          details: duplicateCheck.details
         });
-      });
-    } else if (routingData?.auto_claim_trusted_form && !trustedFormUrl) {
-      console.log('[TrustedForm Auto-Claim] Auto-claim enabled but no TrustedForm certificate URL found in health insurance lead data');
+        
+        return NextResponse.json(
+          {
+            success: false,
+            bid: 0.00,
+            error: 'Duplicate phone number found in system',
+            details: {
+              phone: normalizedPhoneForComplianceCheck,
+              duplicateInfo: duplicateCheck.details,
+              source: 'duplicate-check'
+            }
+          },
+          { status: 400 }
+        );
+      }
+      
+      console.log('[DUPLICATE CHECK] No duplicates found for health insurance phone:', normalizedPhoneForComplianceCheck);
+    } else {
+      console.log(`[TEST MODE] Bypassing duplicate check for test phone number ${TEST_PHONE_NUMBER}`);
     }
 
     // Check if this lead should be forwarded to the dialer API based on routing configuration

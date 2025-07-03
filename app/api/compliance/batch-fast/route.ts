@@ -74,10 +74,13 @@ async function checkRecordFastCompliance(record: any): Promise<FastComplianceRes
     const internalDNCChecker = new InternalDNCChecker();
     const synergyDNCChecker = new SynergyDNCChecker();
 
-    // Check Internal DNC
+    // Check Internal DNC with retry logic
     try {
       console.log(`Checking Internal DNC for: ${phone}`);
-      const internalDNCResult = await internalDNCChecker.checkNumber(phone);
+      const internalDNCResult = await withRetry(async () => {
+        return await internalDNCChecker.checkNumber(phone);
+      }, 3, 1000);
+      
       result.checks.internalDNC = internalDNCResult.isCompliant;
       
       if (!internalDNCResult.isCompliant) {
@@ -92,10 +95,13 @@ async function checkRecordFastCompliance(record: any): Promise<FastComplianceRes
       result.failureReasons.push('Internal DNC check failed - blocked for safety');
     }
 
-    // Check Synergy DNC
+    // Check Synergy DNC with retry logic
     try {
       console.log(`Checking Synergy DNC for: ${phone}`);
-      const synergyDNCResult = await synergyDNCChecker.checkNumber(phone);
+      const synergyDNCResult = await withRetry(async () => {
+        return await synergyDNCChecker.checkNumber(phone);
+      }, 3, 1000);
+      
       result.checks.synergyDNC = synergyDNCResult.isCompliant;
       
       if (!synergyDNCResult.isCompliant) {
@@ -119,28 +125,96 @@ async function checkRecordFastCompliance(record: any): Promise<FastComplianceRes
   return result;
 }
 
-// Process records in chunks to avoid memory issues
-async function processInChunks<T, R>(
+// Process records with controlled concurrency and retry logic to avoid timeouts
+async function processWithConcurrencyControl<T, R>(
   items: T[], 
   processor: (item: T) => Promise<R>, 
-  chunkSize: number = 1000
+  concurrency: number = 5, // Max 5 parallel requests to avoid overwhelming APIs
+  chunkSize: number = 100  // Smaller chunks for better progress tracking
 ): Promise<R[]> {
   const results: R[] = [];
+  const totalChunks = Math.ceil(items.length / chunkSize);
   
   for (let i = 0; i < items.length; i += chunkSize) {
     const chunk = items.slice(i, i + chunkSize);
-    console.log(`Processing chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(items.length / chunkSize)} (${chunk.length} records)`);
+    const chunkNumber = Math.floor(i / chunkSize) + 1;
     
-    const chunkResults = await Promise.all(chunk.map(processor));
+    console.log(`Processing chunk ${chunkNumber}/${totalChunks} (${chunk.length} records) - ${results.length}/${items.length} completed`);
+    
+    // Process chunk with controlled concurrency
+    const chunkResults = await processChunkWithConcurrency(chunk, processor, concurrency);
     results.push(...chunkResults);
     
-    // Brief pause between chunks to prevent overwhelming the system
+    // Longer pause between chunks for large files to prevent API overload
+    const pauseDuration = items.length > 10000 ? 2000 : 500; // 2s for large files, 500ms for smaller ones
     if (i + chunkSize < items.length) {
-      await new Promise(resolve => setTimeout(resolve, 100));
+      console.log(`Pausing ${pauseDuration}ms before next chunk to prevent API overload...`);
+      await new Promise(resolve => setTimeout(resolve, pauseDuration));
     }
   }
   
   return results;
+}
+
+// Process a chunk with controlled concurrency (not all at once)
+async function processChunkWithConcurrency<T, R>(
+  items: T[],
+  processor: (item: T) => Promise<R>,
+  concurrency: number
+): Promise<R[]> {
+  const results: R[] = [];
+  const executing: Promise<void>[] = [];
+  
+  for (const item of items) {
+    const promise = processor(item).then(result => {
+      results.push(result);
+    });
+    
+    executing.push(promise);
+    
+    // If we've reached the concurrency limit, wait for one to complete
+    if (executing.length >= concurrency) {
+      await Promise.race(executing);
+      // Remove completed promises
+      for (let i = executing.length - 1; i >= 0; i--) {
+        if (await Promise.allSettled([executing[i]]).then((r: PromiseSettledResult<void>[]) => r[0].status === 'fulfilled')) {
+          executing.splice(i, 1);
+        }
+      }
+    }
+    
+    // Small delay between individual requests
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  
+  // Wait for all remaining promises to complete
+  await Promise.all(executing);
+  
+  return results;
+}
+
+// Retry wrapper for API calls with exponential backoff
+async function withRetry<T>(fn: () => Promise<T>, maxRetries: number = 3, baseDelay: number = 1000): Promise<T> {
+  let lastError: Error;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error as Error;
+      
+      if (attempt === maxRetries) {
+        console.error(`Final attempt failed after ${maxRetries} retries:`, error);
+        throw error;
+      }
+      
+      const delay = baseDelay * Math.pow(2, attempt - 1); // Exponential backoff
+      console.log(`Attempt ${attempt} failed, retrying in ${delay}ms:`, error);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  throw lastError!;
 }
 
 export async function POST(request: NextRequest) {
@@ -175,8 +249,13 @@ export async function POST(request: NextRequest) {
     console.log(`Starting fast compliance check for ${records.length} records...`);
     const startTime = Date.now();
 
-    // Process records in chunks for better performance and memory management
-    const results = await processInChunks(records, checkRecordFastCompliance, 1000);
+    // Process records with controlled concurrency to avoid timeouts
+    // For large files (50k records), use very conservative settings
+    const concurrency = records.length > 25000 ? 3 : 5; // Lower concurrency for large files
+    const chunkSize = records.length > 25000 ? 50 : 100; // Smaller chunks for large files
+    
+    console.log(`Processing ${records.length} records with concurrency=${concurrency}, chunkSize=${chunkSize}`);
+    const results = await processWithConcurrencyControl(records, checkRecordFastCompliance, concurrency, chunkSize);
 
     const endTime = Date.now();
     const processingTimeSeconds = ((endTime - startTime) / 1000).toFixed(1);
@@ -196,8 +275,8 @@ export async function POST(request: NextRequest) {
     };
 
     // Count failure reasons
-    nonCompliantRecords.forEach(result => {
-      result.failureReasons.forEach(reason => {
+    nonCompliantRecords.forEach((result: FastComplianceResult) => {
+      result.failureReasons.forEach((reason: string) => {
         if (!summary.failureReasons[reason]) {
           summary.failureReasons[reason] = 0;
         }
@@ -214,7 +293,7 @@ export async function POST(request: NextRequest) {
       success: true,
       summary,
       compliantRecords,
-      nonCompliantDetails: nonCompliantRecords.map(r => ({
+      nonCompliantDetails: nonCompliantRecords.map((r: FastComplianceResult) => ({
         record: r.record,
         failureReasons: r.failureReasons,
         checks: r.checks

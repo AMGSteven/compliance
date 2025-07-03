@@ -39,6 +39,9 @@ model leads {
   status                String   @default("new") @map("status")
   cadence_id            String?  @map("cadence_id")
   token                 String?  @map("token")
+  list_id               String?  @map("list_id")
+  campaign_id           String?  @map("campaign_id")
+  traffic_source        String?  @map("traffic_source")
   income_bracket        String?  @map("income_bracket")
   age_range             String?  @map("age_range")
   birth_date            DateTime? @map("birth_date")
@@ -50,6 +53,9 @@ model leads {
   @@index([phone])
   @@index([status])
   @@index([created_at])
+  @@index([list_id])
+  @@index([campaign_id])
+  @@index([traffic_source])
   @@map("leads")
 }
 

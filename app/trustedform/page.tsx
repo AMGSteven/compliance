@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { FileCheck, Layers, Search, Upload } from "lucide-react"
+import { FileCheck, Layers, Search, Upload, Download } from "lucide-react"
 import Link from "next/link"
 
 export default function TrustedFormPage() {
@@ -18,7 +18,7 @@ export default function TrustedFormPage() {
         <p className="text-muted-foreground">Manage and verify TrustedForm certificates</p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Certificates</CardTitle>
@@ -51,6 +51,25 @@ export default function TrustedFormPage() {
                 <Link href="/trustedform/batch">
                   <Layers className="mr-2 h-4 w-4" />
                   Batch Operations
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Bulk Claim</CardTitle>
+            <Download className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">Bulk Certificate Claiming</div>
+            <p className="text-xs text-muted-foreground">Upload CSV to claim multiple certificates at once</p>
+            <div className="mt-4">
+              <Button asChild>
+                <Link href="/trustedform/bulk-claim">
+                  <Download className="mr-2 h-4 w-4" />
+                  Bulk Claim
                 </Link>
               </Button>
             </div>
