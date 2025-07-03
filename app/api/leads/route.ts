@@ -165,31 +165,33 @@ export async function POST(request: Request) {
       console.log(`[TEST MODE] Detected test phone number ${TEST_PHONE_NUMBER}.`);
     }
 
-    // If we have a phone number AND it's not the test number, validate it directly
+    // Direct phone validation disabled to save costs
+    // if (phoneToCheck && !isTestModeForPhoneNumber) {
+    //   console.log(`[DIRECT VALIDATION] Validating phone: ${phoneToCheck}`);
+    //   const validationResult = await validatePhoneDirectly(phoneToCheck);
+    //   
+    //   if (!validationResult.isValid) {
+    //     console.log(`[DIRECT VALIDATION] BLOCKING LEAD: ${validationResult.reason}`);
+    //     return NextResponse.json(
+    //       {
+    //         success: false,
+    //         bid: 0.00,
+    //         error: `Phone validation failed: ${validationResult.reason}`,
+    //         details: {
+    //           phoneNumber: phoneToCheck,
+    //           phoneType: validationResult.phoneType,
+    //           status: validationResult.status,
+    //           reason: validationResult.reason
+    //         }
+    //       },
+    //       { status: 400 }
+    //     );
+    //   }
+    //   console.log(`[DIRECT VALIDATION] Phone passed validation: ${phoneToCheck}`);
+    // }
+    
+    // Duplicate check (re-enabled) - check if this is a duplicate lead within the past 30 days
     if (phoneToCheck && !isTestModeForPhoneNumber) {
-      console.log(`[DIRECT VALIDATION] Validating phone: ${phoneToCheck}`);
-      const validationResult = await validatePhoneDirectly(phoneToCheck);
-      
-      if (!validationResult.isValid) {
-        console.log(`[DIRECT VALIDATION] BLOCKING LEAD: ${validationResult.reason}`);
-        return NextResponse.json(
-          {
-            success: false,
-            bid: 0.00,
-            error: `Phone validation failed: ${validationResult.reason}`,
-            details: {
-              phoneNumber: phoneToCheck,
-              phoneType: validationResult.phoneType,
-              status: validationResult.status,
-              reason: validationResult.reason
-            }
-          },
-          { status: 400 }
-        );
-      }
-      console.log(`[DIRECT VALIDATION] Phone passed validation: ${phoneToCheck}`);
-      
-      // Now check if this is a duplicate lead within the past 30 days
       console.log(`[DUPLICATE CHECK] Checking if phone ${phoneToCheck} was submitted in the past 30 days`);
       const duplicateCheck = await checkForDuplicateLead(phoneToCheck);
       
@@ -211,7 +213,7 @@ export async function POST(request: Request) {
       }
       console.log(`[DUPLICATE CHECK] Phone ${phoneToCheck} is not a duplicate`);
     } else if (phoneToCheck && isTestModeForPhoneNumber) {
-      console.log(`[TEST MODE] Bypassed direct validation and duplicate check for ${TEST_PHONE_NUMBER}.`);
+      console.log(`[TEST MODE] Bypassed duplicate check for ${TEST_PHONE_NUMBER}.`);
     }
     
     // Log keys to help with debugging
@@ -361,10 +363,16 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
       const complianceEngine = new ComplianceEngine();
       complianceReport = await complianceEngine.checkPhoneNumber(phone);
       
-      console.log('Performing phone validation check for:', phone);
-      phoneValidationResult = await checkPhoneCompliance(phone); // Directly assign
+      // Phone validation disabled per user request
+      // console.log('Performing phone validation check for:', phone);
+      // phoneValidationResult = await checkPhoneCompliance(phone); // Directly assign
+      phoneValidationResult = { 
+        isCompliant: true, 
+        reason: 'Phone validation disabled',
+        details: { validationStatus: 'bypassed', info: 'Phone validation disabled per user request' } 
+      };
       
-      isCompliant = complianceReport.isCompliant && phoneValidationResult.isCompliant;
+      isCompliant = complianceReport.isCompliant; // Only use DNC compliance, phone validation disabled
     }
     
     if (!isCompliant) {
@@ -914,12 +922,17 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
     const engine = new ComplianceEngine();
     const complianceReport = await engine.checkPhoneNumber(phone);
     
-    // 2. Check using RealPhoneValidation API for phone service status
-    console.log('Performing phone validation check for:', phone);
-    const phoneValidationResult = await checkPhoneCompliance(phone);
+    // 2. Phone validation disabled per user request
+    // console.log('Performing phone validation check for:', phone);
+    // const phoneValidationResult = await checkPhoneCompliance(phone);
+    const phoneValidationResult = { 
+      isCompliant: true, 
+      reason: 'Phone validation disabled',
+      details: { validationStatus: 'bypassed', info: 'Phone validation disabled per user request' } 
+    };
     
-    // Combined compliance result from both DNC checks and phone validation
-    const isCompliant = complianceReport.isCompliant && phoneValidationResult.isCompliant;
+    // Combined compliance result - only use DNC checks since phone validation is disabled
+    const isCompliant = complianceReport.isCompliant; // Phone validation disabled
     
     if (!isCompliant) {
       // Gather failed sources from DNC checkers
