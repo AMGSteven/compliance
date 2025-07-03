@@ -4,6 +4,7 @@ import { ComplianceEngine } from '@/lib/compliance/engine';
 import { checkPhoneCompliance } from '@/app/lib/real-phone-validation';
 import { validatePhoneDirectly } from '@/app/lib/phone-validation-hook';
 import { checkForDuplicateLead } from '@/app/lib/duplicate-lead-check';
+import { TrustedFormService } from '@/lib/services/trusted-form';
 
 // Main POST handler for all lead formats
 // Force dynamic routing for Vercel deployment
@@ -562,6 +563,47 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     
     console.log('Final values used for dialer:', { effectiveCampaignId, effectiveCadenceId });
     
+    // Auto-claim TrustedForm certificate if enabled for this routing (async, non-blocking)
+    if (routingData?.auto_claim_trusted_form && trustedFormCertUrl) {
+      console.log('[TrustedForm Auto-Claim] Starting auto-claim process for certificate:', trustedFormCertUrl);
+      
+      // Run auto-claim asynchronously without blocking lead processing
+      TrustedFormService.retainCertificate(
+        trustedFormCertUrl,
+        {
+          email: email,
+          phone: phone,
+          firstName: firstName,
+          lastName: lastName,
+        },
+        {
+          reference: data[0]?.id || 'unknown',
+          vendor: 'compliance-system',
+        }
+      ).then((result) => {
+        if (result.success) {
+          console.log('[TrustedForm Auto-Claim] Certificate retained successfully:', {
+            certificateId: result.certificateId,
+            leadId: data[0]?.id
+          });
+        } else {
+          console.error('[TrustedForm Auto-Claim] Failed to retain certificate:', {
+            error: result.error,
+            certificateUrl: trustedFormCertUrl,
+            leadId: data[0]?.id
+          });
+        }
+      }).catch((error) => {
+        console.error('[TrustedForm Auto-Claim] Unexpected error during auto-claim:', {
+          error: error.message,
+          certificateUrl: trustedFormCertUrl,
+          leadId: data[0]?.id
+        });
+      });
+    } else if (routingData?.auto_claim_trusted_form && !trustedFormCertUrl) {
+      console.log('[TrustedForm Auto-Claim] Auto-claim enabled but no TrustedForm certificate URL found in lead data');
+    }
+    
     // Get the dialer type from routing data (default to internal dialer if not specified)
     const dialerType = routingData?.dialer_type || DIALER_TYPE_INTERNAL;
     console.log(`Using dialer type: ${dialerType === DIALER_TYPE_INTERNAL ? 'Internal Dialer' : 'Pitch BPO'}`);
@@ -1097,6 +1139,48 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
     }
     
     console.log('Final values used for dialer:', { effectiveCampaignId, effectiveCadenceId });
+    
+    // Auto-claim TrustedForm certificate if enabled for this routing (async, non-blocking)
+    const trustedFormUrl = body.TrustedForm;
+    if (routingData?.auto_claim_trusted_form && trustedFormUrl) {
+      console.log('[TrustedForm Auto-Claim] Starting auto-claim process for health insurance certificate:', trustedFormUrl);
+      
+      // Run auto-claim asynchronously without blocking lead processing
+      TrustedFormService.retainCertificate(
+        trustedFormUrl,
+        {
+          email: email,
+          phone: phone,
+          firstName: firstName,
+          lastName: lastName,
+        },
+        {
+          reference: data[0]?.id || 'unknown',
+          vendor: 'compliance-system',
+        }
+      ).then((result) => {
+        if (result.success) {
+          console.log('[TrustedForm Auto-Claim] Health insurance certificate retained successfully:', {
+            certificateId: result.certificateId,
+            leadId: data[0]?.id
+          });
+        } else {
+          console.error('[TrustedForm Auto-Claim] Failed to retain health insurance certificate:', {
+            error: result.error,
+            certificateUrl: trustedFormUrl,
+            leadId: data[0]?.id
+          });
+        }
+      }).catch((error) => {
+        console.error('[TrustedForm Auto-Claim] Unexpected error during health insurance auto-claim:', {
+          error: error.message,
+          certificateUrl: trustedFormUrl,
+          leadId: data[0]?.id
+        });
+      });
+    } else if (routingData?.auto_claim_trusted_form && !trustedFormUrl) {
+      console.log('[TrustedForm Auto-Claim] Auto-claim enabled but no TrustedForm certificate URL found in health insurance lead data');
+    }
 
     // Check if this lead should be forwarded to the dialer API based on routing configuration
     let dialerResponse = null;

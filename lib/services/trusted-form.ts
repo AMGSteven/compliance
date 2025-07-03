@@ -180,4 +180,120 @@ export class TrustedFormService {
       },
     };
   }
+
+  /**
+   * Retain a TrustedForm certificate using the Retain API v4.0
+   * @param certificateUrl - The TrustedForm certificate URL
+   * @param leadData - Lead data for matching (email, phone)
+   * @param options - Optional metadata (reference, vendor)
+   */
+  static async retainCertificate(
+    certificateUrl: string,
+    leadData: {
+      email?: string;
+      phone?: string;
+      firstName?: string;
+      lastName?: string;
+    },
+    options: {
+      reference?: string;
+      vendor?: string;
+    } = {}
+  ) {
+    try {
+      if (!API_KEY) {
+        throw new Error('TrustedForm API key not configured');
+      }
+
+      // Extract certificate ID from URL
+      const certificateId = certificateUrl.startsWith('http') 
+        ? certificateUrl.split('/').pop() 
+        : certificateUrl;
+      
+      if (!certificateId) {
+        throw new Error('Invalid certificate URL: cannot extract certificate ID');
+      }
+
+      console.log(`[TrustedForm] Retaining certificate: ${certificateId}`);
+
+      // Call TrustedForm Retain API v4.0
+      const response = await fetch(`https://cert.trustedform.com/${certificateId}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${Buffer.from('API:' + API_KEY).toString('base64')}`,
+          'Content-Type': 'application/json',
+          'Api-Version': '4.0',
+        },
+        body: JSON.stringify({
+          match_lead: {
+            ...(leadData.email && { email: leadData.email }),
+            ...(leadData.phone && { phone: leadData.phone }),
+          },
+          retain: {
+            ...(options.reference && { reference: options.reference }),
+            ...(options.vendor && { vendor: options.vendor }),
+          },
+        }),
+      });
+
+      const result = await response.json();
+      
+      console.log(`[TrustedForm] Retain API response:`, {
+        status: response.status,
+        success: response.ok,
+        certificateId,
+        result: JSON.stringify(result).substring(0, 200)
+      });
+
+      // Store the result in our database using the correct schema
+      if (response.ok) {
+        try {
+          // Use Supabase client instead of Prisma to match the actual schema
+          const { createServerClient } = await import('@/lib/supabase/server');
+          const supabase = createServerClient();
+          
+          const { error: insertError } = await supabase
+            .from('trusted_form_certificates')
+            .upsert({
+              certificate_url: certificateUrl,
+              status: 'verified',
+              verified_at: new Date().toISOString(),
+              metadata: {
+                ...result,
+                retained_at: new Date().toISOString(),
+                reference: options.reference,
+                vendor: options.vendor,
+                lead_data: leadData,
+              },
+            });
+            
+          if (insertError) {
+            console.error('[TrustedForm] Error storing certificate:', insertError);
+          } else {
+            console.log('[TrustedForm] Certificate stored successfully');
+          }
+        } catch (dbError) {
+          console.error('[TrustedForm] Database error:', dbError);
+          // Don't throw here - retention was successful, just storage failed
+        }
+      }
+
+      return {
+        success: response.ok,
+        certificateId,
+        status: response.status,
+        data: result,
+        error: response.ok ? null : (result.message || 'Retain API failed'),
+      };
+    } catch (error) {
+      console.error('[TrustedForm] Error retaining certificate:', error);
+      return {
+        success: false,
+        certificateId: null,
+        status: 500,
+        data: null,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
 }

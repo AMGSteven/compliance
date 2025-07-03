@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
   
   try {
     const body = await req.json();
-    const { list_id, campaign_id, cadence_id, description, active, bid, token, dialer_type } = body;
+    const { list_id, campaign_id, cadence_id, description, active, bid, token, dialer_type, auto_claim_trusted_form } = body;
     console.log('Received POST with bid:', bid);
     
     // Validate required fields based on dialer type
@@ -129,6 +129,7 @@ export async function POST(req: NextRequest) {
       active: active !== false,
       bid: bid || 0.00,
       dialer_type: dialer_type || 1, // Default to internal dialer (1) if not specified
+      auto_claim_trusted_form: auto_claim_trusted_form || false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
@@ -252,7 +253,7 @@ export async function PUT(req: NextRequest) {
   
   try {
     const body = await req.json();
-    const { id, list_id, campaign_id, cadence_id, token, description, active, bid } = body;
+    const { id, list_id, campaign_id, cadence_id, token, description, active, bid, auto_claim_trusted_form } = body;
     console.log('Received PUT with bid:', bid);
     
     // Validate required fields
@@ -282,6 +283,7 @@ export async function PUT(req: NextRequest) {
     if (description !== undefined) updateFields.description = description;
     if (active !== undefined) updateFields.active = active;
     if (bid !== undefined) updateFields.bid = typeof bid === 'number' ? bid : (bid ? parseFloat(bid) : 0.00);
+    if (auto_claim_trusted_form !== undefined) updateFields.auto_claim_trusted_form = auto_claim_trusted_form;
     
     const { data, error } = await supabase
       .from('list_routings')

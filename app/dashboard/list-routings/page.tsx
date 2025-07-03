@@ -16,6 +16,7 @@ interface ListRouting {
   active: boolean;
   bid?: number;
   dialer_type?: number; // 1 = Internal Dialer, 2 = Pitch BPO
+  auto_claim_trusted_form?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -134,7 +135,8 @@ export default function ListRoutingsPage() {
       description: record.description,
       bid: record.bid || 0,
       dialer_type: record.dialer_type || 1, // Default to Internal Dialer if not set
-      active: record.active
+      active: record.active,
+      auto_claim_trusted_form: record.auto_claim_trusted_form || false
     });
     
     setModalVisible(true);
@@ -259,6 +261,7 @@ export default function ListRoutingsPage() {
         bid: bidValue,
         active: values.active !== undefined ? values.active : true,
         dialer_type: values.dialer_type || 1, // Default to 1 if missing
+        auto_claim_trusted_form: values.auto_claim_trusted_form || false,
         
         // For Pitch BPO, these values were already set correctly above
         list_id: values.list_id || '', 
@@ -393,6 +396,14 @@ export default function ListRoutingsPage() {
       key: 'active',
       render: (active: boolean) => (
         <Switch checked={active} disabled />
+      )
+    },
+    {
+      title: 'Auto-Claim TF',
+      dataIndex: 'auto_claim_trusted_form',
+      key: 'auto_claim_trusted_form',
+      render: (autoClaim: boolean) => (
+        <Switch checked={autoClaim} disabled />
       )
     },
     {
@@ -633,6 +644,16 @@ export default function ListRoutingsPage() {
             label="Active"
             valuePropName="checked"
             initialValue={true}
+          >
+            <Switch />
+          </Form.Item>
+          
+          <Form.Item
+            name="auto_claim_trusted_form"
+            label="Auto-Claim TrustedForm"
+            valuePropName="checked"
+            initialValue={false}
+            tooltip="Automatically claim TrustedForm certificates for leads in this routing"
           >
             <Switch />
           </Form.Item>
