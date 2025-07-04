@@ -57,7 +57,7 @@ export default function RevenueTrackingPage() {
   const [revenueData, setRevenueData] = useState<RevenueData[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null);
-  const [timeFrame, setTimeFrame] = useState<string>('today');
+  const [timeFrame, setTimeFrame] = useState<string>('yesterday');
   const [totalLeadCosts, setTotalLeadCosts] = useState<number>(0);
   const [totalLeads, setTotalLeads] = useState<number>(0);
   const [totalWeekdayLeads, setTotalWeekdayLeads] = useState<number>(0);
@@ -78,16 +78,18 @@ export default function RevenueTrackingPage() {
     }
     
     switch (timeFrame) {
-      case 'today':
-        return `${baseName} (Today)`;
-      case 'week':
+      case 'yesterday':
+        return `${baseName} (Yesterday)`;
+      case 'thisWeek':
         return `${baseName} (This Week)`;
-      case 'month':
+      case 'lastWeek':
+        return `${baseName} (Last Week)`;
+      case 'thisMonth':
         return `${baseName} (This Month)`;
-      case 'all':
-        return `${baseName} (All Time)`;
+      case 'lastMonth':
+        return `${baseName} (Last Month)`;
       default:
-        return `${baseName} (Today)`;
+        return `${baseName} (Yesterday)`;
     }
   };
 
@@ -153,30 +155,37 @@ export default function RevenueTrackingPage() {
           if (timeFrame === 'custom' && dateRange && dateRange[0] && dateRange[1]) {
             countUrl.searchParams.append('startDate', dateRange[0].format('YYYY-MM-DD'));
             countUrl.searchParams.append('endDate', dateRange[1].format('YYYY-MM-DD'));
-          } else if (timeFrame !== 'all') {
-            const now = dayjs();
-            let startDate = now;
+          } else {
+            let startDate, endDate;
             
             switch (timeFrame) {
-              case 'week':
-                startDate = now.subtract(7, 'days');
+              case 'yesterday':
+                startDate = dayjs().subtract(1, 'day').startOf('day');
+                endDate = dayjs().subtract(1, 'day').endOf('day');
                 break;
-              case 'month':
-                startDate = now.subtract(30, 'days');
+              case 'thisWeek':
+                startDate = dayjs().startOf('week');
+                endDate = dayjs().endOf('day');
                 break;
-              case 'quarter':
-                startDate = now.subtract(90, 'days');
+              case 'lastWeek':
+                startDate = dayjs().subtract(1, 'week').startOf('week');
+                endDate = dayjs().subtract(1, 'week').endOf('week');
                 break;
-              case 'year':
-                startDate = now.subtract(365, 'days');
+              case 'thisMonth':
+                startDate = dayjs().startOf('month');
+                endDate = dayjs().endOf('day');
                 break;
-              case 'today':
-                startDate = now.startOf('day');
+              case 'lastMonth':
+                startDate = dayjs().subtract(1, 'month').startOf('month');
+                endDate = dayjs().subtract(1, 'month').endOf('month');
                 break;
+              default:
+                startDate = dayjs().subtract(1, 'day').startOf('day');
+                endDate = dayjs().subtract(1, 'day').endOf('day');
             }
             
             countUrl.searchParams.append('startDate', startDate.format('YYYY-MM-DD'));
-            countUrl.searchParams.append('endDate', now.format('YYYY-MM-DD'));
+            countUrl.searchParams.append('endDate', endDate.format('YYYY-MM-DD'));
           }
           
           const response = await fetch(countUrl.toString(), {
@@ -230,30 +239,37 @@ export default function RevenueTrackingPage() {
           if (timeFrame === 'custom' && dateRange && dateRange[0] && dateRange[1]) {
             weekendUrl.searchParams.append('startDate', dateRange[0].format('YYYY-MM-DD'));
             weekendUrl.searchParams.append('endDate', dateRange[1].format('YYYY-MM-DD'));
-          } else if (timeFrame !== 'all') {
-            const now = dayjs();
-            let startDate = now;
+          } else {
+            let startDate, endDate;
             
             switch (timeFrame) {
-              case 'week':
-                startDate = now.subtract(7, 'days');
+              case 'yesterday':
+                startDate = dayjs().subtract(1, 'day').startOf('day');
+                endDate = dayjs().subtract(1, 'day').endOf('day');
                 break;
-              case 'month':
-                startDate = now.subtract(30, 'days');
+              case 'thisWeek':
+                startDate = dayjs().startOf('week');
+                endDate = dayjs().endOf('day');
                 break;
-              case 'quarter':
-                startDate = now.subtract(90, 'days');
+              case 'lastWeek':
+                startDate = dayjs().subtract(1, 'week').startOf('week');
+                endDate = dayjs().subtract(1, 'week').endOf('week');
                 break;
-              case 'year':
-                startDate = now.subtract(365, 'days');
+              case 'thisMonth':
+                startDate = dayjs().startOf('month');
+                endDate = dayjs().endOf('day');
                 break;
-              case 'today':
-                startDate = now.startOf('day');
+              case 'lastMonth':
+                startDate = dayjs().subtract(1, 'month').startOf('month');
+                endDate = dayjs().subtract(1, 'month').endOf('month');
                 break;
+              default:
+                startDate = dayjs().subtract(1, 'day').startOf('day');
+                endDate = dayjs().subtract(1, 'day').endOf('day');
             }
             
             weekendUrl.searchParams.append('startDate', startDate.format('YYYY-MM-DD'));
-            weekendUrl.searchParams.append('endDate', now.format('YYYY-MM-DD'));
+            weekendUrl.searchParams.append('endDate', endDate.format('YYYY-MM-DD'));
           }
           // For 'all' time frame: NO date filters - same as lead count query
           
@@ -303,10 +319,70 @@ export default function RevenueTrackingPage() {
         }
       });
       
-      // Now we need to get issued lead counts for synergy payout
-      console.log('Calculating issued leads for synergy payout...');
+      // Now we need to get issued lead counts for synergy payout from ALL list IDs
+      console.log('Calculating issued leads for synergy payout from ALL list IDs...');
       
-      const issuedLeadPromises = Object.keys(routingMap).map(async (listId) => {
+      // First get all unique list IDs that have issued policies today
+      const allListIdsUrl = new URL('/api/leads/list', window.location.origin);
+      allListIdsUrl.searchParams.append('pageSize', '1000'); // Get enough to see all list IDs
+      allListIdsUrl.searchParams.append('policy_status', 'issued');
+      allListIdsUrl.searchParams.append('use_postback_date', 'true');
+      
+      // Add same date filtering
+      if (dateRange && dateRange.length === 2) {
+        allListIdsUrl.searchParams.append('startDate', dateRange[0].format('YYYY-MM-DD'));
+        allListIdsUrl.searchParams.append('endDate', dateRange[1].format('YYYY-MM-DD'));
+      } else {
+        // Default date range logic for synergy calculation
+        let startDate, endDate;
+        switch (timeFrame) {
+          case 'yesterday':
+            startDate = dayjs().subtract(1, 'day').startOf('day');
+            endDate = dayjs().subtract(1, 'day').endOf('day');
+            break;
+          case 'thisWeek':
+            startDate = dayjs().startOf('week');
+            endDate = dayjs().endOf('day');
+            break;
+          case 'lastWeek':
+            startDate = dayjs().subtract(1, 'week').startOf('week');
+            endDate = dayjs().subtract(1, 'week').endOf('week');
+            break;
+          case 'thisMonth':
+            startDate = dayjs().startOf('month');
+            endDate = dayjs().endOf('day');
+            break;
+          case 'lastMonth':
+            startDate = dayjs().subtract(1, 'month').startOf('month');
+            endDate = dayjs().subtract(1, 'month').endOf('month');
+            break;
+          default:
+            startDate = dayjs().subtract(1, 'day').startOf('day');
+            endDate = dayjs().subtract(1, 'day').endOf('day');
+        }
+        allListIdsUrl.searchParams.append('startDate', startDate.format('YYYY-MM-DD'));
+        allListIdsUrl.searchParams.append('endDate', endDate.format('YYYY-MM-DD'));
+      }
+      
+      const allListIdsResponse = await fetch(allListIdsUrl.toString(), {
+        headers: { 'x-api-key': process.env.NEXT_PUBLIC_API_KEY || 'test_key_123' }
+      });
+      
+      const allListIdsResult = await allListIdsResponse.json();
+      
+      // Get unique list IDs from issued policies
+      const allListIdsWithPolicies = new Set<string>();
+      if (allListIdsResult.success && allListIdsResult.data) {
+        allListIdsResult.data.forEach((lead: any) => {
+          if (lead.list_id) {
+            allListIdsWithPolicies.add(lead.list_id);
+          }
+        });
+      }
+      
+      console.log('List IDs with issued policies:', Array.from(allListIdsWithPolicies));
+      
+      const issuedLeadPromises = Array.from(allListIdsWithPolicies).map(async (listId) => {
         try {
           // Get issued lead count for this list using pagination total
           const issuedUrl = new URL('/api/leads/list', window.location.origin);
@@ -321,32 +397,34 @@ export default function RevenueTrackingPage() {
             issuedUrl.searchParams.append('endDate', dateRange[1].format('YYYY-MM-DD'));
           } else {
             // Default date range logic for synergy calculation
-            let startDate;
+            let startDate, endDate;
             switch (timeFrame) {
-              case 'today':
-                startDate = dayjs().startOf('day');
-                break;
               case 'yesterday':
                 startDate = dayjs().subtract(1, 'day').startOf('day');
+                endDate = dayjs().subtract(1, 'day').endOf('day');
                 break;
               case 'thisWeek':
                 startDate = dayjs().startOf('week');
+                endDate = dayjs().endOf('day');
                 break;
               case 'lastWeek':
                 startDate = dayjs().subtract(1, 'week').startOf('week');
+                endDate = dayjs().subtract(1, 'week').endOf('week');
                 break;
               case 'thisMonth':
                 startDate = dayjs().startOf('month');
+                endDate = dayjs().endOf('day');
                 break;
               case 'lastMonth':
                 startDate = dayjs().subtract(1, 'month').startOf('month');
+                endDate = dayjs().subtract(1, 'month').endOf('month');
                 break;
               default:
-                startDate = dayjs().startOf('month'); // Default to this month
+                startDate = dayjs().subtract(1, 'day').startOf('day');
+                endDate = dayjs().subtract(1, 'day').endOf('day');
             }
-            const now = dayjs();
             issuedUrl.searchParams.append('startDate', startDate.format('YYYY-MM-DD'));
-            issuedUrl.searchParams.append('endDate', now.format('YYYY-MM-DD'));
+            issuedUrl.searchParams.append('endDate', endDate.format('YYYY-MM-DD'));
           }
           
           const response = await fetch(issuedUrl.toString(), {
@@ -375,8 +453,26 @@ export default function RevenueTrackingPage() {
       // Update revenue data with issued lead counts for synergy payout
       issuedCounts.forEach(({ listId, issuedCount }) => {
         if (revenueByListId[listId]) {
+          // List ID has active routing
           revenueByListId[listId].synergy_issued_leads = issuedCount;
           revenueByListId[listId].synergy_payout = issuedCount * 120;
+        } else {
+          // List ID has no active routing but has issued policies - create entry for payout only
+          revenueByListId[listId] = {
+            key: listId,
+            list_id: listId,
+            description: `List ${listId} (No Active Routing)`,
+            leads_count: 0,
+            cost_per_lead: 0,
+            total_lead_costs: 0,
+            weekend_leads: 0,
+            weekday_leads: 0,
+            synergy_issued_leads: issuedCount,
+            synergy_payout: issuedCount * 120,
+            ai_costs_allocated: 0,
+            net_profit: issuedCount * 120 // Pure profit since no lead costs
+          };
+          console.log(`Created payout entry for inactive list ${listId}: ${issuedCount} policies = $${issuedCount * 120}`);
         }
       });
       
@@ -503,31 +599,38 @@ export default function RevenueTrackingPage() {
         query = query
           .gte('created_at', dateRange[0].startOf('day').toISOString())
           .lte('created_at', dateRange[1].endOf('day').toISOString());
-      } else if (timeFrame !== 'all') {
-        const now = dayjs();
-        let startDate = now;
+      } else {
+        let startDate, endDate;
         
         switch (timeFrame) {
-          case 'week':
-            startDate = now.subtract(7, 'days');
+          case 'yesterday':
+            startDate = dayjs().subtract(1, 'day').startOf('day');
+            endDate = dayjs().subtract(1, 'day').endOf('day');
             break;
-          case 'month':
-            startDate = now.subtract(30, 'days');
+          case 'thisWeek':
+            startDate = dayjs().startOf('week');
+            endDate = dayjs().endOf('day');
             break;
-          case 'quarter':
-            startDate = now.subtract(90, 'days');
+          case 'lastWeek':
+            startDate = dayjs().subtract(1, 'week').startOf('week');
+            endDate = dayjs().subtract(1, 'week').endOf('week');
             break;
-          case 'year':  
-            startDate = now.subtract(365, 'days');
+          case 'thisMonth':
+            startDate = dayjs().startOf('month');
+            endDate = dayjs().endOf('day');
             break;
-          case 'today':
-            startDate = now.startOf('day');
+          case 'lastMonth':
+            startDate = dayjs().subtract(1, 'month').startOf('month');
+            endDate = dayjs().subtract(1, 'month').endOf('month');
             break;
+          default:
+            startDate = dayjs().subtract(1, 'day').startOf('day');
+            endDate = dayjs().subtract(1, 'day').endOf('day');
         }
         
         query = query
           .gte('created_at', startDate.toISOString())
-          .lte('created_at', now.toISOString());
+          .lte('created_at', endDate.toISOString());
       }
 
       const { data, error } = await query;
@@ -819,13 +922,12 @@ export default function RevenueTrackingPage() {
             onChange={handleTimeFrameChange}
             style={{ width: 120 }}
           >
-            <Option value="today">Today</Option>
-            <Option value="week">Last Week</Option>
-            <Option value="month">Last Month</Option>
-            <Option value="quarter">Last Quarter</Option>
-            <Option value="year">Last Year</Option>
+            <Option value="yesterday">Yesterday</Option>
+            <Option value="thisWeek">This Week</Option>
+            <Option value="lastWeek">Last Week</Option>
+            <Option value="thisMonth">This Month</Option>
+            <Option value="lastMonth">Last Month</Option>
             <Option value="custom">Custom Range</Option>
-            <Option value="all">All Time</Option>
           </Select>
           
           <RangePicker 
