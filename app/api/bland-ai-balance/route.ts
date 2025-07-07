@@ -4,6 +4,30 @@ import { createClient } from '@supabase/supabase-js';
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const record = searchParams.get('record') === 'true';
+  
+  // Authentication check for internal/cron requests
+  const incomingSecret = request.headers.get('X-Internal-Trigger-Secret');
+  const authHeader = request.headers.get('Authorization');
+  const vercelCronSecret = process.env.CRON_SECRET;
+  const internalTriggerSecret = process.env.INTERNAL_TRIGGER_SECRET;
+  
+  const isVercelCron = authHeader === `Bearer ${vercelCronSecret}`;
+  const isInternalTrigger = incomingSecret === internalTriggerSecret;
+  
+  // For now, allow unauthenticated access for backward compatibility
+  // But log authentication status for debugging
+  console.log('[BLAND-AI-BALANCE] Authentication check:', {
+    isVercelCron,
+    isInternalTrigger,
+    hasAuthHeader: !!authHeader,
+    hasInternalSecret: !!incomingSecret
+  });
+  
+  if (record && !isVercelCron && !isInternalTrigger) {
+    console.log('[BLAND-AI-BALANCE] Recording requested but not authenticated - allowing for now but logging warning');
+    console.log('[BLAND-AI-BALANCE] Expected auth header:', `Bearer ${vercelCronSecret}`);
+    console.log('[BLAND-AI-BALANCE] Received auth header:', authHeader);
+  }
 
   if (!process.env.BLAND_AI_API_KEY) {
     return NextResponse.json({ 

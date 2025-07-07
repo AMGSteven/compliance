@@ -90,7 +90,23 @@ export async function POST(req: NextRequest) {
     balanceUrl.searchParams.set('record', 'true');
     
     console.log('[BLAND-AI-CRON] Balance API URL:', balanceUrl.toString());
-    const balanceResponse = await fetch(balanceUrl.toString());
+    
+    // Add authentication headers for internal API call
+    const headers: Record<string, string> = {};
+    
+    // Use the same authentication method that worked for this cron endpoint
+    if (isVercelCron && vercelCronSecret) {
+      headers['Authorization'] = `Bearer ${vercelCronSecret}`;
+      console.log('[BLAND-AI-CRON] Using Vercel cron auth for internal API call');
+    } else if (isInternalTrigger && internalTriggerSecret) {
+      headers['X-Internal-Trigger-Secret'] = internalTriggerSecret;
+      console.log('[BLAND-AI-CRON] Using internal trigger secret for internal API call');
+    }
+    
+    const balanceResponse = await fetch(balanceUrl.toString(), {
+      method: 'GET',
+      headers: headers
+    });
     
     console.log('[BLAND-AI-CRON] Balance API Response Status:', balanceResponse.status);
     
