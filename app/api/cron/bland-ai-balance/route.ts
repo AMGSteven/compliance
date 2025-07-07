@@ -83,11 +83,30 @@ export async function POST(req: NextRequest) {
 
     // Get current balance from Bland AI
     console.log('💰 [BLAND-AI-CRON] Fetching current balance from Bland AI...');
-    const balanceUrl = new URL('/api/bland-ai-balance', req.url);
+    
+    // Construct the balance API URL using the request's origin
+    const requestUrl = new URL(req.url);
+    const balanceUrl = new URL('/api/bland-ai-balance', requestUrl.origin);
     balanceUrl.searchParams.set('record', 'true');
     
     console.log('[BLAND-AI-CRON] Balance API URL:', balanceUrl.toString());
     const balanceResponse = await fetch(balanceUrl.toString());
+    
+    console.log('[BLAND-AI-CRON] Balance API Response Status:', balanceResponse.status);
+    
+    if (!balanceResponse.ok) {
+      const errorText = await balanceResponse.text();
+      console.error('❌ [BLAND-AI-CRON] Balance API returned non-OK status:', {
+        status: balanceResponse.status,
+        statusText: balanceResponse.statusText,
+        body: errorText.substring(0, 500) // Log first 500 chars to see if it's HTML
+      });
+      return NextResponse.json({
+        success: false,
+        error: `Balance API error: ${balanceResponse.status} ${balanceResponse.statusText}`,
+        details: errorText.substring(0, 200)
+      }, { status: 500 });
+    }
     const balanceData = await balanceResponse.json();
     
     console.log('[BLAND-AI-CRON] Balance API Response:', {
