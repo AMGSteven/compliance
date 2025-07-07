@@ -57,7 +57,7 @@ export default function RevenueTrackingPage() {
   const [revenueData, setRevenueData] = useState<RevenueData[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null);
-  const [timeFrame, setTimeFrame] = useState<string>('yesterday');
+  const [timeFrame, setTimeFrame] = useState<string>('today');
   const [totalLeadCosts, setTotalLeadCosts] = useState<number>(0);
   const [totalLeads, setTotalLeads] = useState<number>(0);
   const [totalWeekdayLeads, setTotalWeekdayLeads] = useState<number>(0);
@@ -78,6 +78,8 @@ export default function RevenueTrackingPage() {
     }
     
     switch (timeFrame) {
+      case 'today':
+        return `${baseName} (Today)`;
       case 'yesterday':
         return `${baseName} (Yesterday)`;
       case 'thisWeek':
@@ -89,7 +91,7 @@ export default function RevenueTrackingPage() {
       case 'lastMonth':
         return `${baseName} (Last Month)`;
       default:
-        return `${baseName} (Yesterday)`;
+        return `${baseName} (Today)`;
     }
   };
 
@@ -159,6 +161,10 @@ export default function RevenueTrackingPage() {
             let startDate, endDate;
             
             switch (timeFrame) {
+              case 'today':
+                startDate = dayjs().startOf('day');
+                endDate = dayjs().endOf('day');
+                break;
               case 'yesterday':
                 startDate = dayjs().subtract(1, 'day').startOf('day');
                 endDate = dayjs().subtract(1, 'day').endOf('day');
@@ -180,8 +186,8 @@ export default function RevenueTrackingPage() {
                 endDate = dayjs().subtract(1, 'month').endOf('month');
                 break;
               default:
-                startDate = dayjs().subtract(1, 'day').startOf('day');
-                endDate = dayjs().subtract(1, 'day').endOf('day');
+                startDate = dayjs().startOf('day');
+                endDate = dayjs().endOf('day');
             }
             
             countUrl.searchParams.append('startDate', startDate.format('YYYY-MM-DD'));
@@ -243,6 +249,10 @@ export default function RevenueTrackingPage() {
             let startDate, endDate;
             
             switch (timeFrame) {
+              case 'today':
+                startDate = dayjs().startOf('day');
+                endDate = dayjs().endOf('day');
+                break;
               case 'yesterday':
                 startDate = dayjs().subtract(1, 'day').startOf('day');
                 endDate = dayjs().subtract(1, 'day').endOf('day');
@@ -264,8 +274,8 @@ export default function RevenueTrackingPage() {
                 endDate = dayjs().subtract(1, 'month').endOf('month');
                 break;
               default:
-                startDate = dayjs().subtract(1, 'day').startOf('day');
-                endDate = dayjs().subtract(1, 'day').endOf('day');
+                startDate = dayjs().startOf('day');
+                endDate = dayjs().endOf('day');
             }
             
             weekendUrl.searchParams.append('startDate', startDate.format('YYYY-MM-DD'));
@@ -336,6 +346,10 @@ export default function RevenueTrackingPage() {
         // Default date range logic for synergy calculation
         let startDate, endDate;
         switch (timeFrame) {
+          case 'today':
+            startDate = dayjs().startOf('day');
+            endDate = dayjs().endOf('day');
+            break;
           case 'yesterday':
             startDate = dayjs().subtract(1, 'day').startOf('day');
             endDate = dayjs().subtract(1, 'day').endOf('day');
@@ -357,8 +371,8 @@ export default function RevenueTrackingPage() {
             endDate = dayjs().subtract(1, 'month').endOf('month');
             break;
           default:
-            startDate = dayjs().subtract(1, 'day').startOf('day');
-            endDate = dayjs().subtract(1, 'day').endOf('day');
+            startDate = dayjs().startOf('day');
+            endDate = dayjs().endOf('day');
         }
         allListIdsUrl.searchParams.append('startDate', startDate.format('YYYY-MM-DD'));
         allListIdsUrl.searchParams.append('endDate', endDate.format('YYYY-MM-DD'));
@@ -399,6 +413,10 @@ export default function RevenueTrackingPage() {
             // Default date range logic for synergy calculation
             let startDate, endDate;
             switch (timeFrame) {
+              case 'today':
+                startDate = dayjs().startOf('day');
+                endDate = dayjs().endOf('day');
+                break;
               case 'yesterday':
                 startDate = dayjs().subtract(1, 'day').startOf('day');
                 endDate = dayjs().subtract(1, 'day').endOf('day');
@@ -420,8 +438,8 @@ export default function RevenueTrackingPage() {
                 endDate = dayjs().subtract(1, 'month').endOf('month');
                 break;
               default:
-                startDate = dayjs().subtract(1, 'day').startOf('day');
-                endDate = dayjs().subtract(1, 'day').endOf('day');
+                startDate = dayjs().startOf('day');
+                endDate = dayjs().endOf('day');
             }
             issuedUrl.searchParams.append('startDate', startDate.format('YYYY-MM-DD'));
             issuedUrl.searchParams.append('endDate', endDate.format('YYYY-MM-DD'));
@@ -603,6 +621,10 @@ export default function RevenueTrackingPage() {
         let startDate, endDate;
         
         switch (timeFrame) {
+          case 'today':
+            startDate = dayjs().startOf('day');
+            endDate = dayjs().endOf('day');
+            break;
           case 'yesterday':
             startDate = dayjs().subtract(1, 'day').startOf('day');
             endDate = dayjs().subtract(1, 'day').endOf('day');
@@ -624,8 +646,8 @@ export default function RevenueTrackingPage() {
             endDate = dayjs().subtract(1, 'month').endOf('month');
             break;
           default:
-            startDate = dayjs().subtract(1, 'day').startOf('day');
-            endDate = dayjs().subtract(1, 'day').endOf('day');
+            startDate = dayjs().startOf('day');
+            endDate = dayjs().endOf('day');
         }
         
         query = query
@@ -922,6 +944,7 @@ export default function RevenueTrackingPage() {
             onChange={handleTimeFrameChange}
             style={{ width: 120 }}
           >
+            <Option value="today">Today</Option>
             <Option value="yesterday">Yesterday</Option>
             <Option value="thisWeek">This Week</Option>
             <Option value="lastWeek">Last Week</Option>
