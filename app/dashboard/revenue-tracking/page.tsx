@@ -558,14 +558,15 @@ export default function RevenueTrackingPage() {
         params.append('endDate', endDate);
         console.log(`Using custom date range: ${startDate} to ${endDate}`);
       } else {
-        // Predefined periods
-        let period = 'today';
-        if (timeFrame === 'week') period = 'week';
-        else if (timeFrame === 'month') period = 'month';
-        else if (timeFrame === 'all') period = 'all';
-        params.append('period', period);
-        console.log(`Using predefined period: ${period}`);
-      }
+      // Predefined periods
+      let period = 'today';
+      if (timeFrame === 'yesterday') period = 'yesterday';
+      else if (timeFrame === 'thisWeek' || timeFrame === 'lastWeek' || timeFrame === 'week') period = 'week';
+      else if (timeFrame === 'thisMonth' || timeFrame === 'lastMonth' || timeFrame === 'month') period = 'month';
+      else if (timeFrame === 'all') period = 'all';
+      params.append('period', period);
+      console.log(`Using predefined period: ${period} for timeFrame: ${timeFrame}`);
+    }
 
       costUrl += '?' + params.toString();
       const response = await fetch(costUrl, {
