@@ -207,7 +207,7 @@ export async function POST(req: NextRequest) {
         .from('bland_ai_balance_history')
         .update({ 
           calculated_cost: calculatedCost,
-          period_hours: Math.round(periodHours) // Round to nearest integer as per schema
+          period_hours: Math.round(periodHours) // Convert to integer as required by schema
         })
         .eq('id', currentRecord.id);
 
@@ -215,7 +215,7 @@ export async function POST(req: NextRequest) {
         console.error('❌ [BLAND-AI-CRON] Failed to update calculated cost:', updateError);
       } else {
         console.log('✅ [BLAND-AI-CRON] Successfully updated balance history with calculated cost');
-        console.log('📊 [BLAND-AI-CRON] Cost data available in bland_ai_costs_calculated view automatically');
+        console.log('ℹ️  [BLAND-AI-CRON] Cost data automatically available in bland_ai_costs_calculated view');
       }
     } else {
       console.log('⚠️  [BLAND-AI-CRON] Not enough previous records to calculate costs (need at least 2 records)');
