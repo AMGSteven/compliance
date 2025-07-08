@@ -30,6 +30,9 @@ export default function ApiDocsPage() {
           <Button variant="outline" className="border-gray-200 hover:bg-gray-50 px-6" asChild>
             <Link href="/docs/external-api">External API for Lead Forms</Link>
           </Button>
+          <Button variant="outline" className="border-green-200 hover:bg-green-50 text-green-700 px-6" asChild>
+            <Link href="/docs/pre-ping">Pre-Ping API</Link>
+          </Button>
         </div>
       </div>
 

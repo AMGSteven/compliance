@@ -1,0 +1,219 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { validateApiKey } from '@/lib/auth';
+import { ComplianceEngine } from '@/lib/compliance/engine';
+import { checkForDuplicateLead } from '@/app/lib/duplicate-lead-check';
+
+// Allowed states for leads
+const INTERNAL_DIALER_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'IN', 'KS', 'LA', 'MO', 'MS', 'OH', 'SC', 'TN', 'TX'];
+const PITCH_BPO_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'FL', 'IN', 'KS', 'LA', 'MI', 'MO', 'MS', 'OH', 'OK', 'SC', 'TN', 'TX'];
+
+interface PrePingRequest {
+  phone: string;
+  state?: string;
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  list_id?: string;
+  dialer_type?: 'internal' | 'pitch_bpo';
+}
+
+interface ComplianceCheckResult {
+  isCompliant: boolean;
+  reason?: string;
+  details?: any;
+}
+
+interface PrePingResponse {
+  success: boolean;
+  accepted: boolean;
+  rejection_reasons: string[];
+  estimated_bid?: number;
+  checks: {
+    duplicate: ComplianceCheckResult;
+    state: ComplianceCheckResult;
+    compliance: ComplianceCheckResult;
+  };
+  processing_time_ms: number;
+}
+
+// Utility function to normalize phone number
+function normalizePhoneNumber(phone: string): string {
+  return phone.replace(/\D/g, '');
+}
+
+// State validation
+async function checkStateCompliance(state: string | undefined, dialerType: 'internal' | 'pitch_bpo' = 'internal'): Promise<ComplianceCheckResult> {
+  if (!state) {
+    return { isCompliant: false, reason: 'State is required' };
+  }
+
+  const allowedStates = dialerType === 'pitch_bpo' ? PITCH_BPO_ALLOWED_STATES : INTERNAL_DIALER_ALLOWED_STATES;
+  
+  if (!allowedStates.includes(state.toUpperCase())) {
+    return { 
+      isCompliant: false, 
+      reason: `State ${state} not allowed for ${dialerType} dialer`,
+      details: { allowedStates, dialerType }
+    };
+  }
+
+  return { isCompliant: true };
+}
+
+export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  
+  try {
+    // Parse request body
+    const body: PrePingRequest = await request.json();
+    
+    // Extract API key from Authorization header
+    const authHeader = request.headers.get('authorization');
+    const apiKey = authHeader?.replace('Bearer ', '') || null;
+    
+    // Validate API key
+    const isValidApiKey = await validateApiKey(apiKey);
+    if (!isValidApiKey) {
+      return NextResponse.json({
+        success: false,
+        accepted: false,
+        error: 'Invalid or missing API key',
+        rejection_reasons: ['Authentication failed']
+      }, { status: 401 });
+    }
+
+    // Validate required fields
+    if (!body.phone) {
+      return NextResponse.json({
+        success: false,
+        accepted: false,
+        error: 'Phone number is required',
+        rejection_reasons: ['Missing phone number']
+      }, { status: 400 });
+    }
+
+    // Normalize phone number
+    const normalizedPhone = normalizePhoneNumber(body.phone);
+    
+    console.log(`[Pre-Ping] Starting validation for phone: ${normalizedPhone}, state: ${body.state}`);
+
+    // Initialize results
+    const rejectionReasons: string[] = [];
+    const checks: PrePingResponse['checks'] = {
+      duplicate: { isCompliant: true },
+      state: { isCompliant: true },
+      compliance: { isCompliant: true }
+    };
+
+    // 1. State validation
+    const stateCheck = await checkStateCompliance(body.state, body.dialer_type);
+    checks.state = stateCheck;
+    if (!stateCheck.isCompliant) {
+      rejectionReasons.push(stateCheck.reason || 'State validation failed');
+      console.log(`[Pre-Ping] State check failed: ${stateCheck.reason}`);
+    }
+
+    // 2. Duplicate check (30-day window)
+    try {
+      const duplicateResult = await checkForDuplicateLead(normalizedPhone);
+      checks.duplicate = {
+        isCompliant: !duplicateResult.isDuplicate,
+        reason: duplicateResult.isDuplicate ? 'Duplicate lead found within 30 days' : undefined,
+        details: duplicateResult.isDuplicate ? duplicateResult.details : undefined
+      };
+      if (duplicateResult.isDuplicate) {
+        const daysAgo = duplicateResult.details?.daysAgo || 0;
+        rejectionReasons.push(`Duplicate lead (last seen ${daysAgo} days ago)`);
+        console.log(`[Pre-Ping] Duplicate check failed: ${daysAgo} days since last lead`);
+      }
+    } catch (error) {
+      console.error('[Pre-Ping] Duplicate check failed:', error);
+      checks.duplicate = { isCompliant: false, reason: 'Duplicate check error' };
+      rejectionReasons.push('Unable to verify duplicate status');
+    }
+
+    // 3. Run comprehensive compliance checks using ComplianceEngine
+    try {
+      const complianceEngine = new ComplianceEngine();
+      const complianceReport = await complianceEngine.checkPhoneNumber(normalizedPhone);
+      
+      checks.compliance = {
+        isCompliant: complianceReport.isCompliant,
+        reason: !complianceReport.isCompliant ? 'Failed compliance checks' : undefined,
+        details: complianceReport.results
+      };
+      
+      if (!complianceReport.isCompliant) {
+        // Extract specific failure reasons
+        const failureReasons = complianceReport.results
+          ?.filter(result => !result.isCompliant)
+          .map(result => `${result.source}: ${result.reasons?.join(', ') || 'Non-compliant'}`)
+          .join('; ');
+        
+        rejectionReasons.push(failureReasons || 'Compliance validation failed');
+        console.log(`[Pre-Ping] Compliance checks failed: ${failureReasons}`);
+      }
+      
+      console.log(`[Pre-Ping] Compliance checks completed. Overall compliant: ${complianceReport.isCompliant}`);
+      
+    } catch (error) {
+      console.error('[Pre-Ping] Compliance engine error:', error);
+      // Fail closed - if compliance check fails, reject the lead
+      checks.compliance = { isCompliant: false, reason: 'Compliance check error' };
+      rejectionReasons.push('Compliance validation failed');
+    }
+
+    // Determine acceptance
+    const accepted = rejectionReasons.length === 0;
+    const processingTime = Date.now() - startTime;
+
+    // Estimate bid based on list_id or default
+    let estimatedBid = 0.50; // Default bid
+    if (body.list_id && accepted) {
+      // Could look up actual bid from routing data if needed
+      estimatedBid = 0.50;
+    }
+
+    const response: PrePingResponse = {
+      success: true,
+      accepted,
+      rejection_reasons: rejectionReasons,
+      estimated_bid: accepted ? estimatedBid : 0.00,
+      checks,
+      processing_time_ms: processingTime
+    };
+
+    console.log(`[Pre-Ping] Completed in ${processingTime}ms - ${accepted ? 'ACCEPTED' : 'REJECTED'} - Reasons: ${rejectionReasons.join(', ')}`);
+
+    return NextResponse.json(response, { 
+      status: 200,
+      headers: {
+        'X-Processing-Time': processingTime.toString(),
+        'X-Pre-Ping-Result': accepted ? 'accepted' : 'rejected'
+      }
+    });
+
+  } catch (error) {
+    console.error('[Pre-Ping] Error:', error);
+    
+    const processingTime = Date.now() - startTime;
+    
+    return NextResponse.json({
+      success: false,
+      accepted: false,
+      error: 'Pre-ping validation failed',
+      rejection_reasons: ['System error during validation'],
+      processing_time_ms: processingTime
+    }, { status: 500 });
+  }
+}
+
+// Health check endpoint
+export async function GET() {
+  return NextResponse.json({
+    endpoint: 'pre-ping',
+    status: 'active',
+    description: 'Lead pre-validation endpoint',
+    timestamp: new Date().toISOString()
+  });
+}
