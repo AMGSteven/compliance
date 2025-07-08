@@ -81,67 +81,76 @@ export async function POST(req: NextRequest) {
       supabaseKey
     );
 
-    // Get current balance from Bland AI
+    // Get current balance from Bland AI (call directly to avoid Vercel deployment protection)
     console.log('💰 [BLAND-AI-CRON] Fetching current balance from Bland AI...');
     
-    // Construct the balance API URL using the request's origin
-    const requestUrl = new URL(req.url);
-    const balanceUrl = new URL('/api/bland-ai-balance', requestUrl.origin);
-    balanceUrl.searchParams.set('record', 'true');
-    
-    console.log('[BLAND-AI-CRON] Balance API URL:', balanceUrl.toString());
-    
-    // Add authentication headers for internal API call
-    const headers: Record<string, string> = {};
-    
-    // Use the same authentication method that worked for this cron endpoint
-    if (isVercelCron && vercelCronSecret) {
-      headers['Authorization'] = `Bearer ${vercelCronSecret}`;
-      console.log('[BLAND-AI-CRON] Using Vercel cron auth for internal API call');
-    } else if (isInternalTrigger && internalTriggerSecret) {
-      headers['X-Internal-Trigger-Secret'] = internalTriggerSecret;
-      console.log('[BLAND-AI-CRON] Using internal trigger secret for internal API call');
-    }
-    
-    const balanceResponse = await fetch(balanceUrl.toString(), {
-      method: 'GET',
-      headers: headers
-    });
-    
-    console.log('[BLAND-AI-CRON] Balance API Response Status:', balanceResponse.status);
-    
-    if (!balanceResponse.ok) {
-      const errorText = await balanceResponse.text();
-      console.error('❌ [BLAND-AI-CRON] Balance API returned non-OK status:', {
-        status: balanceResponse.status,
-        statusText: balanceResponse.statusText,
-        body: errorText.substring(0, 500) // Log first 500 chars to see if it's HTML
-      });
-      return NextResponse.json({
-        success: false,
-        error: `Balance API error: ${balanceResponse.status} ${balanceResponse.statusText}`,
-        details: errorText.substring(0, 200)
-      }, { status: 500 });
-    }
-    const balanceData = await balanceResponse.json();
-    
-    console.log('[BLAND-AI-CRON] Balance API Response:', {
-      status: balanceResponse.status,
-      success: balanceData.success,
-      balance: balanceData.balance,
-      error: balanceData.error
-    });
+    // Call the balance fetching logic directly instead of HTTP fetch
+    let balanceData;
+    try {
+      if (!process.env.BLAND_AI_API_KEY) {
+        throw new Error('Bland AI API key not configured');
+      }
 
-    if (!balanceData.success) {
-      console.error('❌ [BLAND-AI-CRON] Failed to fetch balance:', balanceData.error);
+      console.log('[BLAND-AI-CRON] Fetching balance directly from Bland AI API...');
+      const response = await fetch('https://api.bland.ai/v1/me', {
+        method: 'GET',
+        headers: {
+          'Authorization': process.env.BLAND_AI_API_KEY,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[BLAND-AI-CRON] Bland AI API error: ${response.status} - ${errorText}`);
+        throw new Error(`Bland AI API returned ${response.status}: ${response.statusText}`);
+      }
+
+      const accountData = await response.json();
+      const current_balance = accountData.billing?.current_balance || 0;
+      
+      console.log('[BLAND-AI-CRON] Raw Bland AI response:', accountData);
+      
+      // Record the balance to database
+      const { error: insertError } = await supabase
+        .from('bland_ai_balance_history')
+        .insert({
+          current_balance: current_balance,
+          refill_to: accountData.billing?.refill_to || 100,
+          total_calls: accountData.total_calls || 0,
+          status: accountData.status || 'active'
+        });
+
+      if (insertError) {
+        console.error('[BLAND-AI-CRON] Error inserting balance record:', insertError);
+        throw new Error(`Database insert error: ${insertError.message}`);
+      }
+
+      balanceData = {
+        success: true,
+        status: accountData.status || 'active',
+        current_balance: current_balance,
+        refill_to: accountData.billing?.refill_to || 100,
+        total_calls: accountData.total_calls || 0,
+        recorded_at: new Date().toISOString()
+      };
+      
+      console.log('[BLAND-AI-CRON] Balance recorded successfully');
+    } catch (error) {
+      console.error('❌ [BLAND-AI-CRON] Error fetching/recording balance:', error);
       return NextResponse.json({
         success: false,
-        error: 'Failed to fetch balance',
-        details: balanceData.error
+        error: `Balance fetch error: ${error instanceof Error ? error.message : 'Unknown error'}`
       }, { status: 500 });
     }
     
-    console.log('✅ [BLAND-AI-CRON] Balance fetched successfully:', `$${balanceData.balance}`);
+    console.log('[BLAND-AI-CRON] Balance fetched and recorded:', {
+      success: balanceData.success,
+      current_balance: balanceData.current_balance,
+      status: balanceData.status
+    });
+    
+    console.log('✅ [BLAND-AI-CRON] Balance fetched successfully:', `$${balanceData.current_balance}`);
 
     // Get the last recorded balance to calculate cost
     console.log('📊 [BLAND-AI-CRON] Querying database for previous balance records...');
