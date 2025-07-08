@@ -33,10 +33,10 @@ export class WebreconChecker implements ComplianceChecker {
       }
 
       const data = await response.json() as any;
-      const row = data.Rows[0];
-      const score = row.Score; // Note: API returns 'Score' not 'Scores'
-      // Empty string means no hit (clean), "1" means hit (flagged), "E" means error
-      const isCompliant = score === '' || score === '0';
+      
+      // Check TotalHits - 0 means clean (compliant), >0 means found in database (non-compliant)
+      const totalHits = data.TotalHits || 0;
+      const isCompliant = totalHits === 0;
 
       return {
         isCompliant,
