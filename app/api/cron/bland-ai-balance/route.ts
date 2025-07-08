@@ -81,51 +81,76 @@ export async function POST(req: NextRequest) {
       supabaseKey
     );
 
-    // Get current balance from Bland AI
+    // Get current balance from Bland AI (call directly to avoid Vercel deployment protection)
     console.log('💰 [BLAND-AI-CRON] Fetching current balance from Bland AI...');
     
-    // Construct the balance API URL using the request's origin
-    const requestUrl = new URL(req.url);
-    const balanceUrl = new URL('/api/bland-ai-balance', requestUrl.origin);
-    balanceUrl.searchParams.set('record', 'true');
-    
-    console.log('[BLAND-AI-CRON] Balance API URL:', balanceUrl.toString());
-    const balanceResponse = await fetch(balanceUrl.toString());
-    
-    console.log('[BLAND-AI-CRON] Balance API Response Status:', balanceResponse.status);
-    
-    if (!balanceResponse.ok) {
-      const errorText = await balanceResponse.text();
-      console.error('❌ [BLAND-AI-CRON] Balance API returned non-OK status:', {
-        status: balanceResponse.status,
-        statusText: balanceResponse.statusText,
-        body: errorText.substring(0, 500) // Log first 500 chars to see if it's HTML
-      });
-      return NextResponse.json({
-        success: false,
-        error: `Balance API error: ${balanceResponse.status} ${balanceResponse.statusText}`,
-        details: errorText.substring(0, 200)
-      }, { status: 500 });
-    }
-    const balanceData = await balanceResponse.json();
-    
-    console.log('[BLAND-AI-CRON] Balance API Response:', {
-      status: balanceResponse.status,
-      success: balanceData.success,
-      balance: balanceData.balance,
-      error: balanceData.error
-    });
+    // Call the balance fetching logic directly instead of HTTP fetch
+    let balanceData;
+    try {
+      if (!process.env.BLAND_AI_API_KEY) {
+        throw new Error('Bland AI API key not configured');
+      }
 
-    if (!balanceData.success) {
-      console.error('❌ [BLAND-AI-CRON] Failed to fetch balance:', balanceData.error);
+      console.log('[BLAND-AI-CRON] Fetching balance directly from Bland AI API...');
+      const response = await fetch('https://api.bland.ai/v1/me', {
+        method: 'GET',
+        headers: {
+          'Authorization': process.env.BLAND_AI_API_KEY,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[BLAND-AI-CRON] Bland AI API error: ${response.status} - ${errorText}`);
+        throw new Error(`Bland AI API returned ${response.status}: ${response.statusText}`);
+      }
+
+      const accountData = await response.json();
+      const current_balance = accountData.billing?.current_balance || 0;
+      
+      console.log('[BLAND-AI-CRON] Raw Bland AI response:', accountData);
+      
+      // Record the balance to database
+      const { error: insertError } = await supabase
+        .from('bland_ai_balance_history')
+        .insert({
+          current_balance: current_balance,
+          refill_to: accountData.billing?.refill_to || 100,
+          total_calls: accountData.total_calls || 0,
+          status: accountData.status || 'active'
+        });
+
+      if (insertError) {
+        console.error('[BLAND-AI-CRON] Error inserting balance record:', insertError);
+        throw new Error(`Database insert error: ${insertError.message}`);
+      }
+
+      balanceData = {
+        success: true,
+        status: accountData.status || 'active',
+        current_balance: current_balance,
+        refill_to: accountData.billing?.refill_to || 100,
+        total_calls: accountData.total_calls || 0,
+        recorded_at: new Date().toISOString()
+      };
+      
+      console.log('[BLAND-AI-CRON] Balance recorded successfully');
+    } catch (error) {
+      console.error('❌ [BLAND-AI-CRON] Error fetching/recording balance:', error);
       return NextResponse.json({
         success: false,
-        error: 'Failed to fetch balance',
-        details: balanceData.error
+        error: `Balance fetch error: ${error instanceof Error ? error.message : 'Unknown error'}`
       }, { status: 500 });
     }
     
-    console.log('✅ [BLAND-AI-CRON] Balance fetched successfully:', `$${balanceData.balance}`);
+    console.log('[BLAND-AI-CRON] Balance fetched and recorded:', {
+      success: balanceData.success,
+      current_balance: balanceData.current_balance,
+      status: balanceData.status
+    });
+    
+    console.log('✅ [BLAND-AI-CRON] Balance fetched successfully:', `$${balanceData.current_balance}`);
 
     // Get the last recorded balance to calculate cost
     console.log('📊 [BLAND-AI-CRON] Querying database for previous balance records...');
@@ -182,7 +207,7 @@ export async function POST(req: NextRequest) {
         .from('bland_ai_balance_history')
         .update({ 
           calculated_cost: calculatedCost,
-          period_hours: Math.round(periodHours * 100) / 100 // Round to 2 decimals
+          period_hours: Math.round(periodHours) // Convert to integer as required by schema
         })
         .eq('id', currentRecord.id);
 
@@ -190,30 +215,7 @@ export async function POST(req: NextRequest) {
         console.error('❌ [BLAND-AI-CRON] Failed to update calculated cost:', updateError);
       } else {
         console.log('✅ [BLAND-AI-CRON] Successfully updated balance history with calculated cost');
-      }
-
-      // Now also populate the bland_ai_costs_calculated table for the dashboard
-      console.log('📊 [BLAND-AI-CRON] Inserting cost data into calculated costs table...');
-      const { error: insertError } = await supabase
-        .from('bland_ai_costs_calculated')
-        .insert([
-          {
-            recorded_at: currentRecord.recorded_at,
-            current_balance: currentRecord.current_balance,
-            refill_to: currentRecord.refill_to,
-            total_calls: currentRecord.total_calls,
-            previous_balance: previousRecord.current_balance,
-            previous_refill_to: previousRecord.refill_to,
-            previous_recorded_at: previousRecord.recorded_at,
-            calculated_cost_period: calculatedCost,
-            hours_elapsed: periodHours
-          }
-        ]);
-
-      if (insertError) {
-        console.error('❌ [BLAND-AI-CRON] Failed to insert into bland_ai_costs_calculated:', insertError);
-      } else {
-        console.log('✅ [BLAND-AI-CRON] Successfully inserted cost data into bland_ai_costs_calculated');
+        console.log('ℹ️  [BLAND-AI-CRON] Cost data automatically available in bland_ai_costs_calculated view');
       }
     } else {
       console.log('⚠️  [BLAND-AI-CRON] Not enough previous records to calculate costs (need at least 2 records)');

@@ -14,25 +14,132 @@ interface FastComplianceResult {
   };
 }
 
-function parseCSV(csvText: string): any[] {
-  const lines = csvText.trim().split('\n');
-  if (lines.length < 2) return [];
+// Smart column mapping system for CSV headers to database columns
+interface ColumnMapping {
+  dbColumn: string;
+  variations: string[];
+  priority: number; // Higher = more specific match
+}
+
+const COLUMN_MAPPINGS: ColumnMapping[] = [
+  // Core lead information
+  { dbColumn: 'first_name', variations: ['first_name', 'firstname', 'first name', 'fname', 'f_name', 'given_name', 'givenname'], priority: 10 },
+  { dbColumn: 'last_name', variations: ['last_name', 'lastname', 'last name', 'lname', 'l_name', 'surname', 'family_name', 'familyname'], priority: 10 },
+  { dbColumn: 'email', variations: ['email', 'email_address', 'emailaddress', 'e_mail', 'e-mail', 'mail'], priority: 10 },
+  { dbColumn: 'phone', variations: ['phone', 'phone_number', 'phonenumber', 'primary_phone', 'mobile', 'cell', 'telephone', 'tel', 'phone_home', 'home_phone'], priority: 10 },
   
-  const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+  // Address information
+  { dbColumn: 'address', variations: ['address', 'street_address', 'streetaddress', 'street', 'addr', 'address1', 'address_1'], priority: 8 },
+  { dbColumn: 'city', variations: ['city', 'town', 'municipality'], priority: 8 },
+  { dbColumn: 'state', variations: ['state', 'province', 'region', 'st'], priority: 8 },
+  { dbColumn: 'zip_code', variations: ['zip', 'zip_code', 'zipcode', 'postal_code', 'postalcode', 'postcode'], priority: 8 },
+  
+  // Campaign/routing information
+  { dbColumn: 'campaign_id', variations: ['campaign_id', 'campaignid', 'campaign', 'camp_id'], priority: 6 },
+  { dbColumn: 'cadence_id', variations: ['cadence_id', 'cadenceid', 'cadence', 'sequence_id'], priority: 6 },
+  { dbColumn: 'list_id', variations: ['list_id', 'listid', 'list', 'source_list'], priority: 6 },
+  
+  // Additional lead data
+  { dbColumn: 'age_range', variations: ['age_range', 'agerange', 'age', 'age_group'], priority: 4 },
+  { dbColumn: 'birth_date', variations: ['birth_date', 'birthdate', 'dob', 'date_of_birth', 'birthday'], priority: 4 },
+  { dbColumn: 'homeowner_status', variations: ['homeowner_status', 'homeowner', 'home_owner', 'owns_home'], priority: 4 },
+  { dbColumn: 'income_bracket', variations: ['income_bracket', 'income', 'salary', 'annual_income'], priority: 4 },
+  { dbColumn: 'trusted_form_cert_url', variations: ['trusted_form_cert_url', 'trustedform', 'cert_url', 'certificate_url'], priority: 4 },
+  
+  // Source/tracking
+  { dbColumn: 'source', variations: ['source', 'traffic_source', 'lead_source', 'origin'], priority: 4 },
+  { dbColumn: 'status', variations: ['status', 'lead_status', 'state'], priority: 4 }
+];
+
+function smartColumnMapping(headers: string[]): { mappedHeaders: Record<string, string>, mappingReport: string[] } {
+  const mappedHeaders: Record<string, string> = {};
+  const mappingReport: string[] = [];
+  const usedDbColumns = new Set<string>();
+  
+  // Normalize headers for comparison
+  const normalizedHeaders = headers.map(h => h.toLowerCase().trim().replace(/[^a-z0-9]/g, '_'));
+  
+  // First pass: exact matches
+  headers.forEach((originalHeader, index) => {
+    const normalized = normalizedHeaders[index];
+    
+    for (const mapping of COLUMN_MAPPINGS) {
+      if (usedDbColumns.has(mapping.dbColumn)) continue;
+      
+      const exactMatch = mapping.variations.find(variation => 
+        variation.toLowerCase().replace(/[^a-z0-9]/g, '_') === normalized
+      );
+      
+      if (exactMatch) {
+        mappedHeaders[originalHeader] = mapping.dbColumn;
+        usedDbColumns.add(mapping.dbColumn);
+        mappingReport.push(`✅ Exact match: "${originalHeader}" → ${mapping.dbColumn}`);
+        break;
+      }
+    }
+  });
+  
+  // Second pass: partial matches for unmapped headers
+  headers.forEach((originalHeader, index) => {
+    if (mappedHeaders[originalHeader]) return; // Already mapped
+    
+    const normalized = normalizedHeaders[index];
+    let bestMatch: { mapping: ColumnMapping, score: number } | null = null;
+    
+    for (const mapping of COLUMN_MAPPINGS) {
+      if (usedDbColumns.has(mapping.dbColumn)) continue;
+      
+      for (const variation of mapping.variations) {
+        const normalizedVariation = variation.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        
+        // Calculate similarity score
+        let score = 0;
+        if (normalized.includes(normalizedVariation) || normalizedVariation.includes(normalized)) {
+          score = mapping.priority * (Math.min(normalized.length, normalizedVariation.length) / Math.max(normalized.length, normalizedVariation.length));
+        }
+        
+        if (score > 0 && (!bestMatch || score > bestMatch.score)) {
+          bestMatch = { mapping, score };
+        }
+      }
+    }
+    
+    if (bestMatch && bestMatch.score > 2) { // Minimum threshold
+      mappedHeaders[originalHeader] = bestMatch.mapping.dbColumn;
+      usedDbColumns.add(bestMatch.mapping.dbColumn);
+      mappingReport.push(`🔍 Partial match: "${originalHeader}" → ${bestMatch.mapping.dbColumn} (score: ${bestMatch.score.toFixed(1)})`);
+    } else {
+      // Keep original header for unmapped columns
+      mappedHeaders[originalHeader] = originalHeader;
+      mappingReport.push(`⚠️  No mapping found: "${originalHeader}" → kept as-is`);
+    }
+  });
+  
+  return { mappedHeaders, mappingReport };
+}
+
+function parseCSV(csvText: string): { records: any[], mappingReport: string[] } {
+  const lines = csvText.trim().split('\n');
+  if (lines.length < 2) return { records: [], mappingReport: [] };
+  
+  const originalHeaders = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+  const { mappedHeaders, mappingReport } = smartColumnMapping(originalHeaders);
+  
   const records = [];
   
   for (let i = 1; i < lines.length; i++) {
     const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
     const record: any = {};
     
-    headers.forEach((header, index) => {
-      record[header] = values[index] || '';
+    originalHeaders.forEach((originalHeader, index) => {
+      const dbColumn = mappedHeaders[originalHeader];
+      record[dbColumn] = values[index] || '';
     });
     
     records.push(record);
   }
   
-  return records;
+  return { records, mappingReport };
 }
 
 function recordToCSV(records: any[]): string {
@@ -237,7 +344,7 @@ export async function POST(request: NextRequest) {
     }
 
     const csvText = await file.text();
-    const records = parseCSV(csvText);
+    const { records, mappingReport } = parseCSV(csvText);
     
     if (records.length === 0) {
       return NextResponse.json(
@@ -247,6 +354,9 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`Starting fast compliance check for ${records.length} records...`);
+    console.log('Column mapping applied:');
+    mappingReport.forEach(report => console.log(`  ${report}`));
+    
     const startTime = Date.now();
 
     // Process records with controlled concurrency to avoid timeouts
@@ -271,7 +381,8 @@ export async function POST(request: NextRequest) {
       nonCompliantRecords: nonCompliantRecords.length,
       complianceRate: ((compliantRecords.length / records.length) * 100).toFixed(1),
       processingTimeSeconds,
-      failureReasons: {} as Record<string, number>
+      failureReasons: {} as Record<string, number>,
+      columnMappings: mappingReport
     };
 
     // Count failure reasons

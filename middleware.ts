@@ -51,7 +51,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Check for authentication token
+  // Check for authentication token for non-API routes
   const authToken = request.cookies.get("auth-token")?.value
   const isAuthenticated = authToken === "authenticated"
 
@@ -63,40 +63,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Handle OPTIONS requests for CORS preflight
-  if (request.method === "OPTIONS") {
-    return handleOptions(request)
-  }
 
-  // Apply CORS middleware for API routes
-  if (request.nextUrl.pathname.startsWith("/api/")) {
-    // Apply CORS headers
-    const corsResponse = corsMiddleware(request)
-
-    // For protected API routes, validate API key
-    if (
-      request.nextUrl.pathname.startsWith("/api/v1/") &&
-      !request.nextUrl.pathname.includes("/docs") &&
-      !request.nextUrl.pathname.includes("/public")
-    ) {
-      const validationResult = await validateApiKey(request)
-      if (!validationResult.valid) {
-        // Create an error response with the status and message
-        const errorResponse = NextResponse.json(
-          { error: validationResult.error },
-          { status: validationResult.status || 401 }
-        )
-        
-        // Copy CORS headers to the error response
-        Object.entries(corsResponse.headers).forEach(([key, value]) => {
-          errorResponse.headers.set(key, value)
-        })
-        return errorResponse
-      }
-    }
-
-    return corsResponse
-  }
 
   return NextResponse.next()
 }

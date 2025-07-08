@@ -54,6 +54,18 @@ export async function GET(request: NextRequest) {
           startTime = new Date(startTime.getTime() + (5 * 60 * 60 * 1000)); // Add 5 hours to convert EST to UTC
           query = query.gte('recorded_at', startTime.toISOString());
           break;
+        case 'yesterday':
+          // Start of yesterday in EST
+          const yesterdayEST = new Date(nowEST.getTime() - (24 * 60 * 60 * 1000));
+          startTime = new Date(yesterdayEST.getFullYear(), yesterdayEST.getMonth(), yesterdayEST.getDate());
+          endTime = new Date(startTime.getTime() + (24 * 60 * 60 * 1000) - 1); // End of yesterday
+          // Convert back to UTC for database query
+          startTime = new Date(startTime.getTime() + (5 * 60 * 60 * 1000)); // Add 5 hours to convert EST to UTC
+          endTime = new Date(endTime.getTime() + (5 * 60 * 60 * 1000)); // Add 5 hours to convert EST to UTC
+          query = query
+            .gte('recorded_at', startTime.toISOString())
+            .lte('recorded_at', endTime.toISOString());
+          break;
         case 'week':
           // 7 days ago from now
           startTime = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000));
