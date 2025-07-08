@@ -207,7 +207,7 @@ export async function POST(req: NextRequest) {
         .from('bland_ai_balance_history')
         .update({ 
           calculated_cost: calculatedCost,
-          period_hours: Math.round(periodHours * 100) / 100 // Round to 2 decimals
+          period_hours: Math.round(periodHours) // Round to nearest integer as per schema
         })
         .eq('id', currentRecord.id);
 
@@ -215,30 +215,7 @@ export async function POST(req: NextRequest) {
         console.error('❌ [BLAND-AI-CRON] Failed to update calculated cost:', updateError);
       } else {
         console.log('✅ [BLAND-AI-CRON] Successfully updated balance history with calculated cost');
-      }
-
-      // Now also populate the bland_ai_costs_calculated table for the dashboard
-      console.log('📊 [BLAND-AI-CRON] Inserting cost data into calculated costs table...');
-      const { error: insertError } = await supabase
-        .from('bland_ai_costs_calculated')
-        .insert([
-          {
-            recorded_at: currentRecord.recorded_at,
-            current_balance: currentRecord.current_balance,
-            refill_to: currentRecord.refill_to,
-            total_calls: currentRecord.total_calls,
-            previous_balance: previousRecord.current_balance,
-            previous_refill_to: previousRecord.refill_to,
-            previous_recorded_at: previousRecord.recorded_at,
-            calculated_cost_period: calculatedCost,
-            hours_elapsed: periodHours
-          }
-        ]);
-
-      if (insertError) {
-        console.error('❌ [BLAND-AI-CRON] Failed to insert into bland_ai_costs_calculated:', insertError);
-      } else {
-        console.log('✅ [BLAND-AI-CRON] Successfully inserted cost data into bland_ai_costs_calculated');
+        console.log('📊 [BLAND-AI-CRON] Cost data available in bland_ai_costs_calculated view automatically');
       }
     } else {
       console.log('⚠️  [BLAND-AI-CRON] Not enough previous records to calculate costs (need at least 2 records)');
