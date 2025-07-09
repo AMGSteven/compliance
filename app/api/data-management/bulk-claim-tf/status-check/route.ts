@@ -20,9 +20,9 @@ export async function POST(req: NextRequest) {
       
       try {
         // Call TrustedForm GET API with proper authentication (same as existing service)
-        const API_KEY = process.env.TRUSTEDFORM_API_KEY;
+        const API_KEY = process.env.TRUSTED_FORM_API_KEY;
         if (!API_KEY) {
-          console.error(`[TrustedForm Status Check] ${certId} - Missing TRUSTEDFORM_API_KEY`);
+          console.error(`[TrustedForm Status Check] ${certId} - Missing TRUSTED_FORM_API_KEY`);
           results.push({ 
             certId, 
             status: 'Failed', 
