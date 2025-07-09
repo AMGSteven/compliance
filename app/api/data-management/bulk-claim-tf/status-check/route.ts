@@ -19,10 +19,23 @@ export async function POST(req: NextRequest) {
       console.log(`[TrustedForm Status Check] Checking ${i + 1}/${certificateIds.length}: ${certId}`);
       
       try {
-        // Call TrustedForm API from backend (no CORS issues)
+        // Call TrustedForm GET API with proper authentication (same as existing service)
+        const API_KEY = process.env.TRUSTEDFORM_API_KEY;
+        if (!API_KEY) {
+          console.error(`[TrustedForm Status Check] ${certId} - Missing TRUSTEDFORM_API_KEY`);
+          results.push({ 
+            certId, 
+            status: 'Failed', 
+            error: 'Missing TrustedForm API key configuration',
+            timestamp: new Date().toISOString()
+          });
+          continue;
+        }
+
         const response = await fetch(`https://cert.trustedform.com/${certId}`, {
           method: 'GET',
           headers: {
+            'Authorization': `Basic ${Buffer.from('API:' + API_KEY).toString('base64')}`,
             'Accept': 'application/json',
             'User-Agent': 'TrustedForm-Status-Checker/1.0',
           },
