@@ -565,28 +565,46 @@ export default function BulkClaimTFPage() {
     return match ? match[1] : url; // Return the ID or fallback to original if not a URL
   };
 
-  const checkCertificateStatus = async (certId: string): Promise<{ status: string; data?: any; error?: string }> => {
+  // Check certificates in batches via backend API (avoids CORS issues)
+  const checkCertificatesBatch = async (certIds: string[]): Promise<{ [certId: string]: { status: string; data?: any; error?: string; timestamp?: string } }> => {
     try {
-      // Call TrustedForm GET API
-      const response = await fetch(`https://cert.trustedform.com/${certId}`, {
-        method: 'GET',
+      console.log(`[Frontend] Calling backend to check ${certIds.length} certificates`);
+      
+      const response = await fetch('/api/data-management/bulk-claim-tf/status-check', {
+        method: 'POST',
         headers: {
-          'Accept': 'application/json',
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ certificateIds: certIds }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        return { status: 'Success', data };
-      } else if (response.status === 404) {
-        return { status: 'Failed', error: 'Certificate expired or not found' };
-      } else if (response.status === 400) {
-        return { status: 'Failed', error: 'Malformed certificate ID' };
-      } else {
-        return { status: 'Failed', error: `HTTP ${response.status}: ${response.statusText}` };
+      if (!response.ok) {
+        throw new Error(`Backend API error: ${response.status} ${response.statusText}`);
       }
+
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Backend API returned failure');
+      }
+
+      // Convert array results to lookup object
+      const lookup: { [certId: string]: any } = {};
+      result.results.forEach((item: any) => {
+        lookup[item.certId] = {
+          status: item.status,
+          data: item.data,
+          error: item.error,
+          timestamp: item.timestamp
+        };
+      });
+
+      console.log(`[Frontend] Backend returned ${result.results.length} certificate results`);
+      return lookup;
+      
     } catch (error) {
-      return { status: 'Failed', error: `Network error: ${error}` };
+      console.error('[Frontend] Backend API call failed:', error);
+      throw error;
     }
   };
 
@@ -654,12 +672,45 @@ export default function BulkClaimTFPage() {
       const batch = batches[batchIndex];
       const batchStartIndex = batchIndex * BATCH_SIZE;
       
-      // Process all certificates in this batch concurrently
-      const batchPromises = batch.map(async (row, indexInBatch) => {
+      // Extract certificate IDs from this batch
+      const batchCertIds: string[] = [];
+      const batchRowsWithIndex = batch.map((row, indexInBatch) => {
         const globalIndex = batchStartIndex + indexInBatch;
         const certUrl = row[certUrlColumn];
         const certId = extractCertificateId(certUrl);
-
+        
+        if (certId) {
+          batchCertIds.push(certId);
+        }
+        
+        return {
+          row,
+          certId,
+          globalIndex
+        };
+      });
+      
+      // Call backend API for all certificates in this batch
+      let certificateResults: { [certId: string]: any } = {};
+      
+      if (batchCertIds.length > 0) {
+        try {
+          certificateResults = await checkCertificatesBatch(batchCertIds);
+        } catch (error) {
+          console.error(`[Status Check] Backend API failed for batch ${batchIndex + 1}:`, error);
+          // Create error results for all certificates in this batch
+          batchCertIds.forEach(certId => {
+            certificateResults[certId] = {
+              status: 'Failed',
+              error: `Backend API error: ${error}`,
+              timestamp: new Date().toISOString()
+            };
+          });
+        }
+      }
+      
+      // Process results for this batch
+      const successfulBatchResults = batchRowsWithIndex.map(({ row, certId, globalIndex }) => {
         if (!certId) {
           return {
             ...row,
@@ -669,26 +720,22 @@ export default function BulkClaimTFPage() {
             _index: globalIndex
           };
         } else {
-          const statusResult = await checkCertificateStatus(certId);
+          const result = certificateResults[certId] || {
+            status: 'Failed',
+            error: 'No result returned from backend',
+            timestamp: new Date().toISOString()
+          };
           
           return {
             ...row,
-            tf_status: statusResult.status,
-            tf_error: statusResult.error || '',
-            tf_data: statusResult.data ? JSON.stringify(statusResult.data) : '',
-            tf_checked_at: new Date().toISOString(),
+            tf_status: result.status,
+            tf_error: result.error || '',
+            tf_data: result.data ? JSON.stringify(result.data) : '',
+            tf_checked_at: result.timestamp || new Date().toISOString(),
             _index: globalIndex
           };
         }
       });
-      
-      // Wait for this batch to complete
-      const batchResults = await Promise.allSettled(batchPromises);
-      
-      // Add successful results to our collection
-      const successfulBatchResults = batchResults
-        .map(result => result.status === 'fulfilled' ? result.value : null)
-        .filter(Boolean);
       
       allResults.push(...successfulBatchResults);
       totalProcessed += batch.length;
