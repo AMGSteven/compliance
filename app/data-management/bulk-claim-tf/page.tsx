@@ -632,56 +632,82 @@ export default function BulkClaimTFPage() {
     }
 
     console.log(`[Status Check] Using column '${certUrlColumn}' for certificate URLs`);
-    console.log(`[Status Check] Starting to check ${statusCheckData.length} certificates with MAXIMUM CONCURRENCY...`);
+    console.log(`[Status Check] Starting to check ${statusCheckData.length} certificates with BATCHED CONCURRENCY (target: ~1 min for 50k records)...`);
 
-    // Process ALL certificates concurrently for maximum speed
-    const promises = statusCheckData.map(async (row, index) => {
-      const certUrl = row[certUrlColumn];
-      const certId = extractCertificateId(certUrl);
-
-      if (!certId) {
-        return {
-          ...row,
-          tf_status: 'Failed',
-          tf_error: 'Invalid certificate URL/ID',
-          tf_checked_at: new Date().toISOString(),
-          _index: index
-        };
-      } else {
-        console.log(`[Status Check] Checking ${index + 1}/${statusCheckData.length}: ${certId}`);
-        const statusResult = await checkCertificateStatus(certId);
-        
-        return {
-          ...row,
-          tf_status: statusResult.status,
-          tf_error: statusResult.error || '',
-          tf_data: statusResult.data ? JSON.stringify(statusResult.data) : '',
-          tf_checked_at: new Date().toISOString(),
-          _index: index
-        };
-      }
-    });
-
-    // Track progress as promises resolve
-    let completed = 0;
-    const total = promises.length;
+    // Process certificates in concurrent batches for optimal speed
+    const BATCH_SIZE = 150; // Process 150 certificates concurrently per batch
+    const BATCH_DELAY = 180; // 180ms delay between batches = ~833 requests/second
     
-    // Wait for all promises and update progress as they complete
-    const promiseResults = await Promise.allSettled(
-      promises.map(async (promise) => {
-        const result = await promise;
-        completed++;
-        setStatusCheckProgress(Math.round((completed / total) * 100));
-        return result;
-      })
-    );
+    const allResults: any[] = [];
+    let totalProcessed = 0;
+    
+    // Split data into batches
+    const batches = [];
+    for (let i = 0; i < statusCheckData.length; i += BATCH_SIZE) {
+      batches.push(statusCheckData.slice(i, i + BATCH_SIZE));
+    }
+    
+    console.log(`[Status Check] Processing ${batches.length} batches of ${BATCH_SIZE} certificates each`);
+    
+    // Process each batch concurrently
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      const batch = batches[batchIndex];
+      const batchStartIndex = batchIndex * BATCH_SIZE;
+      
+      // Process all certificates in this batch concurrently
+      const batchPromises = batch.map(async (row, indexInBatch) => {
+        const globalIndex = batchStartIndex + indexInBatch;
+        const certUrl = row[certUrlColumn];
+        const certId = extractCertificateId(certUrl);
 
-    // Extract successful results and sort by original index
-    const finalResults = promiseResults
-      .map(result => result.status === 'fulfilled' ? result.value : null)
-      .filter(Boolean)
+        if (!certId) {
+          return {
+            ...row,
+            tf_status: 'Failed',
+            tf_error: 'Invalid certificate URL/ID',
+            tf_checked_at: new Date().toISOString(),
+            _index: globalIndex
+          };
+        } else {
+          const statusResult = await checkCertificateStatus(certId);
+          
+          return {
+            ...row,
+            tf_status: statusResult.status,
+            tf_error: statusResult.error || '',
+            tf_data: statusResult.data ? JSON.stringify(statusResult.data) : '',
+            tf_checked_at: new Date().toISOString(),
+            _index: globalIndex
+          };
+        }
+      });
+      
+      // Wait for this batch to complete
+      const batchResults = await Promise.allSettled(batchPromises);
+      
+      // Add successful results to our collection
+      const successfulBatchResults = batchResults
+        .map(result => result.status === 'fulfilled' ? result.value : null)
+        .filter(Boolean);
+      
+      allResults.push(...successfulBatchResults);
+      totalProcessed += batch.length;
+      
+      // Update progress
+      setStatusCheckProgress(Math.round((totalProcessed / statusCheckData.length) * 100));
+      
+      console.log(`[Status Check] Completed batch ${batchIndex + 1}/${batches.length} (${totalProcessed}/${statusCheckData.length} certificates)`);
+      
+      // Small delay between batches to maintain ~833 requests/second
+      if (batchIndex < batches.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
+      }
+    }
+
+    // Sort results by original index and remove temporary index
+    const finalResults = allResults
       .sort((a, b) => a._index - b._index)
-      .map(({ _index, ...rest }) => rest); // Remove the temporary index
+      .map(({ _index, ...rest }) => rest);
 
     setStatusCheckResults(finalResults);
     setStatusCheckComplete(true);
@@ -1069,7 +1095,7 @@ export default function BulkClaimTFPage() {
               </div>
               <Progress value={statusCheckProgress} className="w-full" />
               <div className="text-xs text-blue-600 text-center font-medium">
-                🚀 MAXIMUM SPEED: All certificates being checked concurrently (NO rate limiting)
+                ⚡ BATCHED CONCURRENCY: 150 certificates per batch (~833 req/sec, 50k in ~1 min)
               </div>
             </div>
           )}
