@@ -22,28 +22,53 @@ export async function GET(request: NextRequest) {
     // Get Supabase client
     const supabase = createServerClient();
     
-    // Build query
-    let query = supabase
-      .from('trusted_form_certificates')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(10000);
+    // Fetch all records using pagination to avoid Supabase limits
+    let allClaims: any[] = [];
+    let from = 0;
+    const batchSize = 1000;
+    let hasMore = true;
     
-    // Apply date filter if provided
-    if (startDate) {
-      query = query.gte('created_at', startDate);
-    }
-    if (endDate) {
-      query = query.lte('created_at', endDate);
+    while (hasMore) {
+      console.log(`[TF History] Fetching batch from ${from} to ${from + batchSize - 1}`);
+      
+      let query = supabase
+        .from('trusted_form_certificates')
+        .select('*')
+        .ilike('metadata->>reference', 'bulk_claim_%')
+        .order('created_at', { ascending: false })
+        .range(from, from + batchSize - 1);
+      
+      // Apply date filter if provided
+      if (startDate) {
+        query = query.gte('created_at', startDate);
+      }
+      if (endDate) {
+        query = query.lte('created_at', endDate);
+      }
+      
+      const { data: batchData, error: queryError } = await query;
+      
+      if (queryError) {
+        console.error('[TF History] Query error:', queryError);
+        throw new Error(`Database query failed: ${queryError.message}`);
+      }
+      
+      if (batchData && batchData.length > 0) {
+        allClaims = allClaims.concat(batchData);
+        from += batchSize;
+        hasMore = batchData.length === batchSize; // Continue if we got a full batch
+      } else {
+        hasMore = false;
+      }
+      
+      // Safety check to prevent infinite loops
+      if (allClaims.length > 100000) {
+        console.log('[TF History] Safety limit reached - stopping at 100k records');
+        break;
+      }
     }
     
-    // Execute query
-    const { data: trustedFormClaims, error: queryError } = await query;
-    
-    if (queryError) {
-      console.error('[TF History] Query error:', queryError);
-      throw new Error(`Database query failed: ${queryError.message}`);
-    }
+    const trustedFormClaims = allClaims;
     
     const claims = trustedFormClaims || [];
     console.log(`[TF History] Found ${claims.length} historical claims`);
