@@ -32,10 +32,11 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
-        const response = await fetch(`https://cert.trustedform.com/${certId}`, {
+        const response = await fetch(`https://cert.trustedform.com/certificates/${certId}`, {
           method: 'GET',
           headers: {
             'Authorization': `Basic ${Buffer.from('API:' + API_KEY).toString('base64')}`,
+            'Content-Type': 'application/json',
             'Accept': 'application/json',
             'User-Agent': 'TrustedForm-Status-Checker/1.0',
           },
