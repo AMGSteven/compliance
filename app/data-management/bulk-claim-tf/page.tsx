@@ -74,6 +74,16 @@ export default function BulkClaimTFPage() {
     end: new Date().toISOString().split('T')[0] 
   });
 
+  // Certificate Status Checker state
+  const [statusCheckFile, setStatusCheckFile] = useState<File | null>(null);
+  const [statusCheckData, setStatusCheckData] = useState<any[]>([]);
+  const [statusCheckHeaders, setStatusCheckHeaders] = useState<string[]>([]);
+  const [statusCheckResults, setStatusCheckResults] = useState<any[]>([]);
+  const [statusCheckProgress, setStatusCheckProgress] = useState(0);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+  const [statusCheckError, setStatusCheckError] = useState<string | null>(null);
+  const [statusCheckComplete, setStatusCheckComplete] = useState(false);
+
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const uploadedFile = event.target.files?.[0];
     if (!uploadedFile) return;
@@ -502,6 +512,187 @@ export default function BulkClaimTFPage() {
     window.URL.revokeObjectURL(url);
   };
 
+  // Certificate Status Checker Functions
+  const handleStatusCheckFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const uploadedFile = event.target.files?.[0];
+    if (!uploadedFile) return;
+
+    if (!uploadedFile.name.toLowerCase().endsWith('.csv')) {
+      setStatusCheckError('Please upload a CSV file');
+      return;
+    }
+
+    setStatusCheckFile(uploadedFile);
+    setStatusCheckError(null);
+    setStatusCheckComplete(false);
+    setStatusCheckResults([]);
+
+    // Parse CSV
+    try {
+      const text = await uploadedFile.text();
+      const lines = text.split('\n').filter(line => line.trim());
+      
+      if (lines.length === 0) {
+        setStatusCheckError('CSV file is empty');
+        return;
+      }
+
+      const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+      const data = lines.slice(1).map((line, index) => {
+        const values = line.split(',').map(v => v.trim().replace(/"/g, ''));
+        const row: any = { _rowIndex: index };
+        headers.forEach((header, i) => {
+          row[header] = values[i] || '';
+        });
+        return row;
+      });
+
+      setStatusCheckHeaders(headers);
+      setStatusCheckData(data);
+      console.log(`[Status Check] Loaded ${data.length} rows with headers:`, headers);
+    } catch (error) {
+      console.error('Error parsing CSV:', error);
+      setStatusCheckError('Failed to parse CSV file');
+    }
+  }, []);
+
+  const extractCertificateId = (url: string): string | null => {
+    if (!url) return null;
+    
+    // Extract certificate ID from TrustedForm URL
+    // Format: https://cert.trustedform.com/{cert_id}
+    const match = url.match(/cert\.trustedform\.com\/([a-f0-9]+)/);
+    return match ? match[1] : url; // Return the ID or fallback to original if not a URL
+  };
+
+  const checkCertificateStatus = async (certId: string): Promise<{ status: string; data?: any; error?: string }> => {
+    try {
+      // Call TrustedForm GET API
+      const response = await fetch(`https://cert.trustedform.com/${certId}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return { status: 'Success', data };
+      } else if (response.status === 404) {
+        return { status: 'Failed', error: 'Certificate expired or not found' };
+      } else if (response.status === 400) {
+        return { status: 'Failed', error: 'Malformed certificate ID' };
+      } else {
+        return { status: 'Failed', error: `HTTP ${response.status}: ${response.statusText}` };
+      }
+    } catch (error) {
+      return { status: 'Failed', error: `Network error: ${error}` };
+    }
+  };
+
+  const startStatusChecking = async () => {
+    if (!statusCheckData.length) {
+      setStatusCheckError('No data to check');
+      return;
+    }
+
+    setIsCheckingStatus(true);
+    setStatusCheckError(null);
+    setStatusCheckProgress(0);
+    setStatusCheckComplete(false);
+
+    const results: any[] = [];
+    
+    // Find certificate URL column
+    const certUrlColumn = statusCheckHeaders.find(h => 
+      h.toLowerCase().includes('certificate') && h.toLowerCase().includes('url') ||
+      h.toLowerCase().includes('cert') && h.toLowerCase().includes('url') ||
+      h.toLowerCase() === 'certificate_url' ||
+      h.toLowerCase() === 'certificateurl'
+    );
+
+    if (!certUrlColumn) {
+      setStatusCheckError('Could not find certificate URL column. Please ensure your CSV has a column containing certificate URLs.');
+      setIsCheckingStatus(false);
+      return;
+    }
+
+    console.log(`[Status Check] Using column '${certUrlColumn}' for certificate URLs`);
+    console.log(`[Status Check] Starting to check ${statusCheckData.length} certificates...`);
+
+    // Process each row
+    for (let i = 0; i < statusCheckData.length; i++) {
+      const row = statusCheckData[i];
+      const certUrl = row[certUrlColumn];
+      const certId = extractCertificateId(certUrl);
+
+      if (!certId) {
+        results.push({
+          ...row,
+          tf_status: 'Failed',
+          tf_error: 'Invalid certificate URL/ID',
+          tf_checked_at: new Date().toISOString()
+        });
+      } else {
+        console.log(`[Status Check] Checking ${i + 1}/${statusCheckData.length}: ${certId}`);
+        const statusResult = await checkCertificateStatus(certId);
+        
+        results.push({
+          ...row,
+          tf_status: statusResult.status,
+          tf_error: statusResult.error || '',
+          tf_data: statusResult.data ? JSON.stringify(statusResult.data) : '',
+          tf_checked_at: new Date().toISOString()
+        });
+      }
+
+      // Update progress
+      setStatusCheckProgress(Math.round(((i + 1) / statusCheckData.length) * 100));
+      
+      // Small delay to avoid overwhelming the API (but no rate limiting as requested)
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+
+    setStatusCheckResults(results);
+    setStatusCheckComplete(true);
+    setIsCheckingStatus(false);
+    console.log(`[Status Check] Completed checking ${results.length} certificates`);
+  };
+
+  const downloadStatusCheckResults = () => {
+    if (!statusCheckResults.length) {
+      setStatusCheckError('No results to download');
+      return;
+    }
+
+    // Create CSV with original columns plus new status columns
+    const newHeaders = [...statusCheckHeaders, 'tf_status', 'tf_error', 'tf_data', 'tf_checked_at'];
+    const csvHeader = newHeaders.join(',') + '\n';
+    
+    const csvRows = statusCheckResults.map(row => {
+      return newHeaders.map(header => {
+        const value = row[header] || '';
+        const stringValue = String(value);
+        // Escape quotes and wrap in quotes if contains comma or quote
+        if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+          return `"${stringValue.replace(/"/g, '""')}"`;
+        }
+        return stringValue;
+      }).join(',');
+    }).join('\n');
+    
+    const csvContent = csvHeader + csvRows;
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `trustedform-status-check-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="container mx-auto p-6 max-w-6xl">
       {/* Header */}
@@ -772,6 +963,135 @@ export default function BulkClaimTFPage() {
             <div className="text-xs text-gray-500">
               <strong>Tip:</strong> All downloads contain only unique certificates with duplicates automatically removed for clean data.
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Certificate Status Checker */}
+      <Card className="mb-6">
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <CheckCircle className="h-6 w-6 text-indigo-600" />
+            <div>
+              <CardTitle>Certificate Status Checker</CardTitle>
+              <CardDescription>
+                Upload a CSV with certificate URLs to check their status via TrustedForm's GET API and download updated results
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* File Upload */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">
+              Upload CSV File
+            </label>
+            <div className="flex items-center space-x-4">
+              <div className="flex-1">
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleStatusCheckFileUpload}
+                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                />
+              </div>
+              {statusCheckFile && (
+                <div className="flex items-center text-sm text-green-600">
+                  <CheckCircle className="h-4 w-4 mr-1" />
+                  {statusCheckFile.name}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Data Preview */}
+          {statusCheckData.length > 0 && (
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-medium text-blue-900">Data Preview</h4>
+                <Badge variant="secondary">{statusCheckData.length} rows</Badge>
+              </div>
+              <div className="text-sm text-blue-800">
+                <p><strong>Headers:</strong> {statusCheckHeaders.join(', ')}</p>
+                <p className="mt-1"><strong>Sample row:</strong> {Object.entries(statusCheckData[0] || {}).slice(0, 3).map(([k, v]) => `${k}: ${v}`).join(', ')}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Start Checking Button */}
+          {statusCheckData.length > 0 && !isCheckingStatus && !statusCheckComplete && (
+            <Button 
+              onClick={startStatusChecking}
+              className="w-full bg-indigo-600 hover:bg-indigo-700"
+              size="lg"
+            >
+              <Play className="h-4 w-4 mr-2" />
+              Start Status Checking ({statusCheckData.length} certificates)
+            </Button>
+          )}
+
+          {/* Progress */}
+          {isCheckingStatus && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-700">Checking certificates...</span>
+                <span className="text-sm text-gray-500">{statusCheckProgress}%</span>
+              </div>
+              <Progress value={statusCheckProgress} className="w-full" />
+              <div className="text-xs text-blue-600 text-center">
+                Calling TrustedForm GET API for each certificate (no rate limiting)
+              </div>
+            </div>
+          )}
+
+          {/* Results */}
+          {statusCheckComplete && statusCheckResults.length > 0 && (
+            <div className="p-4 bg-green-50 border border-green-200 rounded-lg space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium text-green-900">Status Check Complete!</h4>
+                <Badge className="bg-green-600">{statusCheckResults.length} checked</Badge>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="text-green-800">
+                  <strong>Successful:</strong> {statusCheckResults.filter(r => r.tf_status === 'Success').length}
+                </div>
+                <div className="text-red-800">
+                  <strong>Failed:</strong> {statusCheckResults.filter(r => r.tf_status === 'Failed').length}
+                </div>
+              </div>
+
+              <div className="text-xs text-green-700">
+                New columns added: <code>tf_status</code>, <code>tf_error</code>, <code>tf_data</code>, <code>tf_checked_at</code>
+              </div>
+              
+              <Button 
+                onClick={downloadStatusCheckResults}
+                className="w-full bg-green-600 hover:bg-green-700"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download Updated CSV
+              </Button>
+            </div>
+          )}
+
+          {/* Error Display */}
+          {statusCheckError && (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{statusCheckError}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* Info */}
+          <div className="text-xs text-gray-500 space-y-1">
+            <p><strong>How it works:</strong></p>
+            <ul className="list-disc list-inside ml-2 space-y-1">
+              <li>Upload a CSV containing certificate URLs (any column name with 'certificate' and 'url')</li>
+              <li>Each certificate is checked via TrustedForm's GET /{'{cert_id}'} API</li>
+              <li>Results include: Success/Failed status, error details, and full JSON response data</li>
+              <li>Download the updated CSV with 4 new columns: tf_status, tf_error, tf_data, tf_checked_at</li>
+            </ul>
           </div>
         </CardContent>
       </Card>
