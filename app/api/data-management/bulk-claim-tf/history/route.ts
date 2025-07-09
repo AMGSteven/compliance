@@ -73,8 +73,21 @@ export async function GET(request: NextRequest) {
     const claims = trustedFormClaims || [];
     console.log(`[TF History] Found ${claims.length} historical claims`);
     
+    // Deduplicate by certificate_url - keep the latest occurrence of each certificate
+    const uniqueClaims = new Map<string, any>();
+    claims.forEach(claim => {
+      const certUrl = claim.certificate_url;
+      if (!uniqueClaims.has(certUrl) || 
+          new Date(claim.created_at) > new Date(uniqueClaims.get(certUrl).created_at)) {
+        uniqueClaims.set(certUrl, claim);
+      }
+    });
+    
+    const deduplicatedClaims = Array.from(uniqueClaims.values());
+    console.log(`[TF History] After deduplication: ${deduplicatedClaims.length} unique certificates (removed ${claims.length - deduplicatedClaims.length} duplicates)`);
+    
     // Transform to match BulkClaimResult format
-    const results = claims.map((claim: any, index: number) => {
+    const results = deduplicatedClaims.map((claim: any, index: number) => {
       const isSuccess = claim.status === 'verified' && claim.metadata?.outcome === 'success';
       const leadData = claim.metadata?.lead_data || {};
       const retainData = claim.metadata?.retain || {};
@@ -102,10 +115,14 @@ export async function GET(request: NextRequest) {
     });
     
     // Calculate summary statistics
+    const successfulCount = results.filter((r: any) => r.success).length;
+    const failedCount = results.filter((r: any) => !r.success).length;
     const summary = {
       totalProcessed: results.length,
-      successful: results.filter((r: any) => r.success).length,
-      failed: results.filter((r: any) => !r.success).length,
+      successful: successfulCount,
+      failed: failedCount,
+      originalTotal: claims.length,
+      duplicatesRemoved: claims.length - deduplicatedClaims.length,
       dateRange: {
         start: startDate || 'all-time',
         end: endDate || 'now'

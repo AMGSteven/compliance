@@ -657,11 +657,15 @@ export default function BulkClaimTFPage() {
             {historicalResults.length > 0 && (
               <div className="p-4 bg-green-50 border border-green-200 rounded-lg space-y-3">
                 <p className="text-sm text-green-800">
-                  <strong>Found {historicalResults.length} historical claim records</strong>
+                  <strong>Found {historicalResults.length} unique certificates</strong>
                   <br />
                   <span className="text-xs">
                     Successful: {historicalResults.filter(r => r.success).length} | 
                     Failed: {historicalResults.filter(r => !r.success).length}
+                  </span>
+                  <br />
+                  <span className="text-xs text-green-600">
+                    ✅ Duplicates automatically removed for clean download
                   </span>
                 </p>
                 <div className="flex gap-2">
@@ -688,7 +692,7 @@ export default function BulkClaimTFPage() {
             )}
             
             <div className="text-xs text-gray-500">
-              <strong>Tip:</strong> Use "Download Combined Results" to get both your previous chunks (1-85) and current session results in one file.
+              <strong>Tip:</strong> All downloads contain only unique certificates with duplicates automatically removed for clean data.
             </div>
           </div>
         </CardContent>
