@@ -432,6 +432,72 @@ export default function BulkClaimTFPage() {
     downloadCSV(allResults, claimResults?.originalHeaders || headers);
   };
 
+  // Utility function to download data as CSV
+  const downloadCSV = (data: any[], columns?: string[]) => {
+    if (!data || data.length === 0) return;
+    
+    // Use provided columns or extract from first data item
+    const csvColumns = columns || (data[0]?.originalData ? 
+      Object.keys(data[0].originalData) : 
+      ['certificateUrl', 'success', 'error', 'claimedAt']
+    );
+    
+    // Create CSV header
+    const csvHeader = csvColumns.join(',') + '\n';
+    
+    // Create CSV rows
+    const csvRows = data.map(item => {
+      const row = csvColumns.map(col => {
+        let value = '';
+        
+        // Handle different data structures
+        if (item.originalData && item.originalData[col] !== undefined) {
+          value = item.originalData[col];
+        } else if (item[col] !== undefined) {
+          value = item[col];
+        } else {
+          // Map common column names
+          switch(col) {
+            case 'certificate_url':
+              value = item.certificateUrl || item.certificate_url || '';
+              break;
+            case 'success':
+              value = item.success ? 'Yes' : 'No';
+              break;
+            case 'error':
+              value = item.error || '';
+              break;
+            case 'claimed_at':
+              value = item.claimedAt || item.claimed_at || '';
+              break;
+            default:
+              value = item[col] || '';
+          }
+        }
+        
+        // Escape quotes and wrap in quotes if contains comma or quote
+        const stringValue = String(value);
+        if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+          return `"${stringValue.replace(/"/g, '""')}"`;
+        }
+        return stringValue;
+      });
+      return row.join(',');
+    }).join('\n');
+    
+    // Create and download file
+    const csvContent = csvHeader + csvRows;
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `trustedform-bulk-claim-results-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="container mx-auto p-6 max-w-6xl">
       {/* Header */}
