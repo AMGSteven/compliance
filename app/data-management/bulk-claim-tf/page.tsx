@@ -485,52 +485,90 @@ export default function BulkClaimTFPage() {
               </div>
             </div>
             
-            {/* Resume Functionality */}
-            {csvData.length > 0 && (
-              <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <h4 className="font-medium text-blue-900 mb-3 flex items-center gap-2">
-                  <RefreshCw className="h-4 w-4" />
-                  Resume Processing
-                </h4>
-                <p className="text-sm text-blue-700 mb-3">
-                  If processing was interrupted, you can resume from a specific chunk.
-                </p>
-                <div className="flex items-center gap-3">
-                  <label className="text-sm font-medium text-blue-900">Start from chunk:</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="1000"
-                    value={resumeFromChunk}
-                    onChange={(e) => setResumeFromChunk(Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-20 px-2 py-1 border border-blue-300 rounded text-center"
-                  />
-                  <span className="text-sm text-blue-600">
-                    (Each chunk processes ~500 records)
-                  </span>
-                </div>
-                {completedChunks.length > 0 && (
-                  <div className="mt-3 space-y-2">
-                    <p className="text-xs text-blue-600">
-                      Completed chunks: {completedChunks.join(', ')}
-                    </p>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={() => {
-                        setCompletedChunks([]);
-                        setResumeFromChunk(1);
-                        setCurrentChunk(0);
-                        setTotalChunks(0);
-                      }}
-                      className="h-6 text-xs"
-                    >
-                      Reset Progress
-                    </Button>
-                  </div>
-                )}
+
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Resume Functionality */}
+      {csvData.length > 0 && state !== 'claiming' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <RefreshCw className="h-5 w-5" />
+              Resume Processing
+            </CardTitle>
+            <CardDescription>
+              Resume from a specific chunk if processing was interrupted
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="flex items-center gap-4">
+                <label className="text-sm font-medium">Start from chunk:</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="1000"
+                  value={resumeFromChunk}
+                  onChange={(e) => setResumeFromChunk(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-24 px-3 py-2 border border-gray-300 rounded-md text-center"
+                />
+                <span className="text-sm text-gray-600">
+                  (Each chunk processes ~500 records = {Math.ceil(csvData.length / 500)} total chunks)
+                </span>
               </div>
-            )}
+              
+              {completedChunks.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm text-green-600 font-medium">
+                    ✓ Completed chunks: {completedChunks.join(', ')}
+                  </p>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => {
+                      setCompletedChunks([]);
+                      setResumeFromChunk(1);
+                      setCurrentChunk(0);
+                      setTotalChunks(0);
+                    }}
+                  >
+                    Reset Progress
+                  </Button>
+                </div>
+              )}
+              
+              {resumeFromChunk > 1 && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
+                  <p className="text-sm text-amber-800">
+                    <strong>Resume Mode:</strong> Will skip chunks 1-{resumeFromChunk - 1} and start from chunk {resumeFromChunk}
+                    <br />
+                    <span className="text-xs">This will process records {((resumeFromChunk - 1) * 500) + 1} to {csvData.length}</span>
+                  </p>
+                  <Button 
+                    onClick={startBulkClaiming}
+                    disabled={!detectionResult?.detectedCertificates}
+                    className="bg-orange-600 hover:bg-orange-700 text-white"
+                  >
+                    <Play className="h-4 w-4 mr-2" />
+                    Resume Claiming from Chunk {resumeFromChunk}
+                  </Button>
+                </div>
+              )}
+              
+              {/* Regular Start Button */}
+              {resumeFromChunk === 1 && detectionResult && (
+                <Button 
+                  onClick={() => setShowPreviewDialog(true)}
+                  disabled={!detectionResult?.detectedCertificates}
+                  className="bg-blue-600 hover:bg-blue-700 text-white w-full"
+                >
+                  <Play className="h-4 w-4 mr-2" />
+                  Start Claiming {detectionResult.detectedCertificates} Certificates
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
