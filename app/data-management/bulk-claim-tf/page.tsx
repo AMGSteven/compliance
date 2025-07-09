@@ -603,16 +603,32 @@ export default function BulkClaimTFPage() {
 
     const results: any[] = [];
     
-    // Find certificate URL column
-    const certUrlColumn = statusCheckHeaders.find(h => 
-      h.toLowerCase().includes('certificate') && h.toLowerCase().includes('url') ||
-      h.toLowerCase().includes('cert') && h.toLowerCase().includes('url') ||
-      h.toLowerCase() === 'certificate_url' ||
-      h.toLowerCase() === 'certificateurl'
-    );
+    // Find certificate URL column using the same intelligent detection logic as bulk claim
+    const certUrlColumn = statusCheckHeaders.find(h => {
+      const lower = h.toLowerCase();
+      return (
+        lower === 'certificate_url' ||
+        lower === 'trustedform' ||
+        lower === 'tf_cert' ||
+        lower === 'cert_url' ||
+        lower === 'trusted_form_cert_url' ||
+        lower === 'certificateurl' ||
+        lower === 'trustedformurl' ||
+        lower === 'tf_url' ||
+        lower === 'trusted_form_url' ||
+        (lower.includes('certificate') && lower.includes('url')) ||
+        (lower.includes('cert') && lower.includes('url')) ||
+        (lower.includes('trusted') && lower.includes('form')) ||
+        lower.includes('trustedform')
+      );
+    });
 
     if (!certUrlColumn) {
-      setStatusCheckError('Could not find certificate URL column. Please ensure your CSV has a column containing certificate URLs.');
+      setStatusCheckError(
+        `Could not find certificate URL column. Please ensure your CSV has a column with one of these names:\n` +
+        `• certificate_url\n• trustedform\n• tf_cert\n• cert_url\n• trusted_form_cert_url\n` +
+        `Available columns: ${statusCheckHeaders.join(', ')}`
+      );
       setIsCheckingStatus(false);
       return;
     }
@@ -1084,14 +1100,24 @@ export default function BulkClaimTFPage() {
           )}
 
           {/* Info */}
-          <div className="text-xs text-gray-500 space-y-1">
-            <p><strong>How it works:</strong></p>
-            <ul className="list-disc list-inside ml-2 space-y-1">
-              <li>Upload a CSV containing certificate URLs (any column name with 'certificate' and 'url')</li>
-              <li>Each certificate is checked via TrustedForm's GET /{'{cert_id}'} API</li>
-              <li>Results include: Success/Failed status, error details, and full JSON response data</li>
-              <li>Download the updated CSV with 4 new columns: tf_status, tf_error, tf_data, tf_checked_at</li>
-            </ul>
+          <div className="text-xs text-gray-500 space-y-2">
+            <div>
+              <p><strong>Supported Certificate Column Names:</strong></p>
+              <div className="flex flex-wrap gap-1 mt-1">
+                {['certificate_url', 'trustedform', 'tf_cert', 'cert_url', 'trusted_form_cert_url'].map(name => (
+                  <Badge key={name} variant="outline" className="text-xs">{name}</Badge>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p><strong>How it works:</strong></p>
+              <ul className="list-disc list-inside ml-2 space-y-1">
+                <li>Upload a CSV with certificate URLs (automatically detects column)</li>
+                <li>Each certificate is checked via TrustedForm's GET /{'{cert_id}'} API</li>
+                <li>Results include: Success/Failed status, error details, and full JSON response data</li>
+                <li>Download the updated CSV with 4 new columns: tf_status, tf_error, tf_data, tf_checked_at</li>
+              </ul>
+            </div>
           </div>
         </CardContent>
       </Card>
