@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { createServerClient } from '@/lib/supabase/server';
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,39 +19,62 @@ export async function GET(request: NextRequest) {
     console.log('[TF History] Fetching historical TrustedForm claim results...');
     console.log('[TF History] Date filter:', dateFilter);
     
-    // Query TrustedForm claims from database
-    const trustedFormClaims = await prisma.trusted_form_certificates.findMany({
-      where: {
-        ...(Object.keys(dateFilter).length > 0 && { 
-          created_at: dateFilter 
-        })
-      },
-      orderBy: {
-        created_at: 'desc'
-      },
-      take: 10000 // Limit to prevent memory issues
-    });
+    // Get Supabase client
+    const supabase = createServerClient();
     
-    console.log(`[TF History] Found ${trustedFormClaims.length} historical claims`);
+    // Build query
+    let query = supabase
+      .from('trusted_form_certificates')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(10000);
+    
+    // Apply date filter if provided
+    if (startDate) {
+      query = query.gte('created_at', startDate);
+    }
+    if (endDate) {
+      query = query.lte('created_at', endDate);
+    }
+    
+    // Execute query
+    const { data: trustedFormClaims, error: queryError } = await query;
+    
+    if (queryError) {
+      console.error('[TF History] Query error:', queryError);
+      throw new Error(`Database query failed: ${queryError.message}`);
+    }
+    
+    const claims = trustedFormClaims || [];
+    console.log(`[TF History] Found ${claims.length} historical claims`);
     
     // Transform to match BulkClaimResult format
-    const results = trustedFormClaims.map((claim: any, index: number) => ({
-      row: index + 1,
-      certificateUrl: claim.certificate_url || claim.url || '',
-      success: claim.status === 'success' || claim.success === true,
-      error: claim.error || claim.message || undefined,
-      claimedAt: claim.created_at || claim.timestamp,
-      originalData: {
-        certificate_url: claim.certificate_url || claim.url || '',
-        email: claim.email || '',
-        phone: claim.phone || '',
-        first_name: claim.first_name || '',
-        last_name: claim.last_name || '',
-        success: (claim.status === 'success' || claim.success === true) ? 'Yes' : 'No',
-        error: claim.error || claim.message || '',
-        claimed_at: claim.created_at || claim.timestamp || ''
-      }
-    }));
+    const results = claims.map((claim: any, index: number) => {
+      const isSuccess = claim.status === 'verified' && claim.metadata?.outcome === 'success';
+      const leadData = claim.metadata?.lead_data || {};
+      const retainData = claim.metadata?.retain || {};
+      const error = claim.metadata?.reason || (isSuccess ? '' : 'Verification failed');
+      
+      return {
+        row: index + 1,
+        certificateUrl: claim.certificate_url || '',
+        success: isSuccess,
+        error: error || undefined,
+        claimedAt: claim.verified_at || claim.created_at,
+        originalData: {
+          certificate_url: claim.certificate_url || '',
+          email: leadData.email || '',
+          phone: leadData.phone || '',
+          first_name: leadData.firstName || '',
+          last_name: leadData.lastName || '',
+          success: isSuccess ? 'Yes' : 'No',
+          error: error || '',
+          claimed_at: claim.verified_at || claim.created_at || '',
+          status: claim.status || '',
+          expires_at: retainData.results?.expires_at || ''
+        }
+      };
+    });
     
     // Calculate summary statistics
     const summary = {
