@@ -253,12 +253,14 @@ export async function POST(request: NextRequest) {
       };
       
       // Analyze provided rows for detection (may be subset for large files)
+      let validCertificatesInSample = 0;
+      
       csvData.forEach((row: Record<string, any>, index: number) => {
         const certificateUrl = row[trustedFormColumn];
         const extractedId = extractTrustedFormId(certificateUrl);
         
         if (extractedId) {
-          detectionResult.detectedCertificates++;
+          validCertificatesInSample++;
           if (detectionResult.sampleData.length < 10) {
             detectionResult.sampleData.push({
               row: index + 1,
@@ -276,15 +278,15 @@ export async function POST(request: NextRequest) {
         }
       });
       
-      // Count remaining valid certificates in full dataset
-      if (csvData.length > 100) {
-        const remainingRows = csvData.slice(100);
-        remainingRows.forEach((row: Record<string, any>) => {
-          const certificateUrl = row[trustedFormColumn];
-          if (extractTrustedFormId(certificateUrl)) {
-            detectionResult.detectedCertificates++;
-          }
-        });
+      // Scale detection results if we only processed a subset
+      if (totalRecords && totalRecords !== csvData.length) {
+        // We only processed a sample, scale the results
+        const sampleRate = validCertificatesInSample / csvData.length;
+        detectionResult.detectedCertificates = Math.round(sampleRate * totalRecords);
+        console.log(`[TF Bulk Claim] Scaled detection: ${validCertificatesInSample}/${csvData.length} sample -> ${detectionResult.detectedCertificates}/${totalRecords} estimated`);
+      } else {
+        // We processed the full dataset
+        detectionResult.detectedCertificates = validCertificatesInSample;
       }
       
       console.log(`[TF Bulk Claim] Detection complete: ${detectionResult.detectedCertificates}/${detectionResult.totalRows} valid certificates`);

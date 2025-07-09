@@ -151,14 +151,8 @@ export default function BulkClaimTFPage() {
         throw new Error(result.error);
       }
 
-      // Scale up detection results for full dataset
-      const scaledResult = {
-        ...result.data,
-        totalRows: data.length,
-        detectedCertificates: Math.round((result.data.detectedCertificates / detectionData.length) * data.length)
-      };
-
-      setDetectionResult(scaledResult);
+      // Backend now handles proper scaling - no need to scale again
+      setDetectionResult(result.data);
       setState('previewing');
       setShowPreviewDialog(true);
       setProgress(100);
