@@ -66,6 +66,9 @@ export default function BulkClaimTFPage() {
   const [completedChunks, setCompletedChunks] = useState<number[]>([]);
   const [currentChunk, setCurrentChunk] = useState<number>(0);
   const [totalChunks, setTotalChunks] = useState<number>(0);
+  const [showHistoricalResults, setShowHistoricalResults] = useState(false);
+  const [historicalResults, setHistoricalResults] = useState<BulkClaimResult[]>([]);
+  const [historicalDateRange, setHistoricalDateRange] = useState({ start: '', end: '' });
 
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const uploadedFile = event.target.files?.[0];
@@ -395,6 +398,40 @@ export default function BulkClaimTFPage() {
     throw lastError;
   };
 
+  // Fetch historical results from database
+  const fetchHistoricalResults = async (startDate?: string, endDate?: string) => {
+    try {
+      const params = new URLSearchParams();
+      if (startDate) params.append('startDate', startDate);
+      if (endDate) params.append('endDate', endDate);
+      
+      const response = await fetch(`/api/data-management/bulk-claim-tf/history?${params}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch historical results');
+      }
+      
+      const data = await response.json();
+      setHistoricalResults(data.results || []);
+      setShowHistoricalResults(true);
+    } catch (error) {
+      console.error('Error fetching historical results:', error);
+      setError('Failed to fetch historical results');
+    }
+  };
+
+  // Download combined results (current + historical)
+  const downloadCombinedResults = () => {
+    const currentResults = claimResults?.results || [];
+    const allResults = [...historicalResults, ...currentResults];
+    
+    if (allResults.length === 0) {
+      setError('No results to download');
+      return;
+    }
+    
+    downloadCSV(allResults, claimResults?.originalHeaders || headers);
+  };
+
   return (
     <div className="container mx-auto p-6 max-w-6xl">
       {/* Header */}
@@ -572,6 +609,90 @@ export default function BulkClaimTFPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Historical Results */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Download className="h-5 w-5" />
+            Download Previous Results
+          </CardTitle>
+          <CardDescription>
+            Access and download results from previous bulk claim sessions
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="text-sm font-medium mb-2 block">From Date (optional)</label>
+                <input
+                  type="date"
+                  value={historicalDateRange.start}
+                  onChange={(e) => setHistoricalDateRange(prev => ({ ...prev, start: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-2 block">To Date (optional)</label>
+                <input
+                  type="date"
+                  value={historicalDateRange.end}
+                  onChange={(e) => setHistoricalDateRange(prev => ({ ...prev, end: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
+              <div className="flex items-end">
+                <Button 
+                  onClick={() => fetchHistoricalResults(historicalDateRange.start, historicalDateRange.end)}
+                  variant="outline"
+                  className="w-full"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Get Historical Results
+                </Button>
+              </div>
+            </div>
+            
+            {historicalResults.length > 0 && (
+              <div className="p-4 bg-green-50 border border-green-200 rounded-lg space-y-3">
+                <p className="text-sm text-green-800">
+                  <strong>Found {historicalResults.length} historical claim records</strong>
+                  <br />
+                  <span className="text-xs">
+                    Successful: {historicalResults.filter(r => r.success).length} | 
+                    Failed: {historicalResults.filter(r => !r.success).length}
+                  </span>
+                </p>
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={() => downloadCSV(historicalResults, ['certificate_url', 'success', 'error', 'claimed_at'])}
+                    size="sm"
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download Historical Results
+                  </Button>
+                  {claimResults && (
+                    <Button 
+                      onClick={downloadCombinedResults}
+                      size="sm"
+                      className="bg-purple-600 hover:bg-purple-700"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Download Combined Results
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            <div className="text-xs text-gray-500">
+              <strong>Tip:</strong> Use "Download Combined Results" to get both your previous chunks (1-85) and current session results in one file.
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Processing States */}
       {(state === 'uploading' || state === 'detecting') && (
