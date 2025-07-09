@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Upload, FileText, AlertCircle, CheckCircle, Download, Play, X, Shield, Clock, TrendingUp, RefreshCw, Calendar } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -78,11 +78,54 @@ export default function BulkClaimTFPage() {
   const [statusCheckFile, setStatusCheckFile] = useState<File | null>(null);
   const [statusCheckData, setStatusCheckData] = useState<any[]>([]);
   const [statusCheckHeaders, setStatusCheckHeaders] = useState<string[]>([]);
+  const [statusCheckComplete, setStatusCheckComplete] = useState(false);
   const [statusCheckResults, setStatusCheckResults] = useState<any[]>([]);
+  const [tabVisible, setTabVisible] = useState(true);
+  const [showBackgroundWarning, setShowBackgroundWarning] = useState(false);
   const [statusCheckProgress, setStatusCheckProgress] = useState(0);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [statusCheckError, setStatusCheckError] = useState<string | null>(null);
-  const [statusCheckComplete, setStatusCheckComplete] = useState(false);
+
+  // Background processing protection
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const isVisible = document.visibilityState === 'visible';
+      setTabVisible(isVisible);
+      
+      // Show warning when tab becomes hidden during status checking
+      if (!isVisible && isCheckingStatus) {
+        setShowBackgroundWarning(true);
+        console.log('[Background Warning] Tab is now hidden - certificate checking may be throttled by browser');
+      } else if (isVisible && showBackgroundWarning) {
+        setShowBackgroundWarning(false);
+        console.log('[Background Warning] Tab is now visible - certificate checking resumed at full speed');
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isCheckingStatus, showBackgroundWarning]);
+
+  // Keep page active during status checking to prevent browser throttling
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+    
+    if (isCheckingStatus) {
+      // Ping every 5 seconds to keep the page active
+      intervalId = setInterval(() => {
+        console.log(`[Keep Alive] Status checking in progress... ${statusCheckProgress}% complete`);
+      }, 5000);
+    }
+    
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [isCheckingStatus, statusCheckProgress]);
 
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const uploadedFile = event.target.files?.[0];
@@ -1135,15 +1178,29 @@ export default function BulkClaimTFPage() {
 
           {/* Progress */}
           {isCheckingStatus && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-700">Checking certificates...</span>
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <span className="text-sm font-medium">Checking certificates...</span>
                 <span className="text-sm text-gray-500">{statusCheckProgress}%</span>
+                {!tabVisible && (
+                  <Badge variant="outline" className="text-orange-600 border-orange-600">
+                    Tab Hidden - May Be Slower
+                  </Badge>
+                )}
               </div>
               <Progress value={statusCheckProgress} className="w-full" />
               <div className="text-xs text-blue-600 text-center font-medium">
                 ⚡ BATCHED CONCURRENCY: 150 certificates per batch (~833 req/sec, 50k in ~1 min)
               </div>
+              {showBackgroundWarning && (
+                <Alert className="border-orange-200 bg-orange-50">
+                  <AlertCircle className="h-4 w-4 text-orange-600" />
+                  <AlertDescription className="text-orange-800">
+                    <strong>Keep this tab visible!</strong> Browsers throttle inactive tabs, which may slow down certificate checking.
+                    For best performance, keep this tab active and visible.
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
           )}
 
