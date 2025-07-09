@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { Upload, FileText, AlertCircle, CheckCircle, Download, Play, X, Shield, Clock, TrendingUp } from 'lucide-react';
+import { Upload, FileText, AlertCircle, CheckCircle, Download, Play, X, Shield, Clock, TrendingUp, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -62,6 +62,10 @@ export default function BulkClaimTFPage() {
   const [error, setError] = useState<string | null>(null);
   const [showPreviewDialog, setShowPreviewDialog] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [resumeFromChunk, setResumeFromChunk] = useState<number>(1);
+  const [completedChunks, setCompletedChunks] = useState<number[]>([]);
+  const [currentChunk, setCurrentChunk] = useState<number>(0);
+  const [totalChunks, setTotalChunks] = useState<number>(0);
 
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const uploadedFile = event.target.files?.[0];
@@ -183,44 +187,59 @@ export default function BulkClaimTFPage() {
       let totalProcessed = 0;
       const startTime = Date.now();
 
-      for (let i = 0; i < chunks.length; i++) {
+      // Set total chunks for progress tracking
+      setTotalChunks(chunks.length);
+      
+      // Start from resume chunk if specified
+      const startChunkIndex = Math.max(0, resumeFromChunk - 1);
+      
+      for (let i = startChunkIndex; i < chunks.length; i++) {
         const chunk = chunks[i];
         const chunkProgress = Math.round(((i + 1) / chunks.length) * 100);
         setProgress(chunkProgress);
+        setCurrentChunk(i + 1);
 
-        const response = await fetch('/api/data-management/bulk-claim-tf', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'claim',
-            csvData: chunk,
-            headers,
-            startClaiming: true,
-            chunkIndex: i + 1,
-            totalChunks: chunks.length
-          })
-        });
+        // Process chunk with retry logic for network errors
+        const chunkResult = await retryWithBackoff(async () => {
+          const response = await fetch('/api/data-management/bulk-claim-tf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'claim',
+              csvData: chunk,
+              headers,
+              startClaiming: true,
+              chunkIndex: i + 1,
+              totalChunks: chunks.length
+            })
+          });
 
-        if (!response.ok) {
-          if (response.status === 413) {
-            throw new Error('Chunk too large. Please contact support.');
+          if (!response.ok) {
+            if (response.status === 413) {
+              throw new Error('Chunk too large. Please contact support.');
+            }
+            throw new Error(`Server error: ${response.status}`);
           }
-          throw new Error(`Server error: ${response.status}`);
-        }
 
-        const result = await response.json();
+          const result = await response.json();
 
-        if (!result.success) {
-          throw new Error(result.error);
-        }
+          if (!result.success) {
+            throw new Error(result.error);
+          }
+          
+          return result;
+        }, 3, `Chunk ${i + 1}/${chunks.length}`);
 
         // Accumulate results
-        allResults = [...allResults, ...result.data.results];
-        totalProcessed += result.data.summary.totalProcessed;
+        allResults = [...allResults, ...chunkResult.data.results];
+        totalProcessed += chunkResult.data.summary.totalProcessed;
+        
+        // Track completed chunks
+        setCompletedChunks(prev => [...prev, i + 1]);
 
         // Small delay between chunks to avoid overwhelming the API
         if (i < chunks.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve: (value: void) => void) => setTimeout(resolve, 100));
         }
       }
 
@@ -329,6 +348,53 @@ export default function BulkClaimTFPage() {
     return `${minutes} minute${minutes > 1 ? 's' : ''}`;
   };
 
+  // Helper function to check if error is network-related
+  const isNetworkError = (error: any): boolean => {
+    const errorMessage = error?.message || error?.toString() || '';
+    return errorMessage.includes('Failed to fetch') || 
+           errorMessage.includes('NetworkError') ||
+           errorMessage.includes('ERR_NETWORK') ||
+           errorMessage.includes('Connection');
+  };
+
+  // Helper function for exponential backoff delay
+  const getRetryDelay = (attempt: number): number => {
+    return Math.min(1000 * Math.pow(2, attempt), 10000); // Max 10 seconds
+  };
+
+  // Retry function with exponential backoff
+  const retryWithBackoff = async (
+    fn: () => Promise<any>,
+    maxRetries: number = 3,
+    context: string = 'operation'
+  ): Promise<any> => {
+    let lastError: any;
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error;
+        
+        if (attempt === maxRetries) {
+          console.error(`[${context}] Final attempt failed:`, error);
+          throw error;
+        }
+        
+        if (isNetworkError(error)) {
+          const delay = getRetryDelay(attempt);
+          console.log(`[${context}] Network error, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries + 1})`);
+          await new Promise((resolve: (value: void) => void) => setTimeout(resolve, delay));
+        } else {
+          // Non-network errors should not be retried
+          throw error;
+        }
+      }
+    }
+    
+    throw lastError;
+  };
+
   return (
     <div className="container mx-auto p-6 max-w-6xl">
       {/* Header */}
@@ -418,6 +484,53 @@ export default function BulkClaimTFPage() {
                 </label>
               </div>
             </div>
+            
+            {/* Resume Functionality */}
+            {csvData.length > 0 && (
+              <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h4 className="font-medium text-blue-900 mb-3 flex items-center gap-2">
+                  <RefreshCw className="h-4 w-4" />
+                  Resume Processing
+                </h4>
+                <p className="text-sm text-blue-700 mb-3">
+                  If processing was interrupted, you can resume from a specific chunk.
+                </p>
+                <div className="flex items-center gap-3">
+                  <label className="text-sm font-medium text-blue-900">Start from chunk:</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="1000"
+                    value={resumeFromChunk}
+                    onChange={(e) => setResumeFromChunk(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-20 px-2 py-1 border border-blue-300 rounded text-center"
+                  />
+                  <span className="text-sm text-blue-600">
+                    (Each chunk processes ~500 records)
+                  </span>
+                </div>
+                {completedChunks.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs text-blue-600">
+                      Completed chunks: {completedChunks.join(', ')}
+                    </p>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => {
+                        setCompletedChunks([]);
+                        setResumeFromChunk(1);
+                        setCurrentChunk(0);
+                        setTotalChunks(0);
+                      }}
+                      className="h-6 text-xs"
+                    >
+                      Reset Progress
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -577,14 +690,34 @@ export default function BulkClaimTFPage() {
                 </div>
                 <span className="text-sm text-gray-500">{progress}%</span>
               </div>
-              <p className="text-sm text-gray-600">
-                Processing {detectionResult?.detectedCertificates} certificates in chunks with controlled concurrency to ensure API reliability.
-                {csvData.length > 500 && (
-                  <span className="block mt-1 text-blue-600">
-                    Large dataset detected - processing in {Math.ceil(csvData.length / 500)} chunks
-                  </span>
+              {/* Detailed Progress Info */}
+              <div className="space-y-2">
+                <p className="text-sm text-gray-600">
+                  Processing {detectionResult?.detectedCertificates} certificates with retry logic for network failures.
+                </p>
+                
+                {totalChunks > 1 && (
+                  <div className="flex items-center gap-4 text-sm">
+                    <span className="text-blue-600">
+                      Chunk {currentChunk} of {totalChunks} 
+                      ({Math.ceil(csvData.length / 500)} total chunks)
+                    </span>
+                    {resumeFromChunk > 1 && (
+                      <Badge variant="outline" className="text-green-600 border-green-600">
+                        Resumed from chunk {resumeFromChunk}
+                      </Badge>
+                    )}
+                  </div>
                 )}
-              </p>
+                
+                {completedChunks.length > 0 && totalChunks > 1 && (
+                  <p className="text-xs text-gray-500">
+                    Completed chunks: {completedChunks.slice(-5).join(', ')}
+                    {completedChunks.length > 5 && ` (+${completedChunks.length - 5} more)`}
+                  </p>
+                )}
+              </div>
+              
               <Progress value={progress} className="w-full" />
             </div>
           </CardContent>

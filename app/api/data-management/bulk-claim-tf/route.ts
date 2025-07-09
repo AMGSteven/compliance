@@ -142,11 +142,35 @@ async function processChunkWithConcurrency<T, R>(
   concurrency: number
 ): Promise<R[]> {
   const results: R[] = [];
+  let rateLimitHits = 0;
+  const maxRateLimitHits = 3; // Circuit breaker threshold
   
   for (let i = 0; i < chunk.length; i += concurrency) {
     const batch = chunk.slice(i, i + concurrency);
     const batchPromises = batch.map(processor);
     const batchResults = await Promise.all(batchPromises);
+    
+    // Check for rate limiting in batch results
+    const rateLimitedCount = batchResults.filter((result: any) => 
+      result.status === 429 || (result.error && result.error.includes('rate limit'))
+    ).length;
+    
+    if (rateLimitedCount > 0) {
+      rateLimitHits += rateLimitedCount;
+      console.log(`[TF Bulk Claim] Rate limiting detected: ${rateLimitedCount} requests in batch, total hits: ${rateLimitHits}`);
+      
+      // Circuit breaker: If too many rate limits, pause longer
+      if (rateLimitHits >= maxRateLimitHits) {
+        console.log(`[TF Bulk Claim] Circuit breaker activated! Pausing 30s due to rate limiting...`);
+        await new Promise(resolve => setTimeout(resolve, 30000)); // 30 second pause
+        rateLimitHits = 0; // Reset counter after pause
+      } else {
+        // Shorter pause for minor rate limiting
+        console.log(`[TF Bulk Claim] Rate limited, pausing 5s...`);
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+    }
+    
     results.push(...batchResults);
     
     // Small delay between batches within chunk
