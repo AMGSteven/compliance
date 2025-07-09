@@ -317,9 +317,9 @@ export default function BulkClaimTFPage() {
   };
 
   const getEstimatedTime = (recordCount: number) => {
-    // Realistic estimate: ~0.3 seconds per record with 3x concurrency + chunking overhead
-    // TrustedForm API is typically fast, concurrency helps, but we add buffer for reliability
-    const estimatedSeconds = Math.ceil(recordCount * 0.3);
+    // Realistic estimate: ~0.01 seconds per record with 3x concurrency
+    // Modern APIs are fast, with proper concurrency we can do 50-100/sec
+    const estimatedSeconds = Math.ceil(recordCount * 0.01);
     if (estimatedSeconds < 60) return `${estimatedSeconds} seconds`;
     const minutes = Math.ceil(estimatedSeconds / 60);
     if (minutes > 60) {
