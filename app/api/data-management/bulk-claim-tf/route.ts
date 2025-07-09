@@ -355,7 +355,8 @@ export async function POST(request: NextRequest) {
         success: true,
         data: {
           summary,
-          results
+          results,
+          originalHeaders: headers // Preserve original column order for CSV export
         }
       });
     }

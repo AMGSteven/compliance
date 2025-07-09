@@ -58,7 +58,7 @@ export default function BulkClaimTFPage() {
   const [csvData, setCsvData] = useState<any[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
   const [detectionResult, setDetectionResult] = useState<TrustedFormDetectionResult | null>(null);
-  const [claimResults, setClaimResults] = useState<{ summary: BulkClaimSummary; results: BulkClaimResult[] } | null>(null);
+  const [claimResults, setClaimResults] = useState<{ summary: BulkClaimSummary; results: BulkClaimResult[]; originalHeaders?: string[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showPreviewDialog, setShowPreviewDialog] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -177,32 +177,46 @@ export default function BulkClaimTFPage() {
   const downloadSuccessfulResults = () => {
     if (!claimResults?.summary.successfulRecords.length) return;
 
-    // Create CSV with original data plus claim status
-    const csvHeaders = Object.keys(claimResults.summary.successfulRecords[0].originalData);
+    // Preserve original column order from the uploaded CSV headers
+    // Use originalHeaders from API response if available, fallback to local headers
+    const originalHeaders = claimResults.originalHeaders || headers; // Perfect column order preservation
     const claimHeaders = ['tf_claim_status', 'tf_claimed_at', 'tf_certificate_url'];
-    const allHeaders = [...csvHeaders, ...claimHeaders];
+    const allHeaders = [...originalHeaders, ...claimHeaders];
 
     const csvContent = [
+      // Header row with exact original column order
       allHeaders.join(','),
+      // Data rows with all original columns preserved
       ...claimResults.summary.successfulRecords.map(record => {
-        const originalValues = csvHeaders.map(header => 
-          `"${(record.originalData[header] || '').toString().replace(/"/g, '""')}"`
-        );
+        // Map each original header to its value, preserving order and handling missing values
+        const originalValues = originalHeaders.map((header: string) => {
+          const value = record.originalData[header];
+          // Handle null, undefined, and empty values properly
+          const safeValue = (value === null || value === undefined) ? '' : value.toString();
+          // Escape quotes for CSV format
+          return `"${safeValue.replace(/"/g, '""')}"`;
+        });
+        
+        // Add claim status columns
         const claimValues = [
           '"SUCCESS"',
           `"${record.claimedAt || ''}"`,
-          `"${record.certificateUrl}"`
+          `"${record.certificateUrl || ''}"`
         ];
+        
         return [...originalValues, ...claimValues].join(',');
       })
     ].join('\n');
 
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+    // Create and download the CSV file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `successful_tf_claims_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a); // Ensure compatibility
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
