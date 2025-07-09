@@ -226,7 +226,7 @@ async function processCertificateClaim(
 
 export async function POST(request: NextRequest) {
   try {
-    const { action, csvData, headers, startClaiming } = await request.json();
+    const { action, csvData, headers, startClaiming, totalRecords, chunkIndex, totalChunks } = await request.json();
     
     if (action === 'detect') {
       // Detection phase: analyze CSV and find TrustedForm certificates
@@ -242,18 +242,18 @@ export async function POST(request: NextRequest) {
       
       console.log(`[TF Bulk Claim] Detected TF column: "${trustedFormColumn}"`);
       
+      const actualTotalRows = totalRecords || csvData.length;
+      
       const detectionResult: TrustedFormDetectionResult = {
-        totalRows: csvData.length,
+        totalRows: actualTotalRows,
         detectedCertificates: 0,
         trustedFormColumn,
         sampleData: [],
         errors: []
       };
       
-      // Analyze first 100 rows for preview
-      const previewRows = csvData.slice(0, 100);
-      
-      previewRows.forEach((row: Record<string, any>, index: number) => {
+      // Analyze provided rows for detection (may be subset for large files)
+      csvData.forEach((row: Record<string, any>, index: number) => {
         const certificateUrl = row[trustedFormColumn];
         const extractedId = extractTrustedFormId(certificateUrl);
         
@@ -297,7 +297,8 @@ export async function POST(request: NextRequest) {
     
     if (action === 'claim' && startClaiming) {
       // Claiming phase: process all certificates
-      console.log(`[TF Bulk Claim] Claiming phase - processing ${csvData.length} rows`);
+      const chunkInfo = chunkIndex && totalChunks ? ` (chunk ${chunkIndex}/${totalChunks})` : '';
+      console.log(`[TF Bulk Claim] Claiming phase - processing ${csvData.length} rows${chunkInfo}`);
       
       const trustedFormColumn = detectTrustedFormColumn(headers);
       if (!trustedFormColumn) {
@@ -317,7 +318,7 @@ export async function POST(request: NextRequest) {
           return extractTrustedFormId(certificateUrl) !== null;
         });
       
-      console.log(`[TF Bulk Claim] Processing ${validRecords.length} valid certificates out of ${csvData.length} total rows`);
+      console.log(`[TF Bulk Claim] Processing ${validRecords.length} valid certificates out of ${csvData.length} total rows${chunkInfo}`);
       
       // Process certificates with concurrency control
       const results = await processWithConcurrencyControl<RecordWithIndex, BulkClaimResult>(

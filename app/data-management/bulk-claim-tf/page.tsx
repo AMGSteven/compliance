@@ -72,6 +72,13 @@ export default function BulkClaimTFPage() {
       return;
     }
 
+    // Check file size (warn if > 5MB)
+    const fileSizeMB = uploadedFile.size / (1024 * 1024);
+    if (fileSizeMB > 50) {
+      setError('File too large. Please upload a CSV file smaller than 50MB.');
+      return;
+    }
+
     setFile(uploadedFile);
     setState('uploading');
     setError(null);
@@ -82,6 +89,11 @@ export default function BulkClaimTFPage() {
       
       if (lines.length < 2) {
         throw new Error('CSV must contain at least a header row and one data row');
+      }
+
+      // Warn about very large files
+      if (lines.length > 100000) {
+        throw new Error('File too large. Please upload a CSV with fewer than 100,000 records.');
       }
 
       const csvHeaders = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
@@ -111,15 +123,26 @@ export default function BulkClaimTFPage() {
     try {
       setProgress(25);
       
+      // For large datasets, only send first 1000 records for detection to avoid 413 errors
+      const detectionData = data.length > 1000 ? data.slice(0, 1000) : data;
+      
       const response = await fetch('/api/data-management/bulk-claim-tf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'detect',
-          csvData: data,
-          headers: csvHeaders
+          csvData: detectionData,
+          headers: csvHeaders,
+          totalRecords: data.length // Include total count for proper stats
         })
       });
+
+      if (!response.ok) {
+        if (response.status === 413) {
+          throw new Error('File too large for processing. Please upload a smaller CSV file (max 10,000 records).');
+        }
+        throw new Error(`Server error: ${response.status}`);
+      }
 
       const result = await response.json();
       setProgress(50);
@@ -128,7 +151,14 @@ export default function BulkClaimTFPage() {
         throw new Error(result.error);
       }
 
-      setDetectionResult(result.data);
+      // Scale up detection results for full dataset
+      const scaledResult = {
+        ...result.data,
+        totalRows: data.length,
+        detectedCertificates: Math.round((result.data.detectedCertificates / detectionData.length) * data.length)
+      };
+
+      setDetectionResult(scaledResult);
       setState('previewing');
       setShowPreviewDialog(true);
       setProgress(100);
@@ -147,24 +177,84 @@ export default function BulkClaimTFPage() {
     setProgress(0);
 
     try {
-      const response = await fetch('/api/data-management/bulk-claim-tf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'claim',
-          csvData,
-          headers,
-          startClaiming: true
-        })
-      });
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.error);
+      // Process large datasets in chunks to avoid 413 errors
+      const CHUNK_SIZE = 500; // Process 500 records at a time
+      const chunks = [];
+      
+      for (let i = 0; i < csvData.length; i += CHUNK_SIZE) {
+        chunks.push(csvData.slice(i, i + CHUNK_SIZE));
       }
 
-      setClaimResults(result.data);
+      let allResults: BulkClaimResult[] = [];
+      let totalProcessed = 0;
+      const startTime = Date.now();
+
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        const chunkProgress = Math.round(((i + 1) / chunks.length) * 100);
+        setProgress(chunkProgress);
+
+        const response = await fetch('/api/data-management/bulk-claim-tf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'claim',
+            csvData: chunk,
+            headers,
+            startClaiming: true,
+            chunkIndex: i + 1,
+            totalChunks: chunks.length
+          })
+        });
+
+        if (!response.ok) {
+          if (response.status === 413) {
+            throw new Error('Chunk too large. Please contact support.');
+          }
+          throw new Error(`Server error: ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        if (!result.success) {
+          throw new Error(result.error);
+        }
+
+        // Accumulate results
+        allResults = [...allResults, ...result.data.results];
+        totalProcessed += result.data.summary.totalProcessed;
+
+        // Small delay between chunks to avoid overwhelming the API
+        if (i < chunks.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+      // Compile final summary
+      const processingTimeSeconds = Math.round((Date.now() - startTime) / 1000);
+      const successful = allResults.filter(r => r.success).length;
+      const failed = allResults.filter(r => !r.success).length;
+      
+      const failureReasons: Record<string, number> = {};
+      allResults.filter(r => !r.success).forEach(r => {
+        const reason = r.error || 'Unknown error';
+        failureReasons[reason] = (failureReasons[reason] || 0) + 1;
+      });
+
+      const finalSummary: BulkClaimSummary = {
+        totalProcessed,
+        successful,
+        failed,
+        processingTimeSeconds,
+        failureReasons,
+        successfulRecords: allResults.filter(r => r.success)
+      };
+
+      setClaimResults({
+        summary: finalSummary,
+        results: allResults,
+        originalHeaders: headers
+      });
       setState('completed');
       setProgress(100);
     } catch (err) {
@@ -279,6 +369,14 @@ export default function BulkClaimTFPage() {
                   <Badge key={name} variant="secondary">{name}</Badge>
                 ))}
               </div>
+            </div>
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <h4 className="font-semibold mb-2">File Limits:</h4>
+              <ul className="text-sm space-y-1">
+                <li>• Maximum file size: 50MB</li>
+                <li>• Maximum records: 100,000 rows</li>
+                <li>• Large files are processed in chunks automatically</li>
+              </ul>
             </div>
             <div className="bg-gray-50 p-4 rounded-lg">
               <h4 className="font-semibold mb-2">Example CSV Format:</h4>
@@ -473,17 +571,22 @@ export default function BulkClaimTFPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full" />
-                <span className="font-medium">Claiming TrustedForm certificates...</span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full" />
+                  <span className="font-medium">Claiming TrustedForm certificates...</span>
+                </div>
+                <span className="text-sm text-gray-500">{progress}%</span>
               </div>
               <p className="text-sm text-gray-600">
-                Processing {detectionResult?.detectedCertificates} certificates with controlled concurrency to ensure API reliability.
-                This may take {getEstimatedTime(detectionResult?.detectedCertificates || 0)}.
+                Processing {detectionResult?.detectedCertificates} certificates in chunks with controlled concurrency to ensure API reliability.
+                {csvData.length > 500 && (
+                  <span className="block mt-1 text-blue-600">
+                    Large dataset detected - processing in {Math.ceil(csvData.length / 500)} chunks
+                  </span>
+                )}
               </p>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div className="bg-blue-600 h-2 rounded-full animate-pulse" style={{ width: '60%' }} />
-              </div>
+              <Progress value={progress} className="w-full" />
             </div>
           </CardContent>
         </Card>
