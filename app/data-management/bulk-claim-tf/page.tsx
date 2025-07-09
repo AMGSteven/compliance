@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { Upload, FileText, AlertCircle, CheckCircle, Download, Play, X, Shield, Clock, TrendingUp, RefreshCw } from 'lucide-react';
+import { Upload, FileText, AlertCircle, CheckCircle, Download, Play, X, Shield, Clock, TrendingUp, RefreshCw, Calendar } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -68,7 +68,11 @@ export default function BulkClaimTFPage() {
   const [totalChunks, setTotalChunks] = useState<number>(0);
   const [showHistoricalResults, setShowHistoricalResults] = useState(false);
   const [historicalResults, setHistoricalResults] = useState<BulkClaimResult[]>([]);
-  const [historicalDateRange, setHistoricalDateRange] = useState({ start: '', end: '' });
+  // Default to last 7 days to ensure we capture recent bulk claims
+  const [historicalDateRange, setHistoricalDateRange] = useState({ 
+    start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], 
+    end: new Date().toISOString().split('T')[0] 
+  });
 
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const uploadedFile = event.target.files?.[0];
@@ -708,14 +712,22 @@ export default function BulkClaimTFPage() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md"
                 />
               </div>
-              <div className="flex items-end">
+              <div className="flex items-end space-x-2">
                 <Button 
                   onClick={() => fetchHistoricalResults(historicalDateRange.start, historicalDateRange.end)}
                   variant="outline"
-                  className="w-full"
+                  className="flex-1"
                 >
                   <Download className="h-4 w-4 mr-2" />
                   Get Historical Results
+                </Button>
+                <Button 
+                  onClick={() => fetchHistoricalResults()}
+                  variant="outline"
+                  className="flex-1 bg-blue-50 hover:bg-blue-100 border-blue-300"
+                >
+                  <Calendar className="h-4 w-4 mr-2" />
+                  Get All Time Results
                 </Button>
               </div>
             </div>

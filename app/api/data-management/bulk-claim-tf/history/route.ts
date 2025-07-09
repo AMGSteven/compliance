@@ -22,14 +22,42 @@ export async function GET(request: NextRequest) {
     // Get Supabase client
     const supabase = createServerClient();
     
+    // First, let's check what date ranges exist in the data
+    if (!startDate || !endDate) {
+      console.log('[TF History] No date filter - checking available date ranges...');
+      const { data: dateRangeData, error: dateRangeError } = await supabase
+        .from('trusted_form_certificates')
+        .select('created_at')
+        .ilike('metadata->>reference', 'bulk_claim_%')
+        .order('created_at', { ascending: false })
+        .limit(1);
+        
+      if (dateRangeData && dateRangeData.length > 0) {
+        console.log('[TF History] Latest bulk claim date:', dateRangeData[0].created_at);
+      }
+      
+      const { data: oldestData, error: oldestError } = await supabase
+        .from('trusted_form_certificates')
+        .select('created_at')
+        .ilike('metadata->>reference', 'bulk_claim_%')
+        .order('created_at', { ascending: true })
+        .limit(1);
+        
+      if (oldestData && oldestData.length > 0) {
+        console.log('[TF History] Oldest bulk claim date:', oldestData[0].created_at);
+      }
+    }
+    
     // Fetch all records using pagination to avoid Supabase limits
     let allClaims: any[] = [];
     let from = 0;
     const batchSize = 1000;
     let hasMore = true;
+    let totalBatches = 0;
+    const maxBatches = 100; // Safety limit
     
-    while (hasMore) {
-      console.log(`[TF History] Fetching batch from ${from} to ${from + batchSize - 1}`);
+    while (hasMore && totalBatches < maxBatches) {
+      console.log(`[TF History] Fetching batch ${totalBatches + 1} from ${from} to ${from + batchSize - 1}`);
       
       let query = supabase
         .from('trusted_form_certificates')
@@ -60,6 +88,8 @@ export async function GET(request: NextRequest) {
       } else {
         hasMore = false;
       }
+      
+      totalBatches++;
       
       // Safety check to prevent infinite loops
       if (allClaims.length > 100000) {
