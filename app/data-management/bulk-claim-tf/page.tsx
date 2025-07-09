@@ -600,8 +600,6 @@ export default function BulkClaimTFPage() {
     setStatusCheckError(null);
     setStatusCheckProgress(0);
     setStatusCheckComplete(false);
-
-    const results: any[] = [];
     
     // Find certificate URL column using the same intelligent detection logic as bulk claim
     const certUrlColumn = statusCheckHeaders.find(h => {
@@ -634,45 +632,61 @@ export default function BulkClaimTFPage() {
     }
 
     console.log(`[Status Check] Using column '${certUrlColumn}' for certificate URLs`);
-    console.log(`[Status Check] Starting to check ${statusCheckData.length} certificates...`);
+    console.log(`[Status Check] Starting to check ${statusCheckData.length} certificates with MAXIMUM CONCURRENCY...`);
 
-    // Process each row
-    for (let i = 0; i < statusCheckData.length; i++) {
-      const row = statusCheckData[i];
+    // Process ALL certificates concurrently for maximum speed
+    const promises = statusCheckData.map(async (row, index) => {
       const certUrl = row[certUrlColumn];
       const certId = extractCertificateId(certUrl);
 
       if (!certId) {
-        results.push({
+        return {
           ...row,
           tf_status: 'Failed',
           tf_error: 'Invalid certificate URL/ID',
-          tf_checked_at: new Date().toISOString()
-        });
+          tf_checked_at: new Date().toISOString(),
+          _index: index
+        };
       } else {
-        console.log(`[Status Check] Checking ${i + 1}/${statusCheckData.length}: ${certId}`);
+        console.log(`[Status Check] Checking ${index + 1}/${statusCheckData.length}: ${certId}`);
         const statusResult = await checkCertificateStatus(certId);
         
-        results.push({
+        return {
           ...row,
           tf_status: statusResult.status,
           tf_error: statusResult.error || '',
           tf_data: statusResult.data ? JSON.stringify(statusResult.data) : '',
-          tf_checked_at: new Date().toISOString()
-        });
+          tf_checked_at: new Date().toISOString(),
+          _index: index
+        };
       }
+    });
 
-      // Update progress
-      setStatusCheckProgress(Math.round(((i + 1) / statusCheckData.length) * 100));
-      
-      // Small delay to avoid overwhelming the API (but no rate limiting as requested)
-      await new Promise(resolve => setTimeout(resolve, 10));
-    }
+    // Track progress as promises resolve
+    let completed = 0;
+    const total = promises.length;
+    
+    // Wait for all promises and update progress as they complete
+    const promiseResults = await Promise.allSettled(
+      promises.map(async (promise) => {
+        const result = await promise;
+        completed++;
+        setStatusCheckProgress(Math.round((completed / total) * 100));
+        return result;
+      })
+    );
 
-    setStatusCheckResults(results);
+    // Extract successful results and sort by original index
+    const finalResults = promiseResults
+      .map(result => result.status === 'fulfilled' ? result.value : null)
+      .filter(Boolean)
+      .sort((a, b) => a._index - b._index)
+      .map(({ _index, ...rest }) => rest); // Remove the temporary index
+
+    setStatusCheckResults(finalResults);
     setStatusCheckComplete(true);
     setIsCheckingStatus(false);
-    console.log(`[Status Check] Completed checking ${results.length} certificates`);
+    console.log(`[Status Check] Completed checking ${finalResults.length} certificates`);
   };
 
   const downloadStatusCheckResults = () => {
@@ -1054,8 +1068,8 @@ export default function BulkClaimTFPage() {
                 <span className="text-sm text-gray-500">{statusCheckProgress}%</span>
               </div>
               <Progress value={statusCheckProgress} className="w-full" />
-              <div className="text-xs text-blue-600 text-center">
-                Calling TrustedForm GET API for each certificate (no rate limiting)
+              <div className="text-xs text-blue-600 text-center font-medium">
+                🚀 MAXIMUM SPEED: All certificates being checked concurrently (NO rate limiting)
               </div>
             </div>
           )}
