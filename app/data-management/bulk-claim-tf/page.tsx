@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import React, { useState, useCallback } from 'react';
 import { Upload, FileText, AlertCircle, CheckCircle, Download, Play, X, Shield, Clock, TrendingUp } from 'lucide-react';
@@ -347,7 +347,7 @@ export default function BulkClaimTFPage() {
 
       {/* Preview Dialog */}
       <Dialog open={showPreviewDialog} onOpenChange={setShowPreviewDialog}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl w-[95vw] h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Shield className="h-5 w-5" />
@@ -359,7 +359,7 @@ export default function BulkClaimTFPage() {
           </DialogHeader>
 
           {detectionResult && (
-            <div className="space-y-6">
+            <div className="flex-1 overflow-hidden flex flex-col space-y-4">
               {/* Summary Stats */}
               <div className="grid grid-cols-3 gap-4">
                 <div className="bg-blue-50 p-4 rounded-lg text-center">
@@ -388,35 +388,43 @@ export default function BulkClaimTFPage() {
 
               {/* Sample Data Preview */}
               {detectionResult.sampleData.length > 0 && (
-                <div>
+                <div className="flex-1 flex flex-col min-h-0">
                   <h4 className="font-semibold mb-3">Sample Certificates (first 10):</h4>
-                  <div className="border rounded-lg overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="text-left p-3">Row</th>
-                          <th className="text-left p-3">Certificate URL</th>
-                          <th className="text-left p-3">Extracted ID</th>
-                          <th className="text-left p-3">Contact Info</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {detectionResult.sampleData.map((sample) => (
-                          <tr key={sample.row}>
-                            <td className="p-3">{sample.row}</td>
-                            <td className="p-3 font-mono text-xs">
-                              {sample.certificateUrl.length > 40 
-                                ? `${sample.certificateUrl.substring(0, 40)}...` 
-                                : sample.certificateUrl}
-                            </td>
-                            <td className="p-3 font-mono text-xs">{sample.extractedId}</td>
-                            <td className="p-3 text-xs">
-                              {[sample.email, sample.phone].filter(Boolean).join(', ') || 'N/A'}
-                            </td>
+                  <div className="flex-1 border rounded-lg overflow-hidden">
+                    <div className="h-full overflow-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 sticky top-0 z-10">
+                          <tr>
+                            <th className="text-left p-2 w-16">Row</th>
+                            <th className="text-left p-2 min-w-[200px]">Certificate URL</th>
+                            <th className="text-left p-2 min-w-[150px]">Extracted ID</th>
+                            <th className="text-left p-2 min-w-[120px]">Contact Info</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody className="divide-y">
+                          {detectionResult.sampleData.map((sample) => (
+                            <tr key={sample.row} className="hover:bg-gray-50">
+                              <td className="p-2 text-center">{sample.row}</td>
+                              <td className="p-2">
+                                <div className="font-mono text-xs break-all">
+                                  {sample.certificateUrl}
+                                </div>
+                              </td>
+                              <td className="p-2">
+                                <div className="font-mono text-xs break-all">
+                                  {sample.extractedId}
+                                </div>
+                              </td>
+                              <td className="p-2 text-xs">
+                                <div className="break-words">
+                                  {[sample.email, sample.phone].filter(Boolean).join(', ') || 'N/A'}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}
@@ -444,7 +452,7 @@ export default function BulkClaimTFPage() {
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t pt-4 mt-4">
             <Button variant="outline" onClick={() => setShowPreviewDialog(false)}>
               Cancel
             </Button>
