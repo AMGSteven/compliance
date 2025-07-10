@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useEffect } from 'react';
 import { Card, Table, Typography, DatePicker, Button, Select, Space, Statistic, Row, Col, Spin } from 'antd';
-import { DollarOutlined, DownloadOutlined, FilterOutlined, ReloadOutlined } from '@ant-design/icons';
+import { DollarOutlined, DownloadOutlined, FilterOutlined, ReloadOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { format } from 'date-fns';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
@@ -43,10 +43,10 @@ interface RevenueData {
   list_id: string;
   description: string;
   leads_count: number;
+  weekday_leads?: number;
+  weekend_leads?: number;
   cost_per_lead: number;
   total_lead_costs: number;
-  weekend_leads?: number;
-  weekday_leads?: number;
   synergy_issued_leads?: number;
   synergy_payout?: number;
   ai_costs_allocated?: number;
@@ -540,6 +540,8 @@ export default function RevenueTrackingPage() {
     fetchPitchPerfectCosts();
   };
 
+
+
   const fetchBlandAICosts = async () => {
     setBlandAILoading(true);
       
@@ -697,10 +699,13 @@ export default function RevenueTrackingPage() {
   const handleExport = () => {
     // Export functionality
     const csvContent = [
-      'List ID,Description,Total Leads,Weekday Leads,Weekend Leads,Cost Per Lead,Total Lead Costs,Synergy Issued Leads,Synergy Payout,AI Costs Allocated,Net Profit',
-      ...revenueData.map(item => 
-        `${item.list_id},"${item.description}",${item.leads_count},${item.weekday_leads || item.leads_count},${item.weekend_leads || 0},$${item.cost_per_lead.toFixed(2)},$${item.total_lead_costs.toFixed(2)},${item.synergy_issued_leads || 0},$${(item.synergy_payout || 0).toFixed(2)},$${(item.ai_costs_allocated || 0).toFixed(2)},$${(item.net_profit || 0).toFixed(2)}`
-      )
+      'List ID,Description,Total Leads,Weekday Leads,Weekend Leads,Cost Per Lead,Total Lead Costs,Synergy Issued Leads,Synergy Payout,AI Costs Allocated,Cost Per Acquisition,Net Profit',
+      ...revenueData.map(item => {
+        const cpa = (item.synergy_issued_leads && item.synergy_issued_leads > 0) 
+          ? (item.total_lead_costs / item.synergy_issued_leads).toFixed(2) 
+          : 'N/A';
+        return `${item.list_id},"${item.description}",${item.leads_count},${item.weekday_leads || item.leads_count},${item.weekend_leads || 0},$${item.cost_per_lead.toFixed(2)},$${item.total_lead_costs.toFixed(2)},${item.synergy_issued_leads || 0},$${(item.synergy_payout || 0).toFixed(2)},$${(item.ai_costs_allocated || 0).toFixed(2)},${cpa === 'N/A' ? 'N/A' : '$' + cpa},$${(item.net_profit || 0).toFixed(2)}`;
+      })
     ].join('\n');
     
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -797,6 +802,22 @@ export default function RevenueTrackingPage() {
         value !== undefined ? `$${value.toFixed(2)}` : '$0.00',
       sorter: (a: RevenueData, b: RevenueData) => 
         (a.ai_costs_allocated || 0) - (b.ai_costs_allocated || 0),
+    },
+    {
+      title: 'Cost Per Acquisition',
+      dataIndex: 'synergy_issued_leads',
+      key: 'cost_per_acquisition',
+      width: '12%',
+      render: (synergyLeads: number | undefined, record: RevenueData) => {
+        if (!synergyLeads || synergyLeads === 0) return 'N/A';
+        const cpa = record.total_lead_costs / synergyLeads;
+        return `$${cpa.toFixed(2)}`;
+      },
+      sorter: (a: RevenueData, b: RevenueData) => {
+        const cpaA = (a.synergy_issued_leads && a.synergy_issued_leads > 0) ? a.total_lead_costs / a.synergy_issued_leads : 0;
+        const cpaB = (b.synergy_issued_leads && b.synergy_issued_leads > 0) ? b.total_lead_costs / b.synergy_issued_leads : 0;
+        return cpaA - cpaB;
+      },
     },
     {
       title: 'Net Profit',
@@ -933,6 +954,44 @@ export default function RevenueTrackingPage() {
               valueStyle={{ color: '#722ed1' }}
               prefix={<DollarOutlined />}
               suffix=""
+            />
+          </Card>
+        </Col>
+      </Row>
+      
+      {/* CPA Tracking Summary Cards */}
+      <Row gutter={16} style={{ marginBottom: '24px' }}>
+        <Col span={8}>
+          <Card>
+            <Statistic
+              title="Total Policies Issued"
+              value={totalSynergyIssuedLeads}
+              valueStyle={{ color: '#1890ff' }}
+              prefix={<CheckCircleOutlined />}
+              suffix=""
+            />
+          </Card>
+        </Col>
+        <Col span={8}>
+          <Card>
+            <Statistic
+              title="Average Cost Per Acquisition"
+              value={totalSynergyIssuedLeads > 0 ? totalLeadCosts / totalSynergyIssuedLeads : 0}
+              precision={2}
+              valueStyle={{ color: totalSynergyIssuedLeads > 0 ? '#722ed1' : '#8c8c8c' }}
+              prefix={<DollarOutlined />}
+              suffix={totalSynergyIssuedLeads === 0 ? " (N/A)" : ""}
+            />
+          </Card>
+        </Col>
+        <Col span={8}>
+          <Card>
+            <Statistic
+              title="Policy Conversion Rate"
+              value={totalLeads > 0 ? (totalSynergyIssuedLeads / totalLeads) * 100 : 0}
+              precision={2}
+              valueStyle={{ color: '#52c41a' }}
+              suffix="%"
             />
           </Card>
         </Col>
