@@ -159,146 +159,198 @@ function recordToCSV(records: any[]): string {
   return csvLines.join('\n');
 }
 
-async function checkRecordFastCompliance(record: any): Promise<FastComplianceResult> {
-  const result: FastComplianceResult = {
-    record,
-    isCompliant: true,
-    failureReasons: [],
-    checks: {}
-  };
+// Create shared checker instances outside the per-record function to avoid repeated initialization
+let sharedInternalDNCChecker: InternalDNCChecker | null = null;
+let sharedSynergyDNCChecker: SynergyDNCChecker | null = null;
 
-  try {
-    // Extract phone number from various possible field names
+// High-performance bulk compliance checking
+async function bulkCheckCompliance(records: any[]): Promise<FastComplianceResult[]> {
+  console.log(`Starting high-performance bulk compliance check for ${records.length} records...`);
+  const startTime = Date.now();
+  
+  // Extract all phone numbers upfront
+  const recordsWithPhones: { record: any; phone: string; index: number }[] = [];
+  const resultsMap = new Map<number, FastComplianceResult>();
+  
+  records.forEach((record, index) => {
     const phone = record.phone || record.Phone || record.phone_number || record.PhoneNumber || record.primary_phone || record.PrimaryPhone || record.phone_home || '';
     
     if (!phone) {
-      result.isCompliant = false;
-      result.failureReasons.push('Missing phone number');
-      return result;
+      resultsMap.set(index, {
+        record,
+        isCompliant: false,
+        failureReasons: ['Missing phone number'],
+        checks: {}
+      });
+    } else {
+      recordsWithPhones.push({ record, phone, index });
     }
-
-    // Initialize checkers
-    const internalDNCChecker = new InternalDNCChecker();
-    const synergyDNCChecker = new SynergyDNCChecker();
-
-    // Check Internal DNC with retry logic
-    try {
-      console.log(`Checking Internal DNC for: ${phone}`);
-      const internalDNCResult = await withRetry(async () => {
-        return await internalDNCChecker.checkNumber(phone);
-      }, 3, 1000);
-      
-      result.checks.internalDNC = internalDNCResult.isCompliant;
-      
-      if (!internalDNCResult.isCompliant) {
-        result.isCompliant = false;
-        const reasons = internalDNCResult.reasons || ['Found in Internal DNC list'];
-        result.failureReasons.push(...reasons);
-      }
-    } catch (internalDNCError) {
-      console.error('Internal DNC check error - FAILING CLOSED:', internalDNCError);
-      result.checks.internalDNC = false; // FAIL CLOSED on error
-      result.isCompliant = false;
-      result.failureReasons.push('Internal DNC check failed - blocked for safety');
-    }
-
-    // Check Synergy DNC with retry logic
-    try {
-      console.log(`Checking Synergy DNC for: ${phone}`);
-      const synergyDNCResult = await withRetry(async () => {
-        return await synergyDNCChecker.checkNumber(phone);
-      }, 3, 1000);
-      
-      result.checks.synergyDNC = synergyDNCResult.isCompliant;
-      
-      if (!synergyDNCResult.isCompliant) {
-        result.isCompliant = false;
-        const reasons = synergyDNCResult.reasons || ['Found in Synergy DNC list'];
-        result.failureReasons.push(...reasons);
-      }
-    } catch (synergyDNCError) {
-      console.error('Synergy DNC check error - FAILING CLOSED:', synergyDNCError);
-      result.checks.synergyDNC = false; // FAIL CLOSED on error
-      result.isCompliant = false;
-      result.failureReasons.push('Synergy DNC check failed - blocked for safety');
-    }
-
-  } catch (error) {
-    console.error('Error checking record compliance:', error);
-    result.isCompliant = false;
-    result.failureReasons.push('Error during compliance check');
+  });
+  
+  console.log(`Found ${recordsWithPhones.length} records with valid phone numbers`);
+  
+  if (recordsWithPhones.length === 0) {
+    return Array.from(resultsMap.values());
   }
-
-  return result;
+  
+  // Step 1: Bulk check Internal DNC (single database query)
+  console.log('Step 1: Bulk checking Internal DNC...');
+  const allPhones = recordsWithPhones.map(r => r.phone);
+  const internalDNCResults = await sharedInternalDNCChecker!.bulkCheckNumbers(allPhones);
+  
+  // Step 2: Filter out numbers already blocked by Internal DNC
+  const phonesNeedingSynergyCheck: { record: any; phone: string; index: number }[] = [];
+  
+  recordsWithPhones.forEach(({ record, phone, index }) => {
+    const internalResult = internalDNCResults.get(phone);
+    
+    if (!internalResult) {
+      // Shouldn't happen, but fail closed
+      resultsMap.set(index, {
+        record,
+        isCompliant: false,
+        failureReasons: ['Internal DNC check failed'],
+        checks: { internalDNC: false }
+      });
+      return;
+    }
+    
+    if (!internalResult.isCompliant) {
+      // Already blocked by Internal DNC, no need to check Synergy
+      resultsMap.set(index, {
+        record,
+        isCompliant: false,
+        failureReasons: [...internalResult.reasons],
+        checks: { internalDNC: false, synergyDNC: true } // Assume Synergy would pass
+      });
+    } else {
+      // Need to check Synergy DNC
+      phonesNeedingSynergyCheck.push({ record, phone, index });
+    }
+  });
+  
+  console.log(`${phonesNeedingSynergyCheck.length} numbers need Synergy DNC check`);
+  
+  // Step 3: High-concurrency Synergy DNC checks
+  if (phonesNeedingSynergyCheck.length > 0) {
+    console.log('Step 3: High-concurrency Synergy DNC checking...');
+    
+    // Use very high concurrency for external API calls (no artificial limits)
+    const concurrency = Math.min(phonesNeedingSynergyCheck.length, 50); // Up to 50 concurrent requests
+    const synergyResults = await processWithHighConcurrency(
+      phonesNeedingSynergyCheck,
+      async ({ record, phone, index }) => {
+        try {
+          const synergyResult = await sharedSynergyDNCChecker!.checkNumber(phone);
+          const internalResult = internalDNCResults.get(phone)!;
+          
+          const isCompliant = internalResult.isCompliant && synergyResult.isCompliant;
+          const failureReasons = [
+            ...internalResult.reasons,
+            ...synergyResult.reasons
+          ];
+          
+          return {
+            record,
+            isCompliant,
+            failureReasons,
+            checks: {
+              internalDNC: internalResult.isCompliant,
+              synergyDNC: synergyResult.isCompliant
+            },
+            index
+          };
+        } catch (error) {
+          console.error(`Synergy check failed for ${phone}, failing closed:`, error);
+          const internalResult = internalDNCResults.get(phone)!;
+          return {
+            record,
+            isCompliant: false,
+            failureReasons: [...internalResult.reasons, 'Synergy DNC check failed - blocked for safety'],
+            checks: {
+              internalDNC: internalResult.isCompliant,
+              synergyDNC: false
+            },
+            index
+          };
+        }
+      },
+      concurrency
+    );
+    
+    // Add Synergy results to the results map
+    synergyResults.forEach(result => {
+      resultsMap.set(result.index, {
+        record: result.record,
+        isCompliant: result.isCompliant,
+        failureReasons: result.failureReasons,
+        checks: result.checks
+      });
+    });
+  }
+  
+  const endTime = Date.now();
+  const processingTimeMs = endTime - startTime;
+  console.log(`Bulk compliance check completed in ${processingTimeMs}ms (${(processingTimeMs/1000).toFixed(1)}s)`);
+  
+  // Return results in original order
+  const finalResults: FastComplianceResult[] = [];
+  for (let i = 0; i < records.length; i++) {
+    const result = resultsMap.get(i);
+    if (result) {
+      finalResults.push(result);
+    } else {
+      // Shouldn't happen, but fail closed
+      finalResults.push({
+        record: records[i],
+        isCompliant: false,
+        failureReasons: ['Unexpected error in compliance check'],
+        checks: {}
+      });
+    }
+  }
+  
+  return finalResults;
 }
 
-// Process records with controlled concurrency and retry logic to avoid timeouts
-async function processWithConcurrencyControl<T, R>(
+// High-performance concurrent processing without artificial delays
+async function processWithHighConcurrency<T, R>(
   items: T[], 
   processor: (item: T) => Promise<R>, 
-  concurrency: number = 5, // Max 5 parallel requests to avoid overwhelming APIs
-  chunkSize: number = 100  // Smaller chunks for better progress tracking
+  concurrency: number = 20  // High concurrency for maximum speed
 ): Promise<R[]> {
   const results: R[] = [];
-  const totalChunks = Math.ceil(items.length / chunkSize);
+  const semaphore = new Array(concurrency).fill(null);
   
-  for (let i = 0; i < items.length; i += chunkSize) {
-    const chunk = items.slice(i, i + chunkSize);
-    const chunkNumber = Math.floor(i / chunkSize) + 1;
-    
-    console.log(`Processing chunk ${chunkNumber}/${totalChunks} (${chunk.length} records) - ${results.length}/${items.length} completed`);
-    
-    // Process chunk with controlled concurrency
-    const chunkResults = await processChunkWithConcurrency(chunk, processor, concurrency);
-    results.push(...chunkResults);
-    
-    // Longer pause between chunks for large files to prevent API overload
-    const pauseDuration = items.length > 10000 ? 2000 : 500; // 2s for large files, 500ms for smaller ones
-    if (i + chunkSize < items.length) {
-      console.log(`Pausing ${pauseDuration}ms before next chunk to prevent API overload...`);
-      await new Promise(resolve => setTimeout(resolve, pauseDuration));
+  // Process all items concurrently using a semaphore pattern
+  const promises = items.map(async (item, index) => {
+    // Wait for an available slot
+    while (semaphore.filter(slot => slot === null).length === 0) {
+      await new Promise(resolve => setTimeout(resolve, 1));
     }
-  }
+    
+    // Claim a slot
+    const slotIndex = semaphore.findIndex(slot => slot === null);
+    semaphore[slotIndex] = index;
+    
+    try {
+      const result = await processor(item);
+      return { result, index };
+    } finally {
+      // Release the slot
+      semaphore[slotIndex] = null;
+    }
+  });
   
-  return results;
+  const processedResults = await Promise.all(promises);
+  
+  // Sort results by original index and extract values
+  return processedResults
+    .sort((a, b) => a.index - b.index)
+    .map(pr => pr.result);
 }
 
-// Process a chunk with controlled concurrency (not all at once)
-async function processChunkWithConcurrency<T, R>(
-  items: T[],
-  processor: (item: T) => Promise<R>,
-  concurrency: number
-): Promise<R[]> {
-  const results: R[] = [];
-  const executing: Promise<void>[] = [];
-  
-  for (const item of items) {
-    const promise = processor(item).then(result => {
-      results.push(result);
-    });
-    
-    executing.push(promise);
-    
-    // If we've reached the concurrency limit, wait for one to complete
-    if (executing.length >= concurrency) {
-      await Promise.race(executing);
-      // Remove completed promises
-      for (let i = executing.length - 1; i >= 0; i--) {
-        if (await Promise.allSettled([executing[i]]).then((r: PromiseSettledResult<void>[]) => r[0].status === 'fulfilled')) {
-          executing.splice(i, 1);
-        }
-      }
-    }
-    
-    // Small delay between individual requests
-    await new Promise(resolve => setTimeout(resolve, 50));
-  }
-  
-  // Wait for all remaining promises to complete
-  await Promise.all(executing);
-  
-  return results;
-}
+
 
 // Retry wrapper for API calls with exponential backoff
 async function withRetry<T>(fn: () => Promise<T>, maxRetries: number = 3, baseDelay: number = 1000): Promise<T> {
@@ -357,22 +409,27 @@ export async function POST(request: NextRequest) {
     console.log('Column mapping applied:');
     mappingReport.forEach(report => console.log(`  ${report}`));
     
+    // Initialize shared checker instances at the start of each batch job
+    console.log('Initializing shared DNC checkers...');
+    sharedInternalDNCChecker = new InternalDNCChecker();
+    sharedSynergyDNCChecker = new SynergyDNCChecker();
+    
     const startTime = Date.now();
 
-    // Process records with controlled concurrency to avoid timeouts
-    // For large files (50k records), use very conservative settings
-    const concurrency = records.length > 25000 ? 3 : 5; // Lower concurrency for large files
-    const chunkSize = records.length > 25000 ? 50 : 100; // Smaller chunks for large files
-    
-    console.log(`Processing ${records.length} records with concurrency=${concurrency}, chunkSize=${chunkSize}`);
-    const results = await processWithConcurrencyControl(records, checkRecordFastCompliance, concurrency, chunkSize);
+    // Use high-performance bulk processing for maximum speed
+    console.log(`Processing ${records.length} records with high-performance bulk processing...`);
+    const results = await bulkCheckCompliance(records);
 
     const endTime = Date.now();
     const processingTimeSeconds = ((endTime - startTime) / 1000).toFixed(1);
+    
+    // Clean up shared checker instances after batch processing
+    sharedInternalDNCChecker = null;
+    sharedSynergyDNCChecker = null;
 
     // Separate compliant and non-compliant records
-    const compliantRecords = results.filter(r => r.isCompliant).map(r => r.record);
-    const nonCompliantRecords = results.filter(r => !r.isCompliant);
+    const compliantRecords = results.filter((r: FastComplianceResult) => r.isCompliant).map((r: FastComplianceResult) => r.record);
+    const nonCompliantRecords = results.filter((r: FastComplianceResult) => !r.isCompliant);
 
     // Generate summary statistics
     const summary = {

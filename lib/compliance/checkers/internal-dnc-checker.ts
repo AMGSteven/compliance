@@ -47,6 +47,123 @@ export class InternalDNCChecker implements ComplianceChecker {
     }
   }
 
+  // Bulk check multiple phone numbers at once for high performance
+  async bulkCheckNumbers(phoneNumbers: string[]): Promise<Map<string, ComplianceResult>> {
+    await this.initialized;
+    const results = new Map<string, ComplianceResult>();
+    
+    if (phoneNumbers.length === 0) {
+      return results;
+    }
+    
+    // Normalize all phone numbers
+    const normalizedNumbers = phoneNumbers.map(phone => this.normalizePhoneNumber(phone));
+    const uniqueNumbers = [...new Set(normalizedNumbers)];
+    
+    console.log(`Bulk checking ${uniqueNumbers.length} unique numbers in Internal DNC...`);
+    
+    try {
+      const supabase = createServerClient();
+      
+      // Chunk queries to avoid HTTP client URL limits (database itself can handle 50k+)
+      // HTTP clients typically have 8KB URL limits, so use ~2000 phone numbers per chunk
+      const chunkSize = 2000; // Optimized based on Supabase direct testing
+      const allDncEntries: any[] = [];
+      
+      for (let i = 0; i < uniqueNumbers.length; i += chunkSize) {
+        const chunk = uniqueNumbers.slice(i, i + chunkSize);
+        console.log(`Checking chunk ${Math.floor(i/chunkSize) + 1}/${Math.ceil(uniqueNumbers.length/chunkSize)} (${chunk.length} numbers)`);
+        
+        const { data: chunkEntries, error } = await supabase
+          .from('dnc_entries')
+          .select('*')
+          .in('phone_number', chunk)
+          .eq('status', 'active');
+          
+        if (error) {
+          console.error(`Error in bulk DNC check chunk ${Math.floor(i/chunkSize) + 1}:`, error);
+          // Fail closed - mark all as non-compliant on database error
+          phoneNumbers.forEach((phone, index) => {
+            const normalized = normalizedNumbers[index];
+            results.set(phone, {
+              isCompliant: false,
+              reasons: ['Internal DNC check failed - blocked for safety'],
+              source: this.name,
+              details: { error: error.message, bulkCheck: true },
+              phoneNumber: normalized,
+              rawResponse: null
+            });
+          });
+          return results;
+        }
+        
+        if (chunkEntries) {
+          allDncEntries.push(...chunkEntries);
+        }
+      }
+      
+      const dncEntries = allDncEntries;
+      
+      // Create lookup map for DNC entries
+      const dncLookup = new Map<string, any>();
+      (dncEntries || []).forEach(entry => {
+        dncLookup.set(entry.phone_number, entry);
+      });
+      
+      // Process each original phone number
+      phoneNumbers.forEach((originalPhone, index) => {
+        const normalizedPhone = normalizedNumbers[index];
+        
+        // Check for test numbers
+        const isTestNumber = normalizedPhone.includes('9999999999') || originalPhone.includes('9999999999');
+        
+        if (isTestNumber) {
+          results.set(originalPhone, {
+            isCompliant: false,
+            reasons: ['Test number - automatically blocked'],
+            source: this.name,
+            details: { isTestNumber: true, bulkCheck: true },
+            phoneNumber: normalizedPhone,
+            rawResponse: { phone_number: normalizedPhone, reason: 'Test number - automatically blocked', status: 'active' }
+          });
+          return;
+        }
+        
+        // Check if number is in DNC
+        const dncEntry = dncLookup.get(normalizedPhone);
+        const isCompliant = !dncEntry;
+        
+        results.set(originalPhone, {
+          isCompliant,
+          reasons: dncEntry ? [dncEntry.reason || 'No reason provided'] : [],
+          source: this.name,
+          details: { ...dncEntry?.metadata || {}, bulkCheck: true },
+          phoneNumber: normalizedPhone,
+          rawResponse: dncEntry || null
+        });
+      });
+      
+      console.log(`Bulk DNC check completed: ${results.size} results`);
+      return results;
+      
+    } catch (error) {
+      console.error('Bulk DNC check failed:', error);
+      // Fail closed - mark all as non-compliant on error
+      phoneNumbers.forEach((phone, index) => {
+        const normalized = normalizedNumbers[index];
+        results.set(phone, {
+          isCompliant: false,
+          reasons: ['Internal DNC check failed - blocked for safety'],
+          source: this.name,
+          details: { error: (error as Error).message, bulkCheck: true },
+          phoneNumber: normalized,
+          rawResponse: null
+        });
+      });
+      return results;
+    }
+  }
+  
   async checkNumber(phoneNumber: string): Promise<ComplianceResult> {
     await this.initialized;
     const normalizedNumber = this.normalizePhoneNumber(phoneNumber);
