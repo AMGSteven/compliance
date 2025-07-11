@@ -84,6 +84,7 @@ export async function GET(request: NextRequest) {
       .from('leads')
       .select('*', { count: 'exact', head: true })
       .eq('list_id', listId)
+      .in('status', ['new', 'success']) // Include both new (modern) and success (legacy) leads
       .gte('created_at', `${effectiveStartDate}T00:00:00-05:00`)
       .lte('created_at', `${effectiveEndDate}T23:59:59-05:00`);
       
@@ -110,6 +111,7 @@ export async function GET(request: NextRequest) {
         .from('leads')
         .select('id, custom_fields, created_at, policy_status, policy_postback_date')
         .eq('list_id', listId)
+        .in('status', ['new', 'success']) // Include both new (modern) and success (legacy) leads
         .gte('created_at', `${effectiveStartDate}T00:00:00-05:00`)
         .lte('created_at', `${effectiveEndDate}T23:59:59-05:00`)
         .order('created_at', { ascending: false})

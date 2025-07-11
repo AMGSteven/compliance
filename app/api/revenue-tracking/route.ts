@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
     let leadsQuery = supabase
       .from('leads')
       .select('id, list_id, campaign_id, traffic_source, created_at, status, policy_status, policy_postback_date')
-      .eq('status', 'success')
+      .in('status', ['new', 'success']) // Include both new (modern) and success (legacy) leads
       .gte('created_at', startDate!)
       .lte('created_at', endDate!);
     
@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
     const { count: totalCount, error: countError } = await supabase
       .from('leads')
       .select('*', { count: 'exact', head: true })
-      .eq('status', 'success')
+      .in('status', ['new', 'success']) // Include both new (modern) and success (legacy) leads
       .gte('created_at', startDate!)
       .lte('created_at', endDate!);
     
