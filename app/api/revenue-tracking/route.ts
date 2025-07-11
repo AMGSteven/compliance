@@ -288,10 +288,16 @@ export async function GET(request: NextRequest) {
         const cpa = listData.policy_count > 0 
           ? listData.total_revenue / listData.policy_count 
           : null;
+          
+        // Calculate policy rate: (policy_count / leads_count) * 100
+        const policyRate = listData.leads_count > 0
+          ? (listData.policy_count / listData.leads_count) * 100
+          : 0;
         
         return {
           ...listData,
-          cost_per_acquisition: cpa
+          cost_per_acquisition: cpa,
+          policy_rate: policyRate
         };
       });
       

@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useState, useEffect } from 'react';
-import { Card, Table, Typography, DatePicker, Button, Select, Space, Statistic, Row, Col, Spin } from 'antd';
+import { Card, Table, Typography, DatePicker, Button, Select, Space, Statistic, Row, Col, Spin, message } from 'antd';
 import { DollarOutlined, DownloadOutlined, FilterOutlined, ReloadOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { format } from 'date-fns';
 import dayjs from 'dayjs';
@@ -14,6 +14,31 @@ import { createClient } from '@supabase/supabase-js';
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 const { Option } = Select;
+
+// CSS styles for SUBID performance color coding
+const subidStyles = `
+  .subid-high-performance {
+    background-color: #f6ffed !important;
+    border-left: 4px solid #52c41a !important;
+  }
+  .subid-medium-performance {
+    background-color: #fffbe6 !important;
+    border-left: 4px solid #faad14 !important;
+  }
+  .subid-low-performance {
+    background-color: #fff2f0 !important;
+    border-left: 4px solid #ff4d4f !important;
+  }
+  .subid-high-performance:hover {
+    background-color: #f0f9ff !important;
+  }
+  .subid-medium-performance:hover {
+    background-color: #fefcf4 !important;
+  }
+  .subid-low-performance:hover {
+    background-color: #fef7f6 !important;
+  }
+`;
 
 interface ListRouting {
   id: string;
@@ -51,6 +76,26 @@ interface RevenueData {
   synergy_payout?: number;
   ai_costs_allocated?: number;
   net_profit?: number;
+  policy_rate?: number;
+  // SUBID-specific fields
+  subid_value?: string;
+  parent_list_id?: string;
+  is_subid_row?: boolean;
+}
+
+interface SubidResponse {
+  success: boolean;
+  data: RevenueData[];
+  meta: {
+    list_id: string;
+    date_range: {
+      start: string;
+      end: string;
+    };
+    total_subids: number;
+    total_leads_with_subids: number;
+  };
+  error?: string;
 }
 
 export default function RevenueTrackingPage() {
@@ -63,6 +108,12 @@ export default function RevenueTrackingPage() {
   const [totalWeekdayLeads, setTotalWeekdayLeads] = useState<number>(0);
   const [totalWeekendLeads, setTotalWeekendLeads] = useState<number>(0);
   const [totalSynergyIssuedLeads, setTotalSynergyIssuedLeads] = useState<number>(0);
+  
+  // SUBID-specific state
+  const [subidData, setSubidData] = useState<Record<string, RevenueData[]>>({});
+  const [expandedRowKeys, setExpandedRowKeys] = useState<string[]>([]);
+  const [loadingSubids, setLoadingSubids] = useState<Record<string, boolean>>({});
+  const [subidFilters, setSubidFilters] = useState<Record<string, number>>({});
   const [totalSynergyPayout, setTotalSynergyPayout] = useState<number>(0);
   const [blandAICosts, setBlandAICosts] = useState<number>(0);
   const [blandAILoading, setBlandAILoading] = useState<boolean>(false);
@@ -96,7 +147,7 @@ export default function RevenueTrackingPage() {
   };
 
   useEffect(() => {
-    fetchRevenueData();
+    refreshData();
   }, [dateRange, timeFrame]);
 
   const fetchRevenueData = async () => {
@@ -510,6 +561,11 @@ export default function RevenueTrackingPage() {
         
         // Calculate net profit: Synergy Payout - Lead Costs - AI Costs Allocated
         item.net_profit = (item.synergy_payout || 0) - item.total_lead_costs - item.ai_costs_allocated;
+        
+        // Calculate policy conversion rate: (synergy_issued_leads / leads_count) * 100
+        item.policy_rate = item.leads_count > 0 
+          ? ((item.synergy_issued_leads || 0) / item.leads_count) * 100 
+          : 0;
       });
       
       setRevenueData(revenueArray);
@@ -696,7 +752,263 @@ export default function RevenueTrackingPage() {
     }
   };
 
-  const handleExport = () => {
+  // Fetch SUBID breakdown data for a specific list_id
+  const fetchSubidData = async (listId: string): Promise<RevenueData[]> => {
+    if (subidData[listId]) {
+      console.log(`Using cached SUBID data for list_id: ${listId}`);
+      return subidData[listId];
+    }
+
+    setLoadingSubids(prev => ({ ...prev, [listId]: true }));
+
+    try {
+      console.log(`Fetching SUBID data for list_id: ${listId}`);
+      
+      // Build URL with same date filtering logic as main data - ALWAYS pass explicit dates
+      let startDate: dayjs.Dayjs;
+      let endDate: dayjs.Dayjs;
+      
+      if (timeFrame === 'custom' && dateRange && dateRange[0] && dateRange[1]) {
+        startDate = dateRange[0];
+        endDate = dateRange[1];
+      } else {
+        // Calculate dates for preset timeframes (matches main revenue API logic)
+        switch (timeFrame) {
+          case 'yesterday':
+            startDate = dayjs().subtract(1, 'day').startOf('day');
+            endDate = dayjs().subtract(1, 'day').endOf('day');
+            break;
+          case 'thisWeek':
+            startDate = dayjs().startOf('week');
+            endDate = dayjs().endOf('day');
+            break;
+          case 'lastWeek':
+            startDate = dayjs().subtract(1, 'week').startOf('week');
+            endDate = dayjs().subtract(1, 'week').endOf('week');
+            break;
+          case 'thisMonth':
+            startDate = dayjs().startOf('month');
+            endDate = dayjs().endOf('day');
+            break;
+          case 'lastMonth':
+            startDate = dayjs().subtract(1, 'month').startOf('month');
+            endDate = dayjs().subtract(1, 'month').endOf('month');
+            break;
+          default: // 'today'
+            startDate = dayjs().startOf('day');
+            endDate = dayjs().endOf('day');
+        }
+      }
+      
+      const apiUrl = `/api/revenue-tracking/subids?list_id=${listId}&startDate=${startDate.format('YYYY-MM-DD')}&endDate=${endDate.format('YYYY-MM-DD')}`;
+      
+      console.log(`Fetching SUBID data for list_id: ${listId}, dateRange: ${startDate.format('YYYY-MM-DD')} to ${endDate.format('YYYY-MM-DD')}`);
+      
+      const response = await fetch(apiUrl, {
+        headers: {
+          'X-API-Key': process.env.NEXT_PUBLIC_API_KEY!,
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const result: SubidResponse = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to fetch SUBID data');
+      }
+      
+      console.log(`Fetched ${result.data.length} SUBIDs for list_id: ${listId}`);
+      
+      // Cache the data
+      setSubidData(prev => ({ ...prev, [listId]: result.data }));
+      
+      return result.data;
+      
+    } catch (error) {
+      console.error(`Error fetching SUBID data for list_id ${listId}:`, error);
+      message.error(`Failed to load SUBID data for ${listId}`);
+      return [];
+    } finally {
+      setLoadingSubids(prev => ({ ...prev, [listId]: false }));
+    }
+  };
+
+  // Handle row expansion for SUBID data
+  const handleRowExpand = (expanded: boolean, record: RevenueData) => {
+    const listId = record.list_id;
+    
+    if (expanded) {
+      console.log(`Expanding row for list_id: ${listId}`);
+      // Immediately update expanded keys to show the row
+      setExpandedRowKeys(prev => [...prev, listId]);
+      // Start fetching SUBID data (async, non-blocking)
+      fetchSubidData(listId);
+    } else {
+      console.log(`Collapsing row for list_id: ${listId}`);
+      // Remove from expanded keys
+      setExpandedRowKeys(prev => prev.filter(key => key !== listId));
+    }
+  };
+
+  // Export SUBID data to CSV
+  const exportSubidToCSV = (listId: string, description: string) => {
+    const data = subidData[listId] || [];
+    if (data.length === 0) {
+      message.warning('No SUBID data to export');
+      return;
+    }
+    
+    const csvContent = [
+      'List ID,SUBID,Total Leads,Weekday Leads,Weekend Leads,Cost Per Lead,Total Lead Costs,Synergy Issued Leads,Synergy Payout,AI Costs Allocated,Cost Per Acquisition,Net Profit',
+      ...data.map(item => {
+        const cpa = (item.synergy_issued_leads && item.synergy_issued_leads > 0) 
+          ? (item.total_lead_costs / item.synergy_issued_leads).toFixed(2) 
+          : 'N/A';
+        
+        return [
+          item.list_id,
+          item.subid_value || 'N/A',
+          item.leads_count,
+          item.weekday_leads || item.leads_count,
+          item.weekend_leads || 0,
+          item.cost_per_lead.toFixed(2),
+          item.total_lead_costs.toFixed(2),
+          item.synergy_issued_leads || 0,
+          (item.synergy_payout || 0).toFixed(2),
+          (item.ai_costs_allocated || 0).toFixed(2),
+          cpa,
+          (item.net_profit || 0).toFixed(2)
+        ].join(',');
+      })
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `subid-breakdown-${listId}-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+  
+  // Render expandable row content with SUBID data
+  const renderExpandedRow = (record: RevenueData) => {
+    const listId = record.list_id;
+    const isLoading = loadingSubids[listId];
+    const data = subidData[listId] || [];
+    
+    if (isLoading) {
+      return (
+        <div style={{ padding: '16px', textAlign: 'center' }}>
+          <Spin size="small" /> Loading SUBID breakdown...
+        </div>
+      );
+    }
+    
+    if (data.length === 0) {
+      return (
+        <div style={{ padding: '16px', textAlign: 'center', color: '#888' }}>
+          No SUBID data available for this list
+        </div>
+      );
+    }
+    
+    // Apply filtering based on minimum lead count
+    const minLeadCount = subidFilters[listId] || 10;
+    const filteredData = data.filter(item => item.leads_count >= minLeadCount);
+    
+    // Create SUBID-specific columns with proper descriptions and width alignment
+    const subidColumns = columns.map(col => {
+      if (col.key === 'description') {
+        return {
+          ...col,
+          title: 'SUBID',
+          width: '20%', // Match main table width
+          render: (value: any, subidRecord: RevenueData) => {
+            return subidRecord.subid_value || 'N/A';
+          }
+        };
+      }
+      
+      return {
+        ...col,
+        render: col.render ? (value: any, subidRecord: RevenueData) => {
+          return col.render!(value, subidRecord);
+        } : undefined
+      };
+    });
+    
+    return (
+      <div style={{ margin: '16px 0', paddingLeft: '48px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+          <div>
+            <Text strong>
+              SUBID Breakdown for {record.description} ({filteredData.length} SUBIDs)
+            </Text>
+            {filteredData.length !== data.length && (
+              <Text type="secondary" style={{ marginLeft: '8px' }}>
+                (filtered from {data.length} total)
+              </Text>
+            )}
+          </div>
+          <Space>
+            <Text strong style={{ fontSize: '12px' }}>Min leads:</Text>
+            <Select
+              value={minLeadCount}
+              onChange={(value) => setSubidFilters(prev => ({ ...prev, [listId]: value }))}
+              style={{ width: 80 }}
+              size="small"
+            >
+              <Option value={1}>1+</Option>
+              <Option value={5}>5+</Option>
+              <Option value={10}>10+</Option>
+              <Option value={25}>25+</Option>
+              <Option value={50}>50+</Option>
+              <Option value={100}>100+</Option>
+            </Select>
+            <Button 
+              type="default" 
+              size="small"
+              icon={<DownloadOutlined />}
+              onClick={() => exportSubidToCSV(listId, record.description)}
+            >
+              Export CSV
+            </Button>
+          </Space>
+        </div>
+        <Table
+          columns={subidColumns}
+          dataSource={filteredData}
+          rowKey={(record) => `subid-${record.parent_list_id}-${record.subid_value}`}
+          pagination={false}
+          size="small"
+          rowClassName={(record: RevenueData) => {
+          const policyRate = record.policy_rate || 0;
+          if (policyRate >= 1.0) {
+            return 'subid-row subid-high-performance'; // Green background for >= 1%
+          } else if (policyRate >= 0.5) {
+            return 'subid-row subid-medium-performance'; // Yellow background for >= 0.5%
+          } else {
+            return 'subid-row subid-low-performance'; // Red background for < 0.5%
+          }
+        }}
+        />
+      </div>
+    );
+  };
+
+  // Clear SUBID cache when main data is refreshed
+  const refreshData = () => {
+    setSubidData({});
+    setExpandedRowKeys([]);
+    setLoadingSubids({});
+    fetchRevenueData();
+  };
+
+  const exportToCSV = () => {
     // Export functionality
     const csvContent = [
       'List ID,Description,Total Leads,Weekday Leads,Weekend Leads,Cost Per Lead,Total Lead Costs,Synergy Issued Leads,Synergy Payout,AI Costs Allocated,Cost Per Acquisition,Net Profit',
@@ -784,6 +1096,16 @@ export default function RevenueTrackingPage() {
         (a.synergy_issued_leads || 0) - (b.synergy_issued_leads || 0),
     },
     {
+      title: 'Policy Conversion Rate',
+      dataIndex: 'policy_rate',
+      key: 'policy_rate',
+      width: '12%',
+      render: (value: number | undefined) => 
+        value !== undefined ? `${value.toFixed(2)}%` : '0.00%',
+      sorter: (a: RevenueData, b: RevenueData) => 
+        (a.policy_rate || 0) - (b.policy_rate || 0),
+    },
+    {
       title: 'Synergy Payout',
       dataIndex: 'synergy_payout',
       key: 'synergy_payout',
@@ -833,6 +1155,7 @@ export default function RevenueTrackingPage() {
 
   return (
     <div style={{ padding: '20px' }}>
+      <style dangerouslySetInnerHTML={{ __html: subidStyles }} />
       <Title level={2}>Revenue Tracking Dashboard</Title>
       
       <Row gutter={12} style={{ marginBottom: '24px' }}>
@@ -1022,7 +1345,7 @@ export default function RevenueTrackingPage() {
           
           <Button 
             icon={<ReloadOutlined />}
-            onClick={fetchRevenueData}
+            onClick={refreshData}
           >
             Refresh
           </Button>
@@ -1031,7 +1354,7 @@ export default function RevenueTrackingPage() {
         <Space>
           <Button 
             icon={<DownloadOutlined />}
-            onClick={handleExport}
+            onClick={exportToCSV}
           >
             Export CSV
           </Button>
@@ -1044,6 +1367,20 @@ export default function RevenueTrackingPage() {
             columns={columns}
             dataSource={revenueData}
             rowKey="list_id"
+            expandable={{
+              expandedRowRender: renderExpandedRow,
+              onExpand: handleRowExpand,
+              expandedRowKeys: expandedRowKeys,
+              expandRowByClick: false,
+              expandIcon: ({ expanded, onExpand, record }) => (
+                <span
+                  onClick={(e) => onExpand(record, e)}
+                  style={{ cursor: 'pointer', marginRight: '8px' }}
+                >
+                  {expanded ? '▼' : '▶'} SUBIDs
+                </span>
+              )
+            }}
             pagination={{
               pageSize: 20,
               showSizeChanger: true,
@@ -1060,9 +1397,10 @@ export default function RevenueTrackingPage() {
                 <Table.Summary.Cell index={5}><strong>-</strong></Table.Summary.Cell>
                 <Table.Summary.Cell index={6}><strong>${totalLeadCosts.toFixed(2)}</strong></Table.Summary.Cell>
                 <Table.Summary.Cell index={7}><strong>{totalSynergyIssuedLeads}</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={8}><strong>${totalSynergyPayout.toFixed(2)}</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={9}><strong>${(blandAICosts + pitchPerfectCosts).toFixed(2)}</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={10}><strong>${(totalSynergyPayout - totalLeadCosts - blandAICosts - pitchPerfectCosts).toFixed(2)}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={8}><strong>{totalLeads > 0 ? ((totalSynergyIssuedLeads / totalLeads) * 100).toFixed(2) : '0.00'}%</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={9}><strong>${totalSynergyPayout.toFixed(2)}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={10}><strong>${(blandAICosts + pitchPerfectCosts).toFixed(2)}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={11}><strong>${(totalSynergyPayout - totalLeadCosts - blandAICosts - pitchPerfectCosts).toFixed(2)}</strong></Table.Summary.Cell>
               </Table.Summary.Row>
             )}
           />
