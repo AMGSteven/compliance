@@ -42,6 +42,7 @@ export async function GET(request: NextRequest) {
     const policy_status = url.searchParams.get('policy_status'); // Add policy_status filter for synergy payout tracking
     const weekend_only = url.searchParams.get('weekend_only') === 'true'; // Add weekend_only filter for exact weekend counts
     const use_postback_date = url.searchParams.get('use_postback_date') === 'true'; // Filter by postback date instead of creation date for revenue attribution
+    const transfer_status = url.searchParams.get('transfer_status') === 'true';
     
     // Calculate pagination values
     const from = (page - 1) * pageSize;
@@ -102,6 +103,10 @@ export async function GET(request: NextRequest) {
     
     if (policy_status) {
       query = query.eq('policy_status', policy_status);
+    }
+
+    if (transfer_status) {
+      query = query.eq('transfer_status', true);
     }
     
     if (weekend_only) {
