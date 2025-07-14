@@ -60,28 +60,9 @@ async function checkStateCompliance(state: string | undefined, dialerType: 'inte
   return { isCompliant: true };
 }
 
-export async function POST(request: NextRequest) {
-  const startTime = Date.now();
-  
+// Shared validation logic for both GET and POST methods
+async function performPrePingValidation(body: PrePingRequest, startTime: number): Promise<NextResponse> {
   try {
-    // Parse request body
-    const body: PrePingRequest = await request.json();
-    
-    // Extract API key from Authorization header
-    const authHeader = request.headers.get('authorization');
-    const apiKey = authHeader?.replace('Bearer ', '') || null;
-    
-    // Validate API key
-    const isValidApiKey = await validateApiKey(apiKey);
-    if (!isValidApiKey) {
-      return NextResponse.json({
-        success: false,
-        accepted: false,
-        error: 'Invalid or missing API key',
-        rejection_reasons: ['Authentication failed']
-      }, { status: 401 });
-    }
-
     // Validate required fields
     if (!body.phone) {
       return NextResponse.json({
@@ -194,7 +175,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('[Pre-Ping] Error:', error);
+    console.error('[Pre-Ping] Validation error:', error);
     
     const processingTime = Date.now() - startTime;
     
@@ -208,12 +189,117 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Health check endpoint
-export async function GET() {
-  return NextResponse.json({
-    endpoint: 'pre-ping',
-    status: 'active',
-    description: 'Lead pre-validation endpoint',
-    timestamp: new Date().toISOString()
-  });
+export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  
+  try {
+    // Parse request body
+    const body: PrePingRequest = await request.json();
+    
+    // Extract API key from Authorization header
+    const authHeader = request.headers.get('authorization');
+    const apiKey = authHeader?.replace('Bearer ', '') || null;
+    
+    // Validate API key
+    const isValidApiKey = await validateApiKey(apiKey);
+    if (!isValidApiKey) {
+      return NextResponse.json({
+        success: false,
+        accepted: false,
+        error: 'Invalid or missing API key',
+        rejection_reasons: ['Authentication failed']
+      }, { status: 401 });
+    }
+
+    // Use shared validation logic
+    return await performPrePingValidation(body, startTime);
+
+  } catch (error) {
+    console.error('[Pre-Ping POST] Error:', error);
+    
+    const processingTime = Date.now() - startTime;
+    
+    return NextResponse.json({
+      success: false,
+      accepted: false,
+      error: 'Pre-ping validation failed',
+      rejection_reasons: ['System error during validation'],
+      processing_time_ms: processingTime
+    }, { status: 500 });
+  }
+}
+
+// GET method - supports pre-ping validation via query parameters
+export async function GET(request: NextRequest) {
+  const startTime = Date.now();
+  
+  try {
+    // Get query parameters from the URL
+    const { searchParams } = new URL(request.url);
+    
+    // Extract parameters
+    const phone = searchParams.get('phone');
+    const state = searchParams.get('state');
+    const email = searchParams.get('email');
+    const firstName = searchParams.get('firstName');
+    const lastName = searchParams.get('lastName');
+    const list_id = searchParams.get('list_id');
+    const dialer_type = searchParams.get('dialer_type') as 'internal' | 'pitch_bpo' | null;
+    
+    // If no phone parameter, return health check
+    if (!phone) {
+      return NextResponse.json({
+        endpoint: 'pre-ping',
+        status: 'active',
+        description: 'Lead pre-validation endpoint - supports both GET (query params) and POST (JSON body)',
+        timestamp: new Date().toISOString(),
+        usage: {
+          GET: 'Use query parameters: ?phone=1234567890&state=TX&dialer_type=pitch_bpo',
+          POST: 'Send JSON body with phone, state, and other optional fields'
+        }
+      });
+    }
+    
+    // Extract API key from Authorization header
+    const authHeader = request.headers.get('authorization');
+    const apiKey = authHeader?.replace('Bearer ', '') || null;
+    
+    // Validate API key
+    const isValidApiKey = await validateApiKey(apiKey);
+    if (!isValidApiKey) {
+      return NextResponse.json({
+        success: false,
+        accepted: false,
+        error: 'Invalid or missing API key',
+        rejection_reasons: ['Authentication failed']
+      }, { status: 401 });
+    }
+
+    // Create request body object from query parameters
+    const body: PrePingRequest = {
+      phone,
+      state: state || undefined,
+      email: email || undefined,
+      firstName: firstName || undefined,
+      lastName: lastName || undefined,
+      list_id: list_id || undefined,
+      dialer_type: dialer_type || 'internal'
+    };
+    
+    // Use the same validation logic as POST
+    return await performPrePingValidation(body, startTime);
+    
+  } catch (error) {
+    console.error('[Pre-Ping GET] Error:', error);
+    
+    const processingTime = Date.now() - startTime;
+    
+    return NextResponse.json({
+      success: false,
+      accepted: false,
+      error: 'Pre-ping validation failed',
+      rejection_reasons: ['System error during validation'],
+      processing_time_ms: processingTime
+    }, { status: 500 });
+  }
 }
