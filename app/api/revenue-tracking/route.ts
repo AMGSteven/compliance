@@ -21,6 +21,8 @@ interface TrafficSourceRevenue {
     description: string;
     leads_count: number;
     total_revenue: number;
+    policy_count?: number;
+    cost_per_acquisition?: number;
   }[];
 }
 
@@ -45,15 +47,16 @@ export async function GET(request: NextRequest) {
     let endDate = url.searchParams.get('endDate');
     const timeFrame = url.searchParams.get('timeFrame') || 'all';
     
-    // IGNORE ALL DATE FILTERS BY DEFAULT
-    // Only apply filters if timeFrame is 'custom' and dates are provided
+    // Apply intelligent date filtering to prevent timeout issues
     if (timeFrame === 'custom' && startDate && endDate) {
       console.log(`CUSTOM DATE RANGE: ${startDate} to ${endDate}`);
     } else {
-      console.log('SHOWING ALL LEADS FROM ALL TIME - NO FILTERING');
-      // Force null to prevent any date filtering
-      startDate = null;
-      endDate = null;
+      // Default to last 30 days to prevent performance issues with full table scans
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      startDate = thirtyDaysAgo.toISOString();
+      endDate = new Date().toISOString();
+      console.log(`DEFAULT DATE RANGE (last 30 days): ${startDate} to ${endDate}`);
     }
     
     // STEP 1: Fetch list routings for bid information and descriptions
@@ -89,29 +92,24 @@ export async function GET(request: NextRequest) {
       }
     });
     
-    // STEP 2: Fetch ALL successful leads - NO FILTERING except for success status
+    // STEP 2: Fetch successful leads AND policy data efficiently with proper date filtering
+    console.log('Fetching successful leads and policy data with date filtering...');
+    
+    // Build the query for successful leads (for cost calculation)
     let leadsQuery = supabase
       .from('leads')
-      .select('id, list_id, campaign_id, traffic_source, created_at, status');
+      .select('id, list_id, campaign_id, traffic_source, created_at, status, policy_status, policy_postback_date')
+      .in('status', ['new', 'success']) // Include both new (modern) and success (legacy) leads
+      .gte('created_at', startDate!)
+      .lte('created_at', endDate!);
     
-    // ONLY apply date filtering if explicitly requested with custom timeframe
-    if (timeFrame === 'custom' && startDate && endDate) {
-      leadsQuery = leadsQuery.gte('created_at', startDate).lte('created_at', endDate);
-      console.log(`Applying CUSTOM date filter: ${startDate} to ${endDate}`);
-    } else {
-      console.log('NO DATE FILTERING - showing ALL leads from ALL time');
-    }
-    
-    // Only include successful leads
-    leadsQuery = leadsQuery.eq('status', 'success');
-    
-    console.log('Fetching ALL successful leads with NO row limits...');
-    
-    // Get the total count first
+    // Get total count for pagination planning
     const { count: totalCount, error: countError } = await supabase
       .from('leads')
       .select('*', { count: 'exact', head: true })
-      .eq('status', 'success');
+      .in('status', ['new', 'success']) // Include both new (modern) and success (legacy) leads
+      .gte('created_at', startDate!)
+      .lte('created_at', endDate!);
     
     if (countError) {
       console.error('Error getting total lead count:', countError);
@@ -121,13 +119,14 @@ export async function GET(request: NextRequest) {
       });
     }
     
-    console.log(`Total successful leads in database: ${totalCount}`);
+    console.log(`Total successful leads in date range: ${totalCount}`);
     
-    // Now fetch all leads with pagination to avoid row limits
+    // Use smart pagination to avoid timeouts
     let allLeads: any[] = [];
-    const PAGE_SIZE = 100000; // Very large page size to minimize pagination
-    const totalPages = Math.ceil(totalCount! / PAGE_SIZE);
+    const PAGE_SIZE = 10000; // Smaller page size for reliability
+    const totalPages = Math.ceil((totalCount || 0) / PAGE_SIZE);
     
+    // Fetch all leads in batches
     for (let page = 0; page < totalPages; page++) {
       const { data: pageLeads, error: pageError } = await leadsQuery
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
@@ -136,7 +135,7 @@ export async function GET(request: NextRequest) {
         console.error(`Error fetching leads page ${page}:`, pageError);
         return NextResponse.json({
           success: false,
-          error: pageError.message
+          error: `Failed to fetch leads: ${pageError.message}`
         });
       }
       
@@ -147,6 +146,24 @@ export async function GET(request: NextRequest) {
       console.log(`Fetched page ${page + 1}/${totalPages} with ${pageLeads?.length || 0} leads`);
     }
     
+    // Also fetch policy data for CPA calculation (policies issued in the same date range)
+    const { data: policyLeads, error: policyError } = await supabase
+      .from('leads')
+      .select('list_id, policy_status, policy_postback_date')
+      .eq('policy_status', 'issued')
+      .gte('policy_postback_date', startDate!)
+      .lte('policy_postback_date', endDate!);
+    
+    if (policyError) {
+      console.error('Error fetching policy data:', policyError);
+      return NextResponse.json({
+        success: false,
+        error: `Failed to fetch policy data: ${policyError.message}`
+      });
+    }
+    
+    console.log(`Found ${policyLeads?.length || 0} issued policies in date range`);
+    
     const leads = allLeads;
     
     if (leads.length === 0) {
@@ -155,7 +172,7 @@ export async function GET(request: NextRequest) {
     
     console.log(`Found ${leads?.length || 0} successful leads in the selected time period`);
     
-    // STEP 3: Group leads by traffic source
+    // STEP 3: Group leads by traffic source with CPA calculation
     interface TrafficSourceData {
       traffic_source: string;
       display_name: string;
@@ -174,8 +191,18 @@ export async function GET(request: NextRequest) {
         description: string;
         leads_count: number;
         total_revenue: number;
+        policy_count: number;
+        cost_per_acquisition: number | null;
       }>;
     }
+    
+    // Create policy count map for efficient lookup
+    const policyCountByList: Record<string, number> = {};
+    (policyLeads || []).forEach((policy: any) => {
+      if (policy.list_id) {
+        policyCountByList[policy.list_id] = (policyCountByList[policy.list_id] || 0) + 1;
+      }
+    });
     
     const trafficSources: Record<string, TrafficSourceData> = {};
     
@@ -230,14 +257,17 @@ export async function GET(request: NextRequest) {
         trafficSources[source].campaigns[campaignId].total_revenue += bidAmount;
       }
       
-      // Track by list_id
+      // Track by list_id with CPA calculation
       if (lead.list_id) {
         if (!trafficSources[source].list_ids[lead.list_id]) {
+          const policyCount = policyCountByList[lead.list_id] || 0;
           trafficSources[source].list_ids[lead.list_id] = {
             list_id: lead.list_id,
             description: routing.description,
             leads_count: 0,
-            total_revenue: 0
+            total_revenue: 0,
+            policy_count: policyCount,
+            cost_per_acquisition: null // Will be calculated after aggregation
           };
         }
         trafficSources[source].list_ids[lead.list_id].leads_count++;
@@ -253,7 +283,23 @@ export async function GET(request: NextRequest) {
       
       // Convert campaigns and list_ids from objects to arrays
       const campaignsArray = Object.values(source.campaigns);
-      const listIdsArray = Object.values(source.list_ids);
+      const listIdsArray = Object.values(source.list_ids).map(listData => {
+        // Calculate CPA for each list: total_revenue / policy_count
+        const cpa = listData.policy_count > 0 
+          ? listData.total_revenue / listData.policy_count 
+          : null;
+          
+        // Calculate policy rate: (policy_count / leads_count) * 100
+        const policyRate = listData.leads_count > 0
+          ? (listData.policy_count / listData.leads_count) * 100
+          : 0;
+        
+        return {
+          ...listData,
+          cost_per_acquisition: cpa,
+          policy_rate: policyRate
+        };
+      });
       
       return {
         ...source,

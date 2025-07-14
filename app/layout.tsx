@@ -5,7 +5,6 @@ import "./globals.css"
 import { AuthProvider } from "@/lib/context/auth-context"
 import LogoutButton from "@/components/logout-button"
 import { AppSidebar } from "@/components/layout/app-sidebar"
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -24,11 +23,10 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <AuthProvider>
-          <SidebarProvider>
+          <div className="relative min-h-screen">
             <AppSidebar />
-            <SidebarInset>
+            <div className="ml-16 transition-all duration-300">
               <header className="flex h-16 shrink-0 items-center gap-2 border-b bg-white px-4">
-                <SidebarTrigger className="mr-2" />
                 <div className="flex items-center gap-2 flex-1">
                   <h1 className="text-lg font-semibold text-gray-900">Compliance Dashboard</h1>
                 </div>
@@ -41,8 +39,8 @@ export default function RootLayout({
                   {children}
                 </main>
               </div>
-            </SidebarInset>
-          </SidebarProvider>
+            </div>
+          </div>
         </AuthProvider>
       </body>
     </html>

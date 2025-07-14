@@ -225,6 +225,14 @@ export async function POST(request: NextRequest) {
       
       console.log(`[TF Bulk Claim] Detected TF column: "${trustedFormColumn}"`);
       
+      // For very large detection samples, further limit to prevent timeouts
+      const maxDetectionRows = 500; // Reduced from 1000 to prevent timeouts
+      const detectionSample = csvData.length > maxDetectionRows 
+        ? csvData.slice(0, maxDetectionRows) 
+        : csvData;
+      
+      console.log(`[TF Bulk Claim] Processing ${detectionSample.length}/${csvData.length} rows for detection`);
+      
       const actualTotalRows = totalRecords || csvData.length;
       
       const detectionResult: TrustedFormDetectionResult = {
@@ -235,10 +243,9 @@ export async function POST(request: NextRequest) {
         errors: []
       };
       
-      // Analyze provided rows for detection (may be subset for large files)
+      // Analyze the certificate data
       let validCertificatesInSample = 0;
-      
-      csvData.forEach((row: Record<string, any>, index: number) => {
+      detectionSample.forEach((row: Record<string, any>, index: number) => {
         const certificateUrl = row[trustedFormColumn];
         const extractedId = extractTrustedFormId(certificateUrl);
         
@@ -261,12 +268,12 @@ export async function POST(request: NextRequest) {
         }
       });
       
-      // Scale detection results if we only processed a subset
-      if (totalRecords && totalRecords !== csvData.length) {
+      // Scale detection results from sample to full dataset
+      if (detectionSample.length < actualTotalRows) {
         // We only processed a sample, scale the results
-        const sampleRate = validCertificatesInSample / csvData.length;
-        detectionResult.detectedCertificates = Math.round(sampleRate * totalRecords);
-        console.log(`[TF Bulk Claim] Scaled detection: ${validCertificatesInSample}/${csvData.length} sample -> ${detectionResult.detectedCertificates}/${totalRecords} estimated`);
+        const sampleRate = validCertificatesInSample / detectionSample.length;
+        detectionResult.detectedCertificates = Math.round(sampleRate * actualTotalRows);
+        console.log(`[TF Bulk Claim] Scaled detection: ${validCertificatesInSample}/${detectionSample.length} sample -> ${detectionResult.detectedCertificates}/${actualTotalRows} estimated`);
       } else {
         // We processed the full dataset
         detectionResult.detectedCertificates = validCertificatesInSample;
