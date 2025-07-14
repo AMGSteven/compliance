@@ -371,8 +371,8 @@ export default function RevenueTrackingPage() {
           const totalLeads = revenueByListId[listId].leads_count;
           const weekdayLeads = totalLeads - weekendCount;
           
-          // Update to show weekday leads only in revenue calculation
-          revenueByListId[listId].total_lead_costs = weekdayLeads * revenueByListId[listId].cost_per_lead;
+          // Update total_lead_costs to include all leads (weekdays + weekends)
+          revenueByListId[listId].total_lead_costs = totalLeads * revenueByListId[listId].cost_per_lead;
           
           // Add weekend info for display
           revenueByListId[listId].weekend_leads = weekendCount;
@@ -640,13 +640,12 @@ export default function RevenueTrackingPage() {
         .sort((a, b) => b.total_lead_costs - a.total_lead_costs);
       
       // Calculate AI costs allocation and net profit for each list ID
-      const totalWeekdayLeadsForAllocation = revenueArray.reduce((sum, item) => sum + (item.weekday_leads || item.leads_count), 0);
+      // Change allocation to use total leads (including weekends)
+      const totalLeadsForAllocation = revenueArray.reduce((sum, item) => sum + item.leads_count, 0);
       
       revenueArray.forEach(item => {
-        // Allocate AI costs proportionally based on weekday leads
-        const weekdayLeadsForThisList = item.weekday_leads || item.leads_count;
-        item.ai_costs_allocated = totalWeekdayLeadsForAllocation > 0 
-          ? (weekdayLeadsForThisList / totalWeekdayLeadsForAllocation) * blandAICosts 
+        item.ai_costs_allocated = totalLeadsForAllocation > 0 
+          ? (item.leads_count / totalLeadsForAllocation) * (blandAICosts + pitchPerfectCosts) // Allocate both Bland and PitchPerfect based on total leads
           : 0;
         
         // Calculate net profit: Synergy Payout - Lead Costs - AI Costs Allocated
@@ -1304,7 +1303,7 @@ export default function RevenueTrackingPage() {
           <Card>
             <Statistic
               title="Average Lead Cost"
-              value={totalWeekdayLeads > 0 ? totalLeadCosts / totalWeekdayLeads : 0}
+              value={totalLeads > 0 ? totalLeadCosts / totalLeads : 0}
               precision={2}
               valueStyle={{ color: '#722ed1' }}
               prefix={<DollarOutlined />}
@@ -1391,7 +1390,7 @@ export default function RevenueTrackingPage() {
           <Card>
             <Statistic
               title="AI Cost Per Lead"
-              value={totalWeekdayLeads > 0 ? (blandAICosts + pitchPerfectCosts) / totalWeekdayLeads : 0}
+              value={totalLeads > 0 ? (blandAICosts + pitchPerfectCosts) / totalLeads : 0}
               precision={4}
               valueStyle={{ color: '#722ed1' }}
               prefix={<DollarOutlined />}

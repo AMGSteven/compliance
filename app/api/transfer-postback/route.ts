@@ -54,7 +54,7 @@ export async function POST(request: Request) {
     // Find lead by compliance_lead_id
     const { data: leads, error: leadError } = await supabase
       .from('leads')
-      .select('id, transfer_status')
+      .select('id, transfer_status, transferred_at')
       .eq('id', compliance_lead_id) // Assuming compliance_lead_id matches leads.id (uuid)
       .limit(1);
     
@@ -76,7 +76,25 @@ export async function POST(request: Request) {
     
     const leadId = leads[0].id;
     const currentTransferStatus = leads[0].transfer_status;
-    
+    const currentTransferredAt = leads[0].transferred_at;
+
+    // Add de-dupe check
+    if (currentTransferredAt) {
+      const now = new Date();
+      const lastTransferTime = new Date(currentTransferredAt);
+      const hoursSinceLast = (now.getTime() - lastTransferTime.getTime()) / (1000 * 60 * 60);
+      if (hoursSinceLast < 24) {
+        console.log(`De-dupe: Transfer postback for lead ${leadId} already processed within last 24 hours`);
+        return NextResponse.json({
+          success: true,
+          message: 'De-dupe: Transfer already processed within last 24 hours',
+          lead_id: leadId,
+          last_transferred_at: currentTransferredAt
+        });
+      }
+    }
+
+    // Existing check for already transferred
     if (currentTransferStatus === true) {
       console.log(`Lead ${leadId} already transferred, skipping update`);
       return NextResponse.json({
