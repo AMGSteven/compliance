@@ -81,6 +81,7 @@ interface RevenueData {
   subid_value?: string;
   parent_list_id?: string;
   is_subid_row?: boolean;
+  transfers_count?: number;
 }
 
 interface SubidResponse {
@@ -108,6 +109,7 @@ export default function RevenueTrackingPage() {
   const [totalWeekdayLeads, setTotalWeekdayLeads] = useState<number>(0);
   const [totalWeekendLeads, setTotalWeekendLeads] = useState<number>(0);
   const [totalSynergyIssuedLeads, setTotalSynergyIssuedLeads] = useState<number>(0);
+  const [totalTransfers, setTotalTransfers] = useState<number>(0);
   
   // SUBID-specific state
   const [subidData, setSubidData] = useState<Record<string, RevenueData[]>>({});
@@ -369,8 +371,8 @@ export default function RevenueTrackingPage() {
           const totalLeads = revenueByListId[listId].leads_count;
           const weekdayLeads = totalLeads - weekendCount;
           
-          // Update to show weekday leads only in revenue calculation
-          revenueByListId[listId].total_lead_costs = weekdayLeads * revenueByListId[listId].cost_per_lead;
+          // Update total_lead_costs to include all leads (weekdays + weekends)
+          revenueByListId[listId].total_lead_costs = totalLeads * revenueByListId[listId].cost_per_lead;
           
           // Add weekend info for display
           revenueByListId[listId].weekend_leads = weekendCount;
@@ -545,18 +547,105 @@ export default function RevenueTrackingPage() {
         }
       });
       
+      // Get all unique list IDs for transfer counting (reuse allListIdsWithPolicies + active ones)
+      const allListIdsForTransfers = new Set([...Object.keys(routingMap), ...allListIdsWithPolicies]);
+      
+      const transferPromises = Array.from(allListIdsForTransfers).map(async (listId) => {
+        try {
+          const transferUrl = new URL('/api/leads/list', window.location.origin);
+          transferUrl.searchParams.append('pageSize', '1');
+          transferUrl.searchParams.append('list_id', listId);
+          transferUrl.searchParams.append('transfer_status', 'true');
+          // Add date filtering (use transferred_at for accuracy)
+          if (dateRange && dateRange.length === 2) {
+            transferUrl.searchParams.append('startDate', dateRange[0].format('YYYY-MM-DD'));
+            transferUrl.searchParams.append('endDate', dateRange[1].format('YYYY-MM-DD'));
+          } else {
+            // Same date logic as issued
+            let startDate, endDate;
+            switch (timeFrame) {
+              case 'today':
+                startDate = dayjs().startOf('day');
+                endDate = dayjs().endOf('day');
+                break;
+              case 'yesterday':
+                startDate = dayjs().subtract(1, 'day').startOf('day');
+                endDate = dayjs().subtract(1, 'day').endOf('day');
+                break;
+              case 'thisWeek':
+                startDate = dayjs().startOf('week');
+                endDate = dayjs().endOf('day');
+                break;
+              case 'lastWeek':
+                startDate = dayjs().subtract(1, 'week').startOf('week');
+                endDate = dayjs().subtract(1, 'week').endOf('week');
+                break;
+              case 'thisMonth':
+                startDate = dayjs().startOf('month');
+                endDate = dayjs().endOf('day');
+                break;
+              case 'lastMonth':
+                startDate = dayjs().subtract(1, 'month').startOf('month');
+                endDate = dayjs().subtract(1, 'month').endOf('month');
+                break;
+              default:
+                startDate = dayjs().startOf('day');
+                endDate = dayjs().endOf('day');
+            }
+            transferUrl.searchParams.append('startDate', startDate.format('YYYY-MM-DD'));
+            transferUrl.searchParams.append('endDate', endDate.format('YYYY-MM-DD'));
+          }
+          
+          const response = await fetch(transferUrl.toString(), { headers: { 'x-api-key': process.env.NEXT_PUBLIC_API_KEY || 'test_key_123' } });
+          const result = await response.json();
+          
+          if (result.success && result.pagination) {
+            return { listId, transferCount: result.pagination.total };
+          } else {
+            return { listId, transferCount: 0 };
+          }
+        } catch (error) {
+          console.error(`Error counting transfers for List ID ${listId}:`, error);
+          return { listId, transferCount: 0 };
+        }
+      });
+      
+      const transferCounts = await Promise.all(transferPromises);
+      
+      // Update revenue data with transfer counts
+      transferCounts.forEach(({ listId, transferCount }) => {
+        if (revenueByListId[listId]) {
+          revenueByListId[listId].transfers_count = transferCount;
+        } else {
+          revenueByListId[listId] = {
+            key: listId,
+            list_id: listId,
+            description: `List ${listId} (No Active Routing)`,
+            leads_count: 0,
+            cost_per_lead: 0,
+            total_lead_costs: 0,
+            weekend_leads: 0,
+            weekday_leads: 0,
+            synergy_issued_leads: 0,
+            synergy_payout: 0,
+            ai_costs_allocated: 0,
+            net_profit: 0,
+            transfers_count: transferCount,
+          };
+        }
+      });
+      
       // Convert to array and sort by revenue
       const revenueArray = Object.values(revenueByListId)
         .sort((a, b) => b.total_lead_costs - a.total_lead_costs);
       
       // Calculate AI costs allocation and net profit for each list ID
-      const totalWeekdayLeadsForAllocation = revenueArray.reduce((sum, item) => sum + (item.weekday_leads || item.leads_count), 0);
+      // Change allocation to use total leads (including weekends)
+      const totalLeadsForAllocation = revenueArray.reduce((sum, item) => sum + item.leads_count, 0);
       
       revenueArray.forEach(item => {
-        // Allocate AI costs proportionally based on weekday leads
-        const weekdayLeadsForThisList = item.weekday_leads || item.leads_count;
-        item.ai_costs_allocated = totalWeekdayLeadsForAllocation > 0 
-          ? (weekdayLeadsForThisList / totalWeekdayLeadsForAllocation) * blandAICosts 
+        item.ai_costs_allocated = totalLeadsForAllocation > 0 
+          ? (item.leads_count / totalLeadsForAllocation) * (blandAICosts + pitchPerfectCosts) // Allocate both Bland and PitchPerfect based on total leads
           : 0;
         
         // Calculate net profit: Synergy Payout - Lead Costs - AI Costs Allocated
@@ -577,6 +666,7 @@ export default function RevenueTrackingPage() {
       const totalWeekendLeadsCount = revenueArray.reduce((sum, item) => sum + (item.weekend_leads || 0), 0);
       const totalSynergyIssuedLeadsCount = revenueArray.reduce((sum, item) => sum + (item.synergy_issued_leads || 0), 0);
       const totalSynergyPayoutCount = revenueArray.reduce((sum, item) => sum + (item.synergy_payout || 0), 0);
+      const totalTransfers = revenueArray.reduce((sum, item) => sum + (item.transfers_count || 0), 0);
       
       setTotalLeadCosts(totalRev);
       setTotalLeads(totalLeadsCount);
@@ -584,6 +674,7 @@ export default function RevenueTrackingPage() {
       setTotalWeekendLeads(totalWeekendLeadsCount);
       setTotalSynergyIssuedLeads(totalSynergyIssuedLeadsCount);
       setTotalSynergyPayout(totalSynergyPayoutCount);
+      setTotalTransfers(totalTransfers);
       
     } catch (error) {
       console.error('Error fetching revenue data:', error);
@@ -932,6 +1023,12 @@ export default function RevenueTrackingPage() {
           }
         };
       }
+      if (col.key === 'transfers_count') {
+        return {
+          ...col,
+          render: (value: number | undefined) => value || 0
+        };
+      }
       
       return {
         ...col,
@@ -1086,6 +1183,14 @@ export default function RevenueTrackingPage() {
       sorter: (a: RevenueData, b: RevenueData) => a.total_lead_costs - b.total_lead_costs,
     },
     {
+      title: 'Transfers',
+      dataIndex: 'transfers_count',
+      key: 'transfers_count',
+      width: '12%',
+      render: (value: number | undefined) => value || 0,
+      sorter: (a: RevenueData, b: RevenueData) => (a.transfers_count || 0) - (b.transfers_count || 0),
+    },
+    {
       title: 'Synergy Issued Leads',
       dataIndex: 'synergy_issued_leads',
       key: 'synergy_issued_leads',
@@ -1104,6 +1209,19 @@ export default function RevenueTrackingPage() {
         value !== undefined ? `${value.toFixed(2)}%` : '0.00%',
       sorter: (a: RevenueData, b: RevenueData) => 
         (a.policy_rate || 0) - (b.policy_rate || 0),
+    },
+    {
+      title: 'Transfer Rate',
+      dataIndex: 'transfers_count',
+      key: 'transfer_rate',
+      width: '12%',
+      render: (value: number | undefined, record: RevenueData) => 
+        value !== undefined ? `${((value / (revenueData.find(item => item.list_id === record.list_id)?.leads_count || 0)) * 100).toFixed(2)}%` : '0.00%',
+      sorter: (a: RevenueData, b: RevenueData) => {
+        const leadsA = revenueData.find(item => item.list_id === a.list_id)?.leads_count || 0;
+        const leadsB = revenueData.find(item => item.list_id === b.list_id)?.leads_count || 0;
+        return ((a.transfers_count || 0) / leadsA) - ((b.transfers_count || 0) / leadsB);
+      },
     },
     {
       title: 'Synergy Payout',
@@ -1185,7 +1303,7 @@ export default function RevenueTrackingPage() {
           <Card>
             <Statistic
               title="Average Lead Cost"
-              value={totalWeekdayLeads > 0 ? totalLeadCosts / totalWeekdayLeads : 0}
+              value={totalLeads > 0 ? totalLeadCosts / totalLeads : 0}
               precision={2}
               valueStyle={{ color: '#722ed1' }}
               prefix={<DollarOutlined />}
@@ -1272,7 +1390,7 @@ export default function RevenueTrackingPage() {
           <Card>
             <Statistic
               title="AI Cost Per Lead"
-              value={totalWeekdayLeads > 0 ? (blandAICosts + pitchPerfectCosts) / totalWeekdayLeads : 0}
+              value={totalLeads > 0 ? (blandAICosts + pitchPerfectCosts) / totalLeads : 0}
               precision={4}
               valueStyle={{ color: '#722ed1' }}
               prefix={<DollarOutlined />}
@@ -1312,6 +1430,17 @@ export default function RevenueTrackingPage() {
             <Statistic
               title="Policy Conversion Rate"
               value={totalLeads > 0 ? (totalSynergyIssuedLeads / totalLeads) * 100 : 0}
+              precision={2}
+              valueStyle={{ color: '#52c41a' }}
+              suffix="%"
+            />
+          </Card>
+        </Col>
+        <Col span={8}>
+          <Card>
+            <Statistic
+              title="Transfer Rate"
+              value={totalLeads > 0 ? (totalTransfers / totalLeads) * 100 : 0}
               precision={2}
               valueStyle={{ color: '#52c41a' }}
               suffix="%"
@@ -1396,11 +1525,13 @@ export default function RevenueTrackingPage() {
                 <Table.Summary.Cell index={4}><strong>{totalWeekendLeads}</strong></Table.Summary.Cell>
                 <Table.Summary.Cell index={5}><strong>-</strong></Table.Summary.Cell>
                 <Table.Summary.Cell index={6}><strong>${totalLeadCosts.toFixed(2)}</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={7}><strong>{totalSynergyIssuedLeads}</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={8}><strong>{totalLeads > 0 ? ((totalSynergyIssuedLeads / totalLeads) * 100).toFixed(2) : '0.00'}%</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={9}><strong>${totalSynergyPayout.toFixed(2)}</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={10}><strong>${(blandAICosts + pitchPerfectCosts).toFixed(2)}</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={11}><strong>${(totalSynergyPayout - totalLeadCosts - blandAICosts - pitchPerfectCosts).toFixed(2)}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={7}><strong>{totalTransfers}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={8}><strong>{totalSynergyIssuedLeads}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={9}><strong>{totalLeads > 0 ? ((totalSynergyIssuedLeads / totalLeads) * 100).toFixed(2) : '0.00'}%</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={10}><strong>{totalLeads > 0 ? ((totalTransfers / totalLeads) * 100).toFixed(2) : '0.00'}%</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={11}><strong>${totalSynergyPayout.toFixed(2)}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={12}><strong>${(blandAICosts + pitchPerfectCosts).toFixed(2)}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={13}><strong>${(totalSynergyPayout - totalLeadCosts - blandAICosts - pitchPerfectCosts).toFixed(2)}</strong></Table.Summary.Cell>
               </Table.Summary.Row>
             )}
           />

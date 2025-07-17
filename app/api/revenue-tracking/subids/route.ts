@@ -9,6 +9,7 @@ interface SubIdAggregation {
   weekday_leads: number;
   weekend_leads: number;
   policy_count: number;
+  transfer_count: number;
   total_cost: number;
 }
 
@@ -62,7 +63,7 @@ export async function GET(request: NextRequest) {
     // Get issued policies for this list_id in the date range (matches main revenue API exactly)
     const { data: policyLeads, error: policyError } = await supabase
       .from('leads')
-      .select('id, custom_fields, policy_postback_date, created_at, list_id')
+      .select('id, custom_fields, policy_postback_date, created_at, list_id, transfer_status')
       .eq('list_id', listId)
       .eq('policy_status', 'issued')
       .gte('policy_postback_date', `${effectiveStartDate}T00:00:00-05:00`)
@@ -173,12 +174,18 @@ export async function GET(request: NextRequest) {
             weekday_leads: 0,
             weekend_leads: 0,
             policy_count: 0,
+            transfer_count: 0,
             total_cost: 0
           };
         }
         
         // Increment policy count (this is the core revenue metric)
         subidGroups[subidValue].policy_count++;
+        
+        // Increment transfer count if this policy lead was transferred
+        if (lead.transfer_status === true) {
+          subidGroups[subidValue].transfer_count++;
+        }
         
         // Add cost if available for this policy lead
         if (costMap[lead.id]) {
@@ -202,6 +209,7 @@ export async function GET(request: NextRequest) {
             weekday_leads: 0,
             weekend_leads: 0,
             policy_count: 0,
+            transfer_count: 0,
             total_cost: 0
           };
         }
@@ -221,6 +229,46 @@ export async function GET(request: NextRequest) {
         
         // Add cost if available (but don't double-count if already added from policy data)
         if (costMap[lead.id] && !policyLeads?.find(p => p.id === lead.id)) {
+          subidGroups[subidValue].total_cost += costMap[lead.id];
+        }
+      });
+    }
+    
+    // Get transferred leads for this list_id in the date range
+    const { data: transferLeads, error: transferError } = await supabase
+      .from('leads')
+      .select('id, custom_fields, transferred_at, created_at, list_id')
+      .eq('list_id', listId)
+      .eq('transfer_status', true)
+      .gte('transferred_at', `${effectiveStartDate}T00:00:00-05:00`)
+      .lte('transferred_at', `${effectiveEndDate}T23:59:59-05:00`)
+      .limit(50000);
+    
+    if (transferError) {
+      console.error('Error fetching transfer leads:', transferError);
+    }
+    
+    // Step 3: Process transferred leads (add to groups from policies/leads)
+    if (transferLeads) {
+      transferLeads.forEach(lead => {
+        const subidValue = normalizeSubIdKey(lead.custom_fields) || 'No SUBID';
+        
+        if (!subidGroups[subidValue]) {
+          subidGroups[subidValue] = {
+            subid_value: subidValue,
+            leads_count: 0,
+            weekday_leads: 0,
+            weekend_leads: 0,
+            policy_count: 0,
+            transfer_count: 0,
+            total_cost: 0
+          };
+        }
+        
+        subidGroups[subidValue].transfer_count++;
+        
+        // Add cost if available
+        if (costMap[lead.id]) {
           subidGroups[subidValue].total_cost += costMap[lead.id];
         }
       });
@@ -261,6 +309,7 @@ export async function GET(request: NextRequest) {
         ai_costs_allocated: group.total_cost,
         net_profit: (group.policy_count * 120) - (group.weekday_leads * costPerLead) - group.total_cost,
         policy_rate: policyRate,
+        transfers_count: group.transfer_count,
         is_subid_row: true
       };
     });
