@@ -836,11 +836,12 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
         }
         
         // Include the dialer response in our API response
+        const responseBidValue = routingData?.bid || 0.00;
         const responseObj: any = {
-          success: true,
+          success: responseBidValue > 0.00,
           lead_id: data[0].id,
           data: data[0],
-          bid: routingData?.bid || 0.00,
+          bid: responseBidValue,
           dialer: {
             type: 'internal',
             forwarded: true,
@@ -854,11 +855,12 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
         console.error('Error forwarding lead to dialer:', dialerError);
         // Still return success for the lead insertion, but include the dialer error
         // Include bid information for successful lead submission even when dialer fails
+        const errorBidValue = routingData?.bid || 0.00;
         return NextResponse.json({ 
-          success: true, 
+          success: errorBidValue > 0.00, 
           lead_id: data[0].id, // Explicitly return the lead ID
           data: data[0],
-          bid: routingData?.bid || 0.00,
+          bid: errorBidValue,
           dialer: {
             forwarded: false,
             error: dialerError instanceof Error ? dialerError.message : 'Unknown error'
@@ -868,11 +870,12 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     }
     
     // Include bid in the response for successful submissions
+    const finalBidValue = routingData?.bid || 0.00;
     return NextResponse.json({
-      success: true, 
+      success: finalBidValue > 0.00, 
       lead_id: data[0].id, // Explicitly return the lead ID
       data: data[0],
-      bid: routingData?.bid || 0.00
+      bid: finalBidValue
     });
   } catch (error: any) {
     console.error('Error in leads API:', error);
@@ -1470,7 +1473,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
 
     // Include bid, lead_id, and dialer response in the API response
     const responseObj: any = {
-      success: true, 
+      success: bid > 0.00, 
       lead_id: data[0].id, // Explicitly return the lead ID
       data: data[0],
       bid: bid
