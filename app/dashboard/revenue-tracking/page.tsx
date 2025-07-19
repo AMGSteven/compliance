@@ -121,6 +121,11 @@ export default function RevenueTrackingPage() {
   const [blandAILoading, setBlandAILoading] = useState<boolean>(false);
   const [pitchPerfectCosts, setPitchPerfectCosts] = useState<number>(0);
   const [ppLoading, setPpLoading] = useState<boolean>(false);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(20);
+  const [totalRecords, setTotalRecords] = useState<number>(0);
 
   // Helper function to generate dynamic cost titles based on timeFrame
   const getCostTitle = (baseName: string) => {
@@ -658,6 +663,7 @@ export default function RevenueTrackingPage() {
       });
       
       setRevenueData(revenueArray);
+      setTotalRecords(revenueArray.length);
       
       // Calculate totals
       const totalRev = revenueArray.reduce((sum, item) => sum + item.total_lead_costs, 0);
@@ -1011,13 +1017,14 @@ export default function RevenueTrackingPage() {
     const minLeadCount = subidFilters[listId] || 10;
     const filteredData = data.filter(item => item.leads_count >= minLeadCount);
     
-    // Create SUBID-specific columns with proper descriptions and width alignment
+    // Create SUBID-specific columns with proper descriptions and dynamic width
     const subidColumns = columns.map(col => {
       if (col.key === 'description') {
         return {
           ...col,
           title: 'SUBID',
-          width: '20%', // Match main table width
+          minWidth: 200, // Match main table minWidth
+          ellipsis: true,
           render: (value: any, subidRecord: RevenueData) => {
             return subidRecord.subid_value || 'N/A';
           }
@@ -1039,7 +1046,15 @@ export default function RevenueTrackingPage() {
     });
     
     return (
-      <div style={{ margin: '16px 0', paddingLeft: '48px' }}>
+      <div style={{ 
+        margin: '16px 0', 
+        paddingLeft: '48px', 
+        overflowX: 'auto',
+        width: '100%',
+        borderRadius: '6px',
+        border: '1px solid #f0f0f0',
+        background: '#fafafa'
+      }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
           <div>
             <Text strong>
@@ -1082,6 +1097,7 @@ export default function RevenueTrackingPage() {
           rowKey={(record) => `subid-${record.parent_list_id}-${record.subid_value}`}
           pagination={false}
           size="small"
+          scroll={{ x: true }}
           rowClassName={(record: RevenueData) => {
           const policyRate = record.policy_rate || 0;
           if (policyRate >= 1.0) {
@@ -1131,26 +1147,28 @@ export default function RevenueTrackingPage() {
       title: 'List ID',
       dataIndex: 'list_id',
       key: 'list_id',
-      width: '20%',
+      minWidth: 120,
+      ellipsis: true,
     },
     {
       title: 'Description',
       dataIndex: 'description',
       key: 'description',
-      width: '20%',
+      minWidth: 200,
+      ellipsis: true,
     },
     {
       title: 'Total Leads',
       dataIndex: 'leads_count',
       key: 'leads_count',
-      width: '12%',
+      minWidth: 100,
       sorter: (a: RevenueData, b: RevenueData) => a.leads_count - b.leads_count,
     },
     {
       title: 'Weekday Leads',
       dataIndex: 'weekday_leads',
       key: 'weekday_leads',
-      width: '12%',
+      minWidth: 110,
       render: (value: number | undefined, record: RevenueData) => 
         value !== undefined ? value : record.leads_count,
       sorter: (a: RevenueData, b: RevenueData) => 
@@ -1160,7 +1178,7 @@ export default function RevenueTrackingPage() {
       title: 'Weekend Leads',
       dataIndex: 'weekend_leads',
       key: 'weekend_leads',
-      width: '12%',
+      minWidth: 110,
       render: (value: number | undefined) => 
         value !== undefined ? value : 0,
       sorter: (a: RevenueData, b: RevenueData) => 
@@ -1170,7 +1188,7 @@ export default function RevenueTrackingPage() {
       title: 'Cost Per Lead',
       dataIndex: 'cost_per_lead',
       key: 'cost_per_lead',
-      width: '12%',
+      minWidth: 110,
       render: (value: number) => `$${value.toFixed(2)}`,
       sorter: (a: RevenueData, b: RevenueData) => a.cost_per_lead - b.cost_per_lead,
     },
@@ -1178,7 +1196,7 @@ export default function RevenueTrackingPage() {
       title: 'Total Lead Costs',
       dataIndex: 'total_lead_costs',
       key: 'total_lead_costs',
-      width: '12%',
+      minWidth: 130,
       render: (value: number) => `$${value.toFixed(2)}`,
       sorter: (a: RevenueData, b: RevenueData) => a.total_lead_costs - b.total_lead_costs,
     },
@@ -1186,7 +1204,7 @@ export default function RevenueTrackingPage() {
       title: 'Transfers',
       dataIndex: 'transfers_count',
       key: 'transfers_count',
-      width: '12%',
+      minWidth: 90,
       render: (value: number | undefined) => value || 0,
       sorter: (a: RevenueData, b: RevenueData) => (a.transfers_count || 0) - (b.transfers_count || 0),
     },
@@ -1194,7 +1212,7 @@ export default function RevenueTrackingPage() {
       title: 'Synergy Issued Leads',
       dataIndex: 'synergy_issued_leads',
       key: 'synergy_issued_leads',
-      width: '12%',
+      minWidth: 140,
       render: (value: number | undefined) => 
         value !== undefined ? value : 0,
       sorter: (a: RevenueData, b: RevenueData) => 
@@ -1204,7 +1222,7 @@ export default function RevenueTrackingPage() {
       title: 'Policy Conversion Rate',
       dataIndex: 'policy_rate',
       key: 'policy_rate',
-      width: '12%',
+      minWidth: 150,
       render: (value: number | undefined) => 
         value !== undefined ? `${value.toFixed(2)}%` : '0.00%',
       sorter: (a: RevenueData, b: RevenueData) => 
@@ -1214,7 +1232,7 @@ export default function RevenueTrackingPage() {
       title: 'Transfer Rate',
       dataIndex: 'transfers_count',
       key: 'transfer_rate',
-      width: '12%',
+      minWidth: 110,
       render: (value: number | undefined, record: RevenueData) => 
         value !== undefined ? `${((value / (revenueData.find(item => item.list_id === record.list_id)?.leads_count || 0)) * 100).toFixed(2)}%` : '0.00%',
       sorter: (a: RevenueData, b: RevenueData) => {
@@ -1227,7 +1245,7 @@ export default function RevenueTrackingPage() {
       title: 'Synergy Payout',
       dataIndex: 'synergy_payout',
       key: 'synergy_payout',
-      width: '12%',
+      minWidth: 120,
       render: (value: number | undefined) => 
         value !== undefined ? `$${value.toFixed(2)}` : '$0.00',
       sorter: (a: RevenueData, b: RevenueData) => 
@@ -1237,7 +1255,7 @@ export default function RevenueTrackingPage() {
       title: 'AI Costs Allocated',
       dataIndex: 'ai_costs_allocated',
       key: 'ai_costs_allocated',
-      width: '12%',
+      minWidth: 130,
       render: (value: number | undefined) => 
         value !== undefined ? `$${value.toFixed(2)}` : '$0.00',
       sorter: (a: RevenueData, b: RevenueData) => 
@@ -1247,7 +1265,7 @@ export default function RevenueTrackingPage() {
       title: 'Cost Per Acquisition',
       dataIndex: 'synergy_issued_leads',
       key: 'cost_per_acquisition',
-      width: '12%',
+      minWidth: 140,
       render: (synergyLeads: number | undefined, record: RevenueData) => {
         if (!synergyLeads || synergyLeads === 0) return 'N/A';
         const cpa = record.total_lead_costs / synergyLeads;
@@ -1263,7 +1281,7 @@ export default function RevenueTrackingPage() {
       title: 'Net Profit',
       dataIndex: 'net_profit',
       key: 'net_profit',
-      width: '12%',
+      minWidth: 110,
       render: (value: number | undefined) => 
         value !== undefined ? `$${value.toFixed(2)}` : '$0.00',
       sorter: (a: RevenueData, b: RevenueData) => 
@@ -1272,7 +1290,12 @@ export default function RevenueTrackingPage() {
   ];
 
   return (
-    <div style={{ padding: '20px' }}>
+    <div style={{ 
+      padding: '24px', 
+      width: '100%',
+      maxWidth: '100vw',
+      overflowX: 'hidden'
+    }}>
       <style dangerouslySetInnerHTML={{ __html: subidStyles }} />
       <Title level={2}>Revenue Tracking Dashboard</Title>
       
@@ -1490,31 +1513,46 @@ export default function RevenueTrackingPage() {
         </Space>
       </div>
       
-      <div style={{ marginTop: '16px' }}>
+      <div style={{ 
+        overflowX: 'auto',
+        width: '100%',
+        borderRadius: '8px',
+        border: '1px solid #f0f0f0'
+      }}>
         <Spin spinning={loading}>
           <Table
             columns={columns}
             dataSource={revenueData}
             rowKey="list_id"
+            scroll={{ x: true }}
             expandable={{
               expandedRowRender: renderExpandedRow,
-              onExpand: handleRowExpand,
               expandedRowKeys: expandedRowKeys,
-              expandRowByClick: false,
-              expandIcon: ({ expanded, onExpand, record }) => (
-                <span
-                  onClick={(e) => onExpand(record, e)}
-                  style={{ cursor: 'pointer', marginRight: '8px' }}
-                >
-                  {expanded ? '▼' : '▶'} SUBIDs
-                </span>
-              )
+              onExpand: (expanded, record) => {
+                if (expanded) {
+                  setExpandedRowKeys(prev => [...prev, record.list_id]);
+                  fetchSubidData(record.list_id);
+                } else {
+                  setExpandedRowKeys(prev => prev.filter(key => key !== record.list_id));
+                }
+              },
+              rowExpandable: () => true,
             }}
             pagination={{
-              pageSize: 20,
+              current: currentPage,
+              pageSize: pageSize,
+              total: totalRecords,
               showSizeChanger: true,
               showQuickJumper: true,
-              showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} items`,
+              showTotal: (total, range) => 
+                `${range[0]}-${range[1]} of ${total} items`,
+              onChange: (page, size) => {
+                setCurrentPage(page);
+                if (size !== pageSize) {
+                  setPageSize(size);
+                  setCurrentPage(1);
+                }
+              },
             }}
             summary={() => (
               <Table.Summary.Row>
