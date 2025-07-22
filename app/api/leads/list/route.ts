@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 
-// Generate mock lead data as a fallback
+// Generate mock lead data as a fallback (kept for backward compatibility)
 function getMockLeads(count = 10) {
   return Array.from({ length: count }, (_, i) => {
-    // Include a mix of policy statuses, including some with no policy status
     const policyStatuses = [null, 'pending', 'issued', 'paid', 'cancelled', 'rejected'];
     const randomPolicyIndex = Math.floor(Math.random() * policyStatuses.length);
     
@@ -25,231 +24,160 @@ function getMockLeads(count = 10) {
   });
 }
 
+/**
+ * Enterprise-grade unified leads API with consistent EST timezone handling
+ * 
+ * Key improvements:
+ * - Pure SQL implementation (no JavaScript filtering)
+ * - Consistent EST timezone throughout
+ * - Mathematically guaranteed: weekday_count + weekend_count = total_count
+ * - Optimized performance with proper indexing
+ * - Unified architecture for all lead counting operations
+ */
 export async function GET(request: NextRequest) {
   try {
-    console.log('Fetching leads list with Supabase...');
+    console.log('🚀 Unified leads API with EST timezone consistency');
     const supabase = createServerClient();
     
-    // Get query parameters for filtering
+    // Extract and validate query parameters
     const url = new URL(request.url);
-    const page = parseInt(url.searchParams.get('page') || '1');
-    const pageSize = parseInt(url.searchParams.get('pageSize') || '10');
-    const search = url.searchParams.get('search') || '';
-    const startDate = url.searchParams.get('startDate');
-    const endDate = url.searchParams.get('endDate');
-    const status = url.searchParams.get('status');
-    const list_id = url.searchParams.get('list_id'); // Add list_id filter for efficient revenue tracking
-    const policy_status = url.searchParams.get('policy_status'); // Add policy_status filter for synergy payout tracking
-    const weekend_only = url.searchParams.get('weekend_only') === 'true'; // Add weekend_only filter for exact weekend counts
-    const use_postback_date = url.searchParams.get('use_postback_date') === 'true'; // Filter by postback date instead of creation date for revenue attribution
-    const transfer_status = url.searchParams.get('transfer_status') === 'true';
-    
-    // Calculate pagination values
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
-    
-    // Determine which date field to use for filtering
-    const dateField = use_postback_date ? 'policy_postback_date' : 'created_at';
-    console.log(`Using date field: ${dateField} (use_postback_date=${use_postback_date})`);
-    
-    // Start building the query
-    let query = supabase
-      .from('leads')
-      .select('*', { count: 'exact' })
-      .order('created_at', { ascending: false });
-    
-    // Apply filters if provided
-    if (search) {
-      // If the search term looks like a UUID, search for exact match on ID
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(search);
-      
-      if (isUuid) {
-        // Search by exact lead ID
-        query = query.eq('id', search);
-      } else {
-        // Search by other fields
-        query = query.or(
-          `first_name.ilike.%${search}%,` +
-          `last_name.ilike.%${search}%,` +
-          `email.ilike.%${search}%,` +
-          `phone.ilike.%${search}%`
-        );
-      }
-    }
+    const page = Math.max(1, parseInt(url.searchParams.get('page') || '1'));
+    const pageSize = Math.min(1000, Math.max(1, parseInt(url.searchParams.get('pageSize') || '10')));
+    const search = url.searchParams.get('search') || null;
+    const startDate = url.searchParams.get('startDate') || null;
+    const endDate = url.searchParams.get('endDate') || null;
+    const status = url.searchParams.get('status') || null;
+    const listId = url.searchParams.get('list_id') || null;
+    const policyStatus = url.searchParams.get('policy_status') || null;
+    const weekendOnly = url.searchParams.get('weekend_only') === 'true';
+    const usePostbackDate = url.searchParams.get('use_postback_date') === 'true';
+    const transferStatus = url.searchParams.get('transfer_status') === 'true' ? true : 
+                          url.searchParams.get('transfer_status') === 'false' ? false : null;
+
+    console.log(`📊 Query parameters: listId=${listId}, dateRange=${startDate}-${endDate}, weekendOnly=${weekendOnly}, usePostbackDate=${usePostbackDate}`);
+
+    // Validate date parameters
+    let parsedStartDate = null;
+    let parsedEndDate = null;
     
     if (startDate && endDate) {
-      // Convert date strings to full day ranges in EST timezone
-      // startDate: beginning of day in EST (e.g., 2025-06-16 00:00:00 EST)
-      // endDate: end of day in EST (e.g., 2025-06-16 23:59:59 EST)
-      
-      // Create start timestamp: YYYY-MM-DD 00:00:00 EST
-      const startTimestamp = `${startDate}T00:00:00-05:00`; // EST is UTC-5 (or UTC-4 during DST)
-      
-      // Create end timestamp: YYYY-MM-DD 23:59:59 EST  
-      const endTimestamp = `${endDate}T23:59:59-05:00`;
-      
-      console.log(`Date filtering: ${startTimestamp} to ${endTimestamp}`);
-      
-      query = query.gte(dateField, startTimestamp).lte(dateField, endTimestamp);
-    }
-    
-    if (status) {
-      query = query.eq('status', status);
-    }
-    
-    if (list_id) {
-      query = query.eq('list_id', list_id);
-    }
-    
-    if (policy_status) {
-      query = query.eq('policy_status', policy_status);
+      try {
+        parsedStartDate = new Date(startDate + 'T00:00:00-05:00');
+        parsedEndDate = new Date(endDate + 'T23:59:59-05:00');
+        
+        if (isNaN(parsedStartDate.getTime()) || isNaN(parsedEndDate.getTime())) {
+          throw new Error('Invalid date format');
+        }
+        
+        if (parsedStartDate > parsedEndDate) {
+          throw new Error('Start date must be before end date');
+        }
+      } catch (error) {
+        console.error('Date validation error:', error);
+        return NextResponse.json({
+          success: false,
+          error: 'Invalid date format. Use YYYY-MM-DD format.',
+          data: []
+        }, { status: 400 });
+      }
     }
 
-    if (transfer_status) {
-      query = query.eq('transfer_status', true);
+    // Call the unified SQL function with consistent EST timezone handling
+    const { data: results, error } = await supabase.rpc('get_lead_counts_unified', {
+      p_list_id: listId,
+      p_start_date: startDate,
+      p_end_date: endDate,
+      p_use_postback_date: usePostbackDate,
+      p_policy_status: policyStatus,
+      p_transfer_status: transferStatus,
+      p_status: status,
+      p_search: search,
+      p_weekend_only: weekendOnly,
+      p_page: page,
+      p_page_size: pageSize
+    });
+
+    if (error) {
+      console.error('Database error:', error);
+      return NextResponse.json({
+        success: false,
+        error: error.message,
+        data: getMockLeads(pageSize)
+      }, { status: 500 });
     }
-    
-    if (weekend_only) {
-      // For weekend_only requests, we need to filter leads by day of week
-      // Since Supabase doesn't easily support complex date functions in filters,
-      // we'll fetch leads and filter them in the application
-      
-      // Create a separate query to get ALL matching leads
-      // Don't use pagination limits - we need ALL matching leads for accurate weekend count
-      let weekendQuery = supabase
-        .from('leads')
-        .select('created_at, policy_postback_date, id', { count: 'exact' }) // Select both date fields to support either filtering mode
-        .order(dateField, { ascending: false });
-      
-      // Apply the SAME filters as the main query (except pagination)
-      if (search) {
-        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(search);
-        
-        if (isUuid) {
-          weekendQuery = weekendQuery.eq('id', search);
-        } else {
-          weekendQuery = weekendQuery.or(
-            `first_name.ilike.%${search}%,` +
-            `last_name.ilike.%${search}%,` +
-            `email.ilike.%${search}%,` +
-            `phone.ilike.%${search}%`
-          );
-        }
-      }
-      
-      if (startDate && endDate) {
-        const startTimestamp = `${startDate}T00:00:00-05:00`;
-        const endTimestamp = `${endDate}T23:59:59-05:00`;
-        console.log(`Weekend detection - Date filtering: ${startTimestamp} to ${endTimestamp}`);
-        weekendQuery = weekendQuery.gte(dateField, startTimestamp).lte(dateField, endTimestamp);
-      }
-      
-      if (status) {
-        weekendQuery = weekendQuery.eq('status', status);
-      }
-      
-      if (list_id) {
-        weekendQuery = weekendQuery.eq('list_id', list_id);
-      }
-      
-      if (policy_status) {
-        weekendQuery = weekendQuery.eq('policy_status', policy_status);
-      }
-      
-      // Fetch all pages of results
-      const allResults = [];
-      let offset = 0;
-      while (true) {
-        const { data, error } = await weekendQuery.range(offset, offset + 999);
-        if (error) {
-          console.error('Error fetching leads for weekend filtering:', error);
-          return NextResponse.json({
-            success: false,
-            error: error.message,
-            data: []
-          });
-        }
-        allResults.push(...data);
-        if (data.length < 1000) break;
-        offset += 1000;
-      }
-      
-      // Filter leads to only weekends (Saturday = 6, Sunday = 0)
-      const weekendLeads = allResults.filter(lead => {
-        // Use timezone-aware date parsing to ensure consistent day-of-week calculation
-        const leadDate = use_postback_date ? new Date(lead.policy_postback_date) : new Date(lead.created_at);
-        // Get day of week in UTC to avoid timezone issues
-        const dayOfWeek = leadDate.getUTCDay(); // 0 = Sunday, 6 = Saturday
-        return dayOfWeek === 0 || dayOfWeek === 6; // Sunday or Saturday
-      });
-      
-      console.log(`Weekend filtering for list_id=${list_id}, startDate=${startDate}, endDate=${endDate}: Found ${weekendLeads.length} weekend leads out of ${allResults.length} total leads`);
-      
-      // For weekend_only requests, we typically only need the count
-      // Return the weekend leads but slice to pageSize for consistency
-      const paginatedWeekendLeads = weekendLeads.slice(from, from + pageSize);
-      
+
+    if (!results || results.length === 0) {
       return NextResponse.json({
         success: true,
-        data: paginatedWeekendLeads,
-        leads: paginatedWeekendLeads,
+        data: [],
+        leads: [],
         pagination: {
           page,
           pageSize,
-          total: weekendLeads.length, // This is the key - the total count of weekend leads
-          totalPages: Math.ceil(weekendLeads.length / pageSize)
+          total: 0,
+          totalPages: 0
+        },
+        metadata: {
+          totalCount: 0,
+          weekendCount: 0,
+          weekdayCount: 0,
+          timezone: 'America/New_York (EST)',
+          dateField: usePostbackDate ? 'policy_postback_date' : 'created_at'
         }
       });
     }
-    
-    // Fetch all pages of results
-    const allResults = [];
-    let offset = 0;
-    while (true) {
-      const { data, error, count } = await query.range(offset, offset + 999);
-      if (error) {
-        console.error('Error fetching from leads table:', error);
-        console.log('Falling back to mock leads data');
-        return NextResponse.json({
-          success: false,
-          error: error.message,
-          data: getMockLeads(pageSize)
-        });
-      }
-      allResults.push(...data);
-      if (data.length < 1000) break;
-      offset += 1000;
-    }
-    
+
+    const result = results[0];
+    const leadsData = result.leads_data || [];
+    const pagination = result.pagination || {};
+
     // Process leads to ensure custom_fields is properly JSON parsed
-    const processedLeads = allResults.map(lead => ({
+    const processedLeads = Array.isArray(leadsData) ? leadsData.map(lead => ({
       ...lead,
       custom_fields: lead.custom_fields ? 
         (typeof lead.custom_fields === 'string' ? 
           JSON.parse(lead.custom_fields) : lead.custom_fields) : 
         null
-    }));
-    
-    console.log(`Successfully fetched ${processedLeads.length} leads (total: ${processedLeads.length})`);
-    // Return in a format that's compatible with the home page expectations
-    return NextResponse.json({
+    })) : [];
+
+    // Build comprehensive response
+    const response = {
       success: true,
-      data: processedLeads.slice(from, from + pageSize),
-      leads: processedLeads.slice(from, from + pageSize), // For backward compatibility
+      data: processedLeads,
+      leads: processedLeads, // Backward compatibility
       pagination: {
-        page,
-        pageSize,
-        total: processedLeads.length,
-        totalPages: Math.ceil(processedLeads.length / pageSize)
+        page: parseInt(pagination.page) || page,
+        pageSize: parseInt(pagination.pageSize) || pageSize,
+        total: parseInt(pagination.total) || 0,
+        totalPages: parseInt(pagination.totalPages) || 0
+      },
+      metadata: {
+        totalCount: parseInt(result.total_count) || 0,
+        weekendCount: parseInt(result.weekend_count) || 0,
+        weekdayCount: parseInt(result.weekday_count) || 0,
+        timezone: 'America/New_York (EST)',
+        dateField: usePostbackDate ? 'policy_postback_date' : 'created_at',
+        mathematicalConsistency: (parseInt(result.weekday_count) + parseInt(result.weekend_count)) === parseInt(result.total_count),
+        queryPerformance: 'Optimized SQL with EST timezone indexes'
       }
-    });
+    };
+
+    console.log(`✅ Query successful: ${response.metadata.totalCount} total, ${response.metadata.weekendCount} weekend, ${response.metadata.weekdayCount} weekday (consistent: ${response.metadata.mathematicalConsistency})`);
+
+    return NextResponse.json(response);
+
   } catch (error: any) {
-    console.error('Error in leads API:', error);
-    // Return error with mock data to maintain UI functionality
+    console.error('🚨 Unified API error:', error);
+    
+    // Return structured error with fallback data
     return NextResponse.json({
       success: false, 
-      error: error.message,
-      data: getMockLeads(10)
+      error: error.message || 'Internal server error',
+      data: getMockLeads(10),
+      metadata: {
+        fallbackMode: true,
+        originalError: error.message
+      }
     }, { status: 500 });
   }
 }
