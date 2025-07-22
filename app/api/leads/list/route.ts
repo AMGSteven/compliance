@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
                           url.searchParams.get('transfer_status') === 'false' ? false : null;
 
     console.log(`📊 Query parameters: listId=${listId}, dateRange=${startDate}-${endDate}, weekendOnly=${weekendOnly}, usePostbackDate=${usePostbackDate}`);
-
+    
     // Validate date parameters
     let parsedStartDate = null;
     let parsedEndDate = null;
@@ -67,8 +67,8 @@ export async function GET(request: NextRequest) {
         
         if (isNaN(parsedStartDate.getTime()) || isNaN(parsedEndDate.getTime())) {
           throw new Error('Invalid date format');
-        }
-        
+    }
+
         if (parsedStartDate > parsedEndDate) {
           throw new Error('Start date must be before end date');
         }
@@ -97,11 +97,11 @@ export async function GET(request: NextRequest) {
       p_page_size: pageSize
     });
 
-    if (error) {
+        if (error) {
       console.error('Database error:', error);
-      return NextResponse.json({
-        success: false,
-        error: error.message,
+          return NextResponse.json({
+            success: false,
+            error: error.message,
         data: getMockLeads(pageSize)
       }, { status: 500 });
     }
@@ -126,11 +126,11 @@ export async function GET(request: NextRequest) {
         }
       });
     }
-
+    
     const result = results[0];
     const leadsData = result.leads_data || [];
     const pagination = result.pagination || {};
-
+    
     // Process leads to ensure custom_fields is properly JSON parsed
     const processedLeads = Array.isArray(leadsData) ? leadsData.map(lead => ({
       ...lead,
@@ -139,7 +139,7 @@ export async function GET(request: NextRequest) {
           JSON.parse(lead.custom_fields) : lead.custom_fields) : 
         null
     })) : [];
-
+    
     // Build comprehensive response
     const response = {
       success: true,

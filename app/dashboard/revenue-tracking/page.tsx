@@ -254,6 +254,7 @@ export default function RevenueTrackingPage() {
             countUrl.searchParams.append('startDate', dateRange[0].format('YYYY-MM-DD'));
             countUrl.searchParams.append('endDate', dateRange[1].format('YYYY-MM-DD'));
           } else {
+            // Calculate dates for preset timeframes (matches SUBID API logic)
             let startDate, endDate;
             
             switch (timeFrame) {

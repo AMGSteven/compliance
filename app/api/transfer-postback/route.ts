@@ -75,40 +75,14 @@ export async function POST(request: Request) {
     }
     
     const leadId = leads[0].id;
-    const currentTransferStatus = leads[0].transfer_status;
-    const currentTransferredAt = leads[0].transferred_at;
-
-    // Add de-dupe check
-    if (currentTransferredAt) {
-      const now = new Date();
-      const lastTransferTime = new Date(currentTransferredAt);
-      const hoursSinceLast = (now.getTime() - lastTransferTime.getTime()) / (1000 * 60 * 60);
-      if (hoursSinceLast < 24) {
-        console.log(`De-dupe: Transfer postback for lead ${leadId} already processed within last 24 hours`);
-        return NextResponse.json({
-          success: true,
-          message: 'De-dupe: Transfer already processed within last 24 hours',
-          lead_id: leadId,
-          last_transferred_at: currentTransferredAt
-        });
-      }
-    }
-
-    // Existing check for already transferred
-    if (currentTransferStatus === true) {
-      console.log(`Lead ${leadId} already transferred, skipping update`);
-      return NextResponse.json({
-        success: true,
-        message: 'Lead already marked as transferred',
-        lead_id: leadId
-      });
-    }
-    
     const transferDate = new Date().toISOString();
     
-    console.log(`Updating lead ${leadId} to transferred at ${transferDate}`);
+    console.log(`Processing raw transfer postback for lead ${leadId} at ${transferDate}`);
     
-    // Update the lead record
+    // REMOVED: Dedupe logic that prevented multiple transfers within 24 hours
+    // Now we process every transfer postback as a raw event
+    
+    // Update the lead record (always update to capture the latest transfer timestamp)
     const { data: updateData, error: updateError } = await supabase
       .from('leads')
       .update({
@@ -127,7 +101,24 @@ export async function POST(request: Request) {
       );
     }
     
-    // Optionally log the event (create a transfers table if needed, but for now, just update leads)
+    // Log this raw transfer postback event (for accurate counting)
+    // The transfer_postbacks table was created via database migration
+    const { data: logData, error: logError } = await supabase
+      .from('transfer_postbacks')
+      .insert([{
+        lead_id: leadId,
+        compliance_lead_id: compliance_lead_id,
+        transfer_notes: transfer_notes || null,
+        payload: body,
+        created_at: transferDate
+      }])
+      .select('id');
+    
+    if (logError) {
+      console.warn('Error logging transfer postback event (continuing anyway):', logError);
+    } else {
+      console.log(`✅ Logged raw transfer postback event: ${logData?.[0]?.id}`);
+    }
     
     console.log(`✅ Transfer postback processed successfully for lead ${leadId} at ${transferDate}`);
     
@@ -135,7 +126,8 @@ export async function POST(request: Request) {
       success: true,
       message: 'Transfer status updated successfully',
       lead_id: leadId,
-      transferred_at: transferDate
+      transferred_at: transferDate,
+      raw_transfer_logged: !logError
     });
   } catch (error) {
     console.error('Error processing transfer postback:', error);
