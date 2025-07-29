@@ -1,11 +1,24 @@
 import { NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
+import { createClient } from '@supabase/supabase-js';
 
 // Transfer statuses
 export const TRANSFER_STATUSES = {
   PENDING: 'pending',
   TRANSFERRED: 'transferred',
 };
+
+// Create service role client for database operations
+function createServiceClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const serviceRoleKey = process.env.DATABASE_SUPABASE_SERVICE_ROLE_KEY!;
+  
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  });
+}
 
 // Main POST handler for transfer postbacks
 export async function POST(request: Request) {
@@ -14,8 +27,8 @@ export async function POST(request: Request) {
     const body = await request.json();
     console.log('Received transfer postback:', JSON.stringify(body));
     
-    // Create Supabase client
-    const supabase = createServerClient();
+    // Create Supabase service role client for database operations
+    const supabase = createServiceClient();
     
     // Extract fields from the request
     const {
