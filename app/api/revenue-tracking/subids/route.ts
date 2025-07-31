@@ -60,34 +60,24 @@ export async function GET(request: NextRequest) {
     const effectiveStartDate = startDate;
     const effectiveEndDate = endDate;
     
-    // Get issued policies for this list_id in the date range (matches main revenue API exactly)
-    const { data: policyLeads, error: policyError } = await supabase
-      .from('leads')
-      .select('id, custom_fields, policy_postback_date, created_at, list_id, transfer_status')
-      .eq('list_id', listId)
-      .eq('policy_status', 'issued')
-      .gte('policy_postback_date', `${effectiveStartDate}T00:00:00-05:00`)
-      .lte('policy_postback_date', `${effectiveEndDate}T23:59:59-05:00`)
-      .limit(50000);
+    // ✅ FIXED: Convert EDT dates to UTC for proper comparison (July = EDT = UTC-4)
+    const startDateUTC = `${effectiveStartDate}T04:00:00.000Z`; // EDT midnight = UTC 4am
+    const nextDay = new Date(effectiveEndDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+    const nextDayStr = nextDay.toISOString().split('T')[0];
+    const endDateUTC = `${nextDayStr}T03:59:59.999Z`; // EDT 23:59:59 = UTC 3:59am next day
     
-    if (policyError) {
-      console.error('Error fetching policy leads:', policyError);
-      return NextResponse.json({
-        success: false,
-        error: `Failed to fetch policy data: ${policyError.message}`
-      });
-    }
+    console.log(`🕐 Using EDT timezone conversion: ${startDateUTC} to ${endDateUTC}`);
     
-    console.log(`Found ${policyLeads?.length || 0} issued policies in date range for list_id ${listId} (matches main API approach) - UPDATED`);
-    
+    // ✅ FIXED: LEAD-FIRST APPROACH (matches main revenue API)
     // Get total lead count first (like main API does)
     const { count: totalLeadCount, error: countError } = await supabase
       .from('leads')
       .select('*', { count: 'exact', head: true })
       .eq('list_id', listId)
       .in('status', ['new', 'success']) // Include both new (modern) and success (legacy) leads
-      .gte('created_at', `${effectiveStartDate}T00:00:00-05:00`)
-      .lte('created_at', `${effectiveEndDate}T23:59:59-05:00`);
+      .gte('created_at', startDateUTC)
+      .lte('created_at', endDateUTC);
       
     if (countError) {
       console.error('Error getting total lead count:', countError);
@@ -97,7 +87,7 @@ export async function GET(request: NextRequest) {
       });
     }
     
-    console.log(`Total leads in range for list_id ${listId}: ${totalLeadCount}`);
+    console.log(`✅ Total leads in range for list_id ${listId}: ${totalLeadCount} (matches main API)`);
     
     // Use smart pagination like main API (1000 rows per page due to Supabase limit)
     let allLeads: any[] = [];
@@ -106,15 +96,15 @@ export async function GET(request: NextRequest) {
     
     console.log(`Fetching ${totalLeadCount} leads in ${totalPages} pages...`);
     
-    // Fetch all leads in batches
+    // ✅ FIXED: Fetch ALL leads created in date range (same as main API)
     for (let page = 0; page < totalPages; page++) {
       const { data: pageLeads, error: pageError } = await supabase
         .from('leads')
-        .select('id, custom_fields, created_at, policy_status, policy_postback_date')
+        .select('id, custom_fields, created_at, policy_status, policy_postback_date, transfer_status, transferred_at')
         .eq('list_id', listId)
         .in('status', ['new', 'success']) // Include both new (modern) and success (legacy) leads
-        .gte('created_at', `${effectiveStartDate}T00:00:00-05:00`)
-        .lte('created_at', `${effectiveEndDate}T23:59:59-05:00`)
+        .gte('created_at', startDateUTC)
+        .lte('created_at', endDateUTC)
         .order('created_at', { ascending: false})
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
         
@@ -132,17 +122,15 @@ export async function GET(request: NextRequest) {
       }
     }
     
-    console.log(`Total leads fetched: ${allLeads.length} (expected: ${totalLeadCount})`);
+    console.log(`✅ Total leads fetched: ${allLeads.length} (expected: ${totalLeadCount})`);
     
-    console.log(`Found ${allLeads?.length || 0} leads created in date range for list_id ${listId} (for volume context)`);
-    
-    // Fetch cost data for this list_id and date range
+    // Fetch cost data for this list_id and date range (using same EDT conversion)
     const { data: costData, error: costError } = await supabase
       .from('pitch_perfect_costs')
       .select('lead_id, billable_cost')
       .eq('billable_status', 'billable')
-      .gte('created_at', `${effectiveStartDate}T00:00:00-05:00`)
-      .lte('created_at', `${effectiveEndDate}T23:59:59-05:00`);
+      .gte('created_at', startDateUTC)
+      .lte('created_at', endDateUTC);
     
     if (costError) {
       console.error('Error fetching cost data:', costError);
@@ -158,137 +146,76 @@ export async function GET(request: NextRequest) {
       });
     }
     
-    // Process leads and group by SUBID - PRIORITIZE POLICY DATA (revenue focus)
+    // ✅ FIXED: Process ALL leads and group by SUBID (lead-first approach)
     const subidGroups: Record<string, SubIdAggregation> = {};
     
-    // Step 1: Process policy leads first (this drives revenue - matches main API)
-    if (policyLeads) {
-      policyLeads.forEach(lead => {
-        const subidValue = normalizeSubIdKey(lead.custom_fields) || 'No SUBID';
-        
-        // Create SUBID group
-        if (!subidGroups[subidValue]) {
-          subidGroups[subidValue] = {
-            subid_value: subidValue,
-            leads_count: 0,
-            weekday_leads: 0,
-            weekend_leads: 0,
-            policy_count: 0,
-            transfer_count: 0,
-            total_cost: 0
-          };
-        }
-        
-        // Increment policy count (this is the core revenue metric)
+    console.log(`🔍 Processing ${allLeads.length} leads and grouping by SUBID...`);
+    
+    // Process all leads created in date range
+    allLeads.forEach(lead => {
+      const subidValue = normalizeSubIdKey(lead.custom_fields) || 'No SUBID';
+      
+      // Create SUBID group if it doesn't exist
+      if (!subidGroups[subidValue]) {
+        subidGroups[subidValue] = {
+          subid_value: subidValue,
+          leads_count: 0,
+          weekday_leads: 0,
+          weekend_leads: 0,
+          policy_count: 0,
+          transfer_count: 0,
+          total_cost: 0
+        };
+      }
+      
+      // ✅ Increment lead count (core metric that drives totals)
+      subidGroups[subidValue].leads_count++;
+      
+      // Check if this lead was created on weekend
+      const leadDate = new Date(lead.created_at);
+      const dayOfWeek = leadDate.getDay(); // 0 = Sunday, 6 = Saturday
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        subidGroups[subidValue].weekend_leads++;
+      } else {
+        subidGroups[subidValue].weekday_leads++;
+      }
+      
+      // ✅ Check if this lead has policy issued (any time, not just in date range)
+      if (lead.policy_status === 'issued') {
         subidGroups[subidValue].policy_count++;
-        
-        // Increment transfer count if this policy lead was transferred
-        if (lead.transfer_status === true) {
-          subidGroups[subidValue].transfer_count++;
-        }
-        
-        // Add cost if available for this policy lead
-        if (costMap[lead.id]) {
-          subidGroups[subidValue].total_cost += costMap[lead.id];
-        }
-      });
-    }
-    
-    console.log(`Created ${Object.keys(subidGroups).length} SUBID groups from policy data`);
-    
-    // Step 2: Supplement with lead volume data for context (but don't override policy-driven groups)
-    if (allLeads) {
-      allLeads.forEach(lead => {
-        const subidValue = normalizeSubIdKey(lead.custom_fields) || 'No SUBID';
-        
-        // Only create new group if policy data didn't already create it
-        if (!subidGroups[subidValue]) {
-          subidGroups[subidValue] = {
-            subid_value: subidValue,
-            leads_count: 0,
-            weekday_leads: 0,
-            weekend_leads: 0,
-            policy_count: 0,
-            transfer_count: 0,
-            total_cost: 0
-          };
-        }
-        
-        // Add lead volume data
-        subidGroups[subidValue].leads_count++;
-        
-        // Check if this lead was created on weekend
-        const leadDate = new Date(lead.created_at);
-        const dayOfWeek = leadDate.getUTCDay(); // 0 = Sunday, 6 = Saturday
-        
-        if (dayOfWeek === 0 || dayOfWeek === 6) {
-          subidGroups[subidValue].weekend_leads++;
-        } else {
-          subidGroups[subidValue].weekday_leads++;
-        }
-        
-        // Add cost if available (but don't double-count if already added from policy data)
-        if (costMap[lead.id] && !policyLeads?.find(p => p.id === lead.id)) {
-          subidGroups[subidValue].total_cost += costMap[lead.id];
-        }
-      });
-    }
-    
-    // Get transferred leads for this list_id in the date range
-    const { data: transferLeads, error: transferError } = await supabase
-      .from('leads')
-      .select('id, custom_fields, transferred_at, created_at, list_id')
-      .eq('list_id', listId)
-      .eq('transfer_status', true)
-      .gte('transferred_at', `${effectiveStartDate}T00:00:00-05:00`)
-      .lte('transferred_at', `${effectiveEndDate}T23:59:59-05:00`)
-      .limit(50000);
-    
-    if (transferError) {
-      console.error('Error fetching transfer leads:', transferError);
-    }
-    
-    // Step 3: Process transferred leads (add to groups from policies/leads)
-    if (transferLeads) {
-      transferLeads.forEach(lead => {
-        const subidValue = normalizeSubIdKey(lead.custom_fields) || 'No SUBID';
-        
-        if (!subidGroups[subidValue]) {
-          subidGroups[subidValue] = {
-            subid_value: subidValue,
-            leads_count: 0,
-            weekday_leads: 0,
-            weekend_leads: 0,
-            policy_count: 0,
-            transfer_count: 0,
-            total_cost: 0
-          };
-        }
-        
+      }
+      
+      // ✅ Check if this lead was transferred (any time, not just in date range)
+      if (lead.transfer_status === true) {
         subidGroups[subidValue].transfer_count++;
-        
-        // Add cost if available
-        if (costMap[lead.id]) {
-          subidGroups[subidValue].total_cost += costMap[lead.id];
-        }
-      });
-    }
+      }
+      
+      // Add cost if available for this lead
+      if (costMap[lead.id]) {
+        subidGroups[subidValue].total_cost += costMap[lead.id];
+      }
+    });
     
-    // Get list routing info for cost_per_lead calculation
+    console.log(`✅ Created ${Object.keys(subidGroups).length} SUBID groups from ${allLeads.length} leads`);
+    
+    // Get list routing info for cost calculation
     const { data: routingData, error: routingError } = await supabase
       .from('list_routings')
       .select('bid, description')
       .eq('list_id', listId)
       .eq('active', true)
-      .limit(1)
-      .maybeSingle();
+      .single();
     
-    const costPerLead = routingData?.bid || 0;
+    if (routingError) {
+      console.error('Error fetching routing data:', routingError);
+    }
+    
+    const costPerLead = routingData?.bid || 0.45; // Default cost per lead
     const listDescription = routingData?.description || listId;
     
     // Convert to final format
     const subidResults = Object.values(subidGroups).map(group => {
-      // Calculate policy rate: (synergy_issued_leads / leads_count) * 100
+      // Calculate policy rate: (policy_count / leads_count) * 100
       const policyRate = group.leads_count > 0
         ? (group.policy_count / group.leads_count) * 100
         : 0;
@@ -317,7 +244,9 @@ export async function GET(request: NextRequest) {
     // Sort by leads count descending
     subidResults.sort((a, b) => b.leads_count - a.leads_count);
     
-    console.log(`Returning ${subidResults.length} SUBID breakdowns for list_id ${listId}`);
+    const totalSubidLeads = subidResults.reduce((sum, item) => sum + item.leads_count, 0);
+    console.log(`✅ Returning ${subidResults.length} SUBID breakdowns for list_id ${listId}`);
+    console.log(`✅ Total leads across all SUBIDs: ${totalSubidLeads} (should match ${totalLeadCount} from main API)`);
     
     return NextResponse.json({
       success: true,
@@ -329,7 +258,9 @@ export async function GET(request: NextRequest) {
           end: effectiveEndDate
         },
         total_subids: subidResults.length,
-        total_leads_with_subids: subidResults.reduce((sum, item) => sum + item.leads_count, 0)
+        total_leads_with_subids: totalSubidLeads,
+        timezone_used: 'EDT (UTC-4)',
+        query_approach: 'FIXED: Lead-first (matches main API)'
       }
     });
     
@@ -337,7 +268,7 @@ export async function GET(request: NextRequest) {
     console.error('Error in SUBID API:', error);
     return NextResponse.json({
       success: false,
-      error: error.message || 'An error occurred while fetching SUBID data'
+      error: error.message
     }, { status: 500 });
   }
 }
