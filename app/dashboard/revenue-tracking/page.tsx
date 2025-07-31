@@ -612,45 +612,32 @@ export default function RevenueTrackingPage() {
     try {
       console.log(`Fetching SUBID data for list_id: ${listId}`);
       
-      // Build URL with same date filtering logic as main data - ALWAYS pass explicit dates
+      // ✅ FIXED: Use the same date logic as main revenue tracking system
       let startDate: dayjs.Dayjs;
       let endDate: dayjs.Dayjs;
       
-      if (timeFrame === 'custom' && dateRange && dateRange[0] && dateRange[1]) {
-        startDate = dateRange[0];
-        endDate = dateRange[1];
-      } else {
-        // Calculate dates for preset timeframes (matches main revenue API logic)
-        switch (timeFrame) {
-          case 'yesterday':
-            startDate = dayjs().subtract(1, 'day').startOf('day');
-            endDate = dayjs().subtract(1, 'day').endOf('day');
-            break;
-          case 'thisWeek':
-            startDate = dayjs().startOf('week');
-            endDate = dayjs().endOf('day');
-            break;
-          case 'lastWeek':
-            startDate = dayjs().subtract(1, 'week').startOf('week');
-            endDate = dayjs().subtract(1, 'week').endOf('week');
-            break;
-          case 'thisMonth':
-            startDate = dayjs().startOf('month');
-            endDate = dayjs().endOf('day');
-            break;
-          case 'lastMonth':
-            startDate = dayjs().subtract(1, 'month').startOf('month');
-            endDate = dayjs().subtract(1, 'month').endOf('month');
-            break;
-          default: // 'today'
-            startDate = dayjs().startOf('day');
-            endDate = dayjs().endOf('day');
+      if (timeFrame === 'custom') {
+        // Use the same date range logic as main system
+        const activeDateRange = getActiveDateRange();
+        if (activeDateRange && activeDateRange[0] && activeDateRange[1]) {
+          startDate = activeDateRange[0];
+          endDate = activeDateRange[1];
+        } else {
+          // Fallback to calculated range
+          const [calcStart, calcEnd] = calculateDateRange();
+          startDate = calcStart;
+          endDate = calcEnd;
         }
+      } else {
+        // Use the same calculateDateRange function as main system
+        const [calcStart, calcEnd] = calculateDateRange();
+        startDate = calcStart;
+        endDate = calcEnd;
       }
       
       const apiUrl = `/api/revenue-tracking/subids?list_id=${listId}&startDate=${startDate.format('YYYY-MM-DD')}&endDate=${endDate.format('YYYY-MM-DD')}`;
       
-      console.log(`Fetching SUBID data for list_id: ${listId}, dateRange: ${startDate.format('YYYY-MM-DD')} to ${endDate.format('YYYY-MM-DD')}`);
+      console.log(`✅ FIXED: Fetching SUBID data for list_id: ${listId}, dateRange: ${startDate.format('YYYY-MM-DD')} to ${endDate.format('YYYY-MM-DD')} (matches main API)`);
       
       const response = await fetch(apiUrl, {
         headers: {
@@ -668,7 +655,7 @@ export default function RevenueTrackingPage() {
         throw new Error(result.error || 'Failed to fetch SUBID data');
       }
       
-      console.log(`Fetched ${result.data.length} SUBIDs for list_id: ${listId}`);
+      console.log(`✅ FIXED: Fetched ${result.data.length} SUBIDs for list_id: ${listId} using correct date range`);
       
       // Cache the data
       setSubidData(prev => ({ ...prev, [listId]: result.data }));
@@ -866,7 +853,7 @@ export default function RevenueTrackingPage() {
 
   // Clear SUBID cache when main data is refreshed
   const refreshData = () => {
-    setSubidData({});
+    setSubidData({});  // ✅ FIXED: Clear SUBID cache since date logic changed
     setExpandedRowKeys([]);
     setLoadingSubids({});
     fetchRevenueData();
@@ -881,6 +868,19 @@ export default function RevenueTrackingPage() {
     fetchPitchPerfectCosts();
     fetchBlandAICosts();
   }, [timeFrame, generationDateRange, processingDateRange]);
+
+  // ✅ CLEAR SUBID CACHE when dates change to ensure fresh data with correct date ranges
+  useEffect(() => {
+    console.log('🗑️ Clearing SUBID cache due to date/temporal mode change...');
+    setSubidData({});
+    setExpandedRowKeys([]);
+  }, [temporalViewMode, generationDateRange, processingDateRange, timeFrame, enableLeadDateFilter, leadGenerationDateRange]);
+
+  // ✅ SIMPLE MOUNT EFFECT - This MUST run
+  useEffect(() => {
+    console.log('🚨 COMPONENT MOUNTED - Calling fetchPitchPerfectCosts NOW');
+    fetchPitchPerfectCosts().catch(err => console.error('Mount fetchPitchPerfectCosts error:', err));
+  }, []); // Empty dependency array = runs once on mount
 
   const exportToCSV = () => {
     // Export functionality
