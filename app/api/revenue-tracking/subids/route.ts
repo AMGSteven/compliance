@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
+import { normalizeSubIdKey } from '@/lib/utils/subid';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,39 +12,6 @@ interface SubIdAggregation {
   policy_count: number;
   transfer_count: number;
   total_cost: number;
-}
-
-// Normalize SUBID key variations for consistent analytics
-function normalizeSubIdKey(customFields: any): string | null {
-  if (!customFields) return null;
-  
-  // ✅ FIXED: Handle custom_fields that come as JSON strings from Supabase
-  let parsedFields: any;
-  
-  if (typeof customFields === 'string') {
-    try {
-      parsedFields = JSON.parse(customFields);
-    } catch (error) {
-      console.error('Failed to parse custom_fields JSON:', error);
-      return null;
-    }
-  } else if (typeof customFields === 'object') {
-    parsedFields = customFields;
-  } else {
-    return null;
-  }
-  
-  // Check common SUBID key variations (case-insensitive)
-  const subidKeys = ['subid', 'sub_id', 'SUBID', 'SUB_ID', 'SubId', 'subId'];
-  
-  for (const key of subidKeys) {
-    const value = parsedFields[key];
-    if (value !== undefined && value !== null && value !== '') {
-      return String(value).trim();
-    }
-  }
-  
-  return null;
 }
 
 export async function GET(request: NextRequest) {

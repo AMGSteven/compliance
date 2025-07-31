@@ -16,6 +16,7 @@ import {
   Code,
   ChevronRight,
   Shield,
+  DollarSign,
 } from "lucide-react"
 
 import {
@@ -60,6 +61,11 @@ const navigationItems = [
         title: "List Routings",
         href: "/dashboard/list-routings",
         icon: Route,
+      },
+      {
+        title: "SUBID Bids",
+        href: "/dashboard/subid-bids",
+        icon: DollarSign,
       },
     ],
   },

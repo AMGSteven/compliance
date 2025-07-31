@@ -224,10 +224,10 @@ export async function GET(request: NextRequest) {
       
       const totalRevenue = formattedData.reduce((sum, source) => sum + source.total_bid_amount, 0);
       const totalLeads = formattedData.reduce((sum, source) => sum + source.leads_count, 0);
-      
-      const queryTime = Date.now() - startTime;
+    
+    const queryTime = Date.now() - startTime;
       console.log(`🎯 CROSS-TEMPORAL APPROACH: Processed ${totalLeads} leads across ${formattedData.length} traffic sources in ${queryTime}ms with cross-temporal analysis`);
-      
+    
       return NextResponse.json({
         success: true,
         data: formattedData,
@@ -394,134 +394,134 @@ export async function GET(request: NextRequest) {
       }
       
       if (results.length === 0) {
-        console.log('⚠️ No results found');
-        return NextResponse.json({
-          success: true,
-          data: [],
-          summary: { totalRevenue: 0, totalLeads: 0, averageBid: 0 },
-          timeFrame,
-          startDate,
-          endDate
-        });
-      }
-      
+      console.log('⚠️ No results found');
+      return NextResponse.json({
+        success: true,
+        data: [],
+        summary: { totalRevenue: 0, totalLeads: 0, averageBid: 0 },
+        timeFrame,
+        startDate,
+        endDate
+      });
+    }
+    
       console.log(`🎯 Found ${results.length} lists with data using unified approach`);
-      
-      // Group results by traffic source (description)
-      interface TrafficSourceData {
-        traffic_source: string;
-        display_name: string;
+    
+    // Group results by traffic source (description)
+    interface TrafficSourceData {
+      traffic_source: string;
+      display_name: string;
+      leads_count: number;
+      total_bid_amount: number;
+      average_bid: number;
+      campaigns: Record<string, {
+        campaign_id: string;
+        campaign_name: string;
         leads_count: number;
-        total_bid_amount: number;
-        average_bid: number;
-        campaigns: Record<string, {
-          campaign_id: string;
-          campaign_name: string;
-          leads_count: number;
-          bid_amount: number;
-          total_revenue: number;
-        }>;
-        list_ids: Array<{
-          list_id: string;
-          description: string;
-          leads_count: number;
-          total_revenue: number;
-          policy_count: number;
-          transfer_count: number;
-          cost_per_acquisition: number | null;
-          policy_rate: number;
+        bid_amount: number;
+        total_revenue: number;
+      }>;
+      list_ids: Array<{
+        list_id: string;
+        description: string;
+        leads_count: number;
+        total_revenue: number;
+        policy_count: number;
+        transfer_count: number;
+        cost_per_acquisition: number | null;
+        policy_rate: number;
           mathematical_consistency: boolean;
           timezone_used: string;
           query_performance: string;
-        }>;
-      }
-      
-      const trafficSources: Record<string, TrafficSourceData> = {};
-      
+      }>;
+    }
+    
+    const trafficSources: Record<string, TrafficSourceData> = {};
+    
       results.forEach((result: any) => {
         const source = result.description;
-        
-        if (!trafficSources[source]) {
-          trafficSources[source] = {
-            traffic_source: source,
-            display_name: source,
-            leads_count: 0,
-            total_bid_amount: 0,
-            average_bid: 0,
-            campaigns: {},
-            list_ids: []
-          };
-        }
-        
-        // Add to totals
+      
+      if (!trafficSources[source]) {
+        trafficSources[source] = {
+          traffic_source: source,
+          display_name: source,
+          leads_count: 0,
+          total_bid_amount: 0,
+          average_bid: 0,
+          campaigns: {},
+          list_ids: []
+        };
+      }
+      
+      // Add to totals
         trafficSources[source].leads_count += result.total_leads;
         trafficSources[source].total_bid_amount += result.total_revenue;
-        
-        // Calculate CPA
+      
+      // Calculate CPA
         const cpa = result.policy_count > 0 ? result.total_revenue / result.policy_count : null;
-        
-        // Add list data
-        trafficSources[source].list_ids.push({
-          list_id: result.list_id,
+      
+      // Add list data
+      trafficSources[source].list_ids.push({
+        list_id: result.list_id,
           description: result.description,
           leads_count: result.total_leads,
           total_revenue: result.total_revenue,
           policy_count: result.policy_count,
           transfer_count: result.transfer_count,
-          cost_per_acquisition: cpa,
+        cost_per_acquisition: cpa,
           policy_rate: result.policy_rate,
           mathematical_consistency: result.mathematical_consistency,
           timezone_used: result.timezone_used,
           query_performance: result.query_performance
-        });
-        
-        // Add to campaigns
-        const campaignId = result.campaign_id || 'default';
-        if (!trafficSources[source].campaigns[campaignId]) {
-          trafficSources[source].campaigns[campaignId] = {
-            campaign_id: campaignId,
-            campaign_name: campaignId,
-            leads_count: 0,
-            bid_amount: 0,
-            total_revenue: 0
-          };
-        }
-        trafficSources[source].campaigns[campaignId].leads_count += result.total_leads;
-        trafficSources[source].campaigns[campaignId].total_revenue += result.total_revenue;
       });
       
-      // Format response
-      const formattedData = Object.values(trafficSources).map((source: TrafficSourceData) => {
-        source.average_bid = source.leads_count > 0 ? 
-          source.total_bid_amount / source.leads_count : 0;
-        
-        return {
-          ...source,
-          campaigns: Object.values(source.campaigns),
-          list_ids: source.list_ids
+      // Add to campaigns
+        const campaignId = result.campaign_id || 'default';
+      if (!trafficSources[source].campaigns[campaignId]) {
+        trafficSources[source].campaigns[campaignId] = {
+          campaign_id: campaignId,
+          campaign_name: campaignId,
+          leads_count: 0,
+          bid_amount: 0,
+          total_revenue: 0
         };
-      }).sort((a, b) => b.total_bid_amount - a.total_bid_amount);
+      }
+        trafficSources[source].campaigns[campaignId].leads_count += result.total_leads;
+        trafficSources[source].campaigns[campaignId].total_revenue += result.total_revenue;
+    });
+    
+    // Format response
+    const formattedData = Object.values(trafficSources).map((source: TrafficSourceData) => {
+      source.average_bid = source.leads_count > 0 ? 
+        source.total_bid_amount / source.leads_count : 0;
       
-      // Calculate totals
-      const totalRevenue = formattedData.reduce((sum, source) => sum + source.total_bid_amount, 0);
-      const totalLeads = formattedData.reduce((sum, source) => sum + source.leads_count, 0);
-      
+      return {
+        ...source,
+        campaigns: Object.values(source.campaigns),
+        list_ids: source.list_ids
+      };
+    }).sort((a, b) => b.total_bid_amount - a.total_bid_amount);
+    
+    // Calculate totals
+    const totalRevenue = formattedData.reduce((sum, source) => sum + source.total_bid_amount, 0);
+    const totalLeads = formattedData.reduce((sum, source) => sum + source.leads_count, 0);
+    
       const queryTime = Date.now() - startTime;
       console.log(`🎯 UNIFIED APPROACH: Processed ${totalLeads} leads across ${formattedData.length} traffic sources in ${queryTime}ms with mathematical consistency`);
-      
-      return NextResponse.json({
-        success: true,
-        data: formattedData,
-        summary: {
-          totalRevenue,
-          totalLeads,
-          averageBid: totalLeads > 0 ? totalRevenue / totalLeads : 0
-        },
-        timeFrame,
-        startDate,
-        endDate,
-        performance: {
-          queryTimeMs: queryTime,
+    
+    return NextResponse.json({
+      success: true,
+      data: formattedData,
+      summary: {
+        totalRevenue,
+        totalLeads,
+        averageBid: totalLeads > 0 ? totalRevenue / totalLeads : 0
+      },
+      timeFrame,
+      startDate,
+      endDate,
+      performance: {
+        queryTimeMs: queryTime,
           queryType: 'normal_unified',
           optimization: `🚀 Unified SQL approach with mathematical consistency and EST timezone handling`,
           functionUsed: 'get_lead_counts_unified',

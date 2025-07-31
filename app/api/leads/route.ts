@@ -1,10 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
 import { ComplianceEngine } from '@/lib/compliance/engine';
 import { checkPhoneCompliance } from '@/app/lib/real-phone-validation';
 import { validatePhoneDirectly } from '@/app/lib/phone-validation-hook';
 import { checkForDuplicateLead } from '@/app/lib/duplicate-lead-check';
 import { TrustedFormService } from '@/lib/services/trusted-form';
+import { normalizeSubIdKey } from '@/lib/utils/subid';
 
 // Main POST handler for all lead formats
 // Force dynamic routing for Vercel deployment
@@ -621,10 +622,36 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
         );
       }
       
-      // Get the bid value from routing data
-      if (routingData.bid) {
-        bidValue = routingData.bid;
-        console.log(`Using bid value from list routing: $${bidValue.toFixed(2)}`);
+      // ✅ ENHANCED: SUBID-Aware Bidding System (Phase 2)
+      // Extract SUBID from lead custom_fields for bid lookup
+      const leadCustomFields = body.custom_fields || body.customFields;
+      const extractedSubId = normalizeSubIdKey(leadCustomFields);
+      
+      console.log(`🎯 SUBID-Aware Bidding: list_id=${listId}, subid=${extractedSubId || 'none'}`);
+      
+      try {
+        // Use optimized SQL function to get SUBID-specific bid or fallback to list-level bid
+        const { data: effectiveBid, error: bidError } = await supabase
+          .rpc('get_effective_bid', {
+            p_list_id: listId,
+            p_subid: extractedSubId
+          });
+          
+        if (bidError) {
+          console.error('Error looking up effective bid:', bidError);
+          // Fallback to original routing data bid
+          bidValue = routingData.bid || 0.00;
+          console.log(`⚠️ Bid lookup error, using routing fallback: $${bidValue.toFixed(2)}`);
+        } else {
+          bidValue = effectiveBid || 0.00;
+          const bidSource = extractedSubId ? 'SUBID-specific' : 'list-level';
+          console.log(`✅ Using ${bidSource} bid: $${bidValue.toFixed(2)} for SUBID: ${extractedSubId || 'none'}`);
+        }
+      } catch (error) {
+        console.error('Exception in bid lookup:', error);
+        // Ultimate fallback to routing data
+        bidValue = routingData.bid || 0.00;
+        console.log(`🚨 Exception fallback bid: $${bidValue.toFixed(2)}`);
       }
       
       // Override campaign_id and cadence_id if provided in the routing
