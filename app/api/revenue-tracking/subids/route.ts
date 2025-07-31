@@ -15,13 +15,29 @@ interface SubIdAggregation {
 
 // Normalize SUBID key variations for consistent analytics
 function normalizeSubIdKey(customFields: any): string | null {
-  if (!customFields || typeof customFields !== 'object') return null;
+  if (!customFields) return null;
+  
+  // ✅ FIXED: Handle custom_fields that come as JSON strings from Supabase
+  let parsedFields: any;
+  
+  if (typeof customFields === 'string') {
+    try {
+      parsedFields = JSON.parse(customFields);
+    } catch (error) {
+      console.error('Failed to parse custom_fields JSON:', error);
+      return null;
+    }
+  } else if (typeof customFields === 'object') {
+    parsedFields = customFields;
+  } else {
+    return null;
+  }
   
   // Check common SUBID key variations (case-insensitive)
   const subidKeys = ['subid', 'sub_id', 'SUBID', 'SUB_ID', 'SubId', 'subId'];
   
   for (const key of subidKeys) {
-    const value = customFields[key];
+    const value = parsedFields[key];
     if (value !== undefined && value !== null && value !== '') {
       return String(value).trim();
     }
@@ -152,8 +168,13 @@ export async function GET(request: NextRequest) {
     console.log(`🔍 Processing ${allLeads.length} leads and grouping by SUBID...`);
     
     // Process all leads created in date range
-    allLeads.forEach(lead => {
+    allLeads.forEach((lead, index) => {
       const subidValue = normalizeSubIdKey(lead.custom_fields) || 'No SUBID';
+      
+      // ✅ DEBUG: Log first few SUBID extractions to see what's happening
+      if (index < 5) {
+        console.log(`🔍 DEBUG Lead ${index + 1}: custom_fields=${JSON.stringify(lead.custom_fields)?.substring(0, 100)}, extracted_subid=${subidValue}`);
+      }
       
       // Create SUBID group if it doesn't exist
       if (!subidGroups[subidValue]) {
@@ -166,6 +187,7 @@ export async function GET(request: NextRequest) {
           transfer_count: 0,
           total_cost: 0
         };
+        console.log(`✅ Created new SUBID group: ${subidValue}`);
       }
       
       // ✅ Increment lead count (core metric that drives totals)
@@ -197,6 +219,15 @@ export async function GET(request: NextRequest) {
     });
     
     console.log(`✅ Created ${Object.keys(subidGroups).length} SUBID groups from ${allLeads.length} leads`);
+    
+    // ✅ DEBUG: Show detailed breakdown of SUBID groups
+    console.log('🔍 DEBUG: SUBID Groups Summary:');
+    Object.entries(subidGroups)
+      .sort(([,a], [,b]) => b.leads_count - a.leads_count)
+      .slice(0, 10) // Show top 10
+      .forEach(([subid, data]) => {
+        console.log(`  ${subid}: ${data.leads_count} leads, ${data.policy_count} policies, ${data.transfer_count} transfers`);
+      });
     
     // Get list routing info for cost calculation
     const { data: routingData, error: routingError } = await supabase
