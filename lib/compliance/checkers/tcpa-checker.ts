@@ -39,12 +39,25 @@ export class TCPAChecker implements ComplianceChecker {
       }
 
       const data = await response.json() as TCPALitigatorResponse;
-      const result = data.results;
+      
+      // ✅ FIXED: Handle case where data.results is undefined or malformed
+      const result = data?.results;
+      
+      if (!result) {
+        console.error('TCPA API returned unexpected response structure:', data);
+        throw new Error('TCPA API returned unexpected response structure');
+      }
 
+      // ✅ FIXED: Use result.clean === 1 as primary compliance indicator
+      // Clean numbers (clean=1) don't have status_array field at all
+      // Dirty numbers (clean=0) have status_array with reasons
+      const isCompliant = result.clean === 1;
       const statusArray = result.status_array ?? [];
+      const reasons = isCompliant ? [] : statusArray;
+
       return {
-        isCompliant: statusArray.length === 0,
-        reasons: statusArray,
+        isCompliant,
+        reasons,
         source: this.name,
         phoneNumber,
         details: {
@@ -53,6 +66,7 @@ export class TCPAChecker implements ComplianceChecker {
         rawResponse: data,
       };
     } catch (error) {
+      console.error('TCPA check error for phone', phoneNumber, ':', error);
       return {
         isCompliant: false,
         reasons: [],

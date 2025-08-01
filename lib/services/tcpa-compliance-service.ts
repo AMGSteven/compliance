@@ -275,9 +275,20 @@ export class TCPAComplianceChecker {
 
       const data = await response.json()
 
-      // Process response
-      const isCompliant = data.results.clean === 1
-      const reasons = isCompliant ? [] : data.results.status_array || [data.results.status || "Unknown reason"]
+      // ✅ FIXED: Handle case where data.results is undefined or malformed
+      const result = data?.results;
+      
+      if (!result) {
+        console.error('TCPA API returned unexpected response structure:', data);
+        throw new Error('TCPA API returned unexpected response structure');
+      }
+
+      // ✅ FIXED: Use result.clean === 1 as primary compliance indicator
+      // Clean numbers (clean=1) don't have status_array field at all
+      // Dirty numbers (clean=0) have status_array with reasons
+      const isCompliant = result.clean === 1;
+      const statusArray = result.status_array ?? [];
+      const reasons = isCompliant ? [] : statusArray;
 
       return {
         compliant: isCompliant,
@@ -360,10 +371,28 @@ export class TCPAComplianceChecker {
         const data = await response.json()
 
         // Process response
-        for (const [phone, result] of Object.entries(data.results)) {
+        for (const [phone, result] of Object.entries(data.results || {})) {
           const typedResult = result as any
-          const isCompliant = typedResult.clean === 1
-          const reasons = isCompliant ? [] : typedResult.status_array || [typedResult.status || "Unknown reason"]
+          
+          // ✅ FIXED: Handle case where individual result is undefined or malformed
+          if (!typedResult) {
+            console.error('TCPA batch API returned undefined result for phone:', phone);
+            results.push({
+              compliant: false,
+              reasons: ['API returned invalid result'],
+              rawResponse: null,
+              error: 'Invalid API response structure',
+            });
+            nonCompliantCount++;
+            continue;
+          }
+          
+          // ✅ FIXED: Use typedResult.clean === 1 as primary compliance indicator
+          // Clean numbers (clean=1) don't have status_array field at all
+          // Dirty numbers (clean=0) have status_array with reasons
+          const isCompliant = typedResult.clean === 1;
+          const statusArray = typedResult.status_array ?? [];
+          const reasons = isCompliant ? [] : statusArray;
 
           results.push({
             compliant: isCompliant,
