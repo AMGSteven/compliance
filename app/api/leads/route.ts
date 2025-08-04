@@ -686,11 +686,11 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     console.log('Routing lookup parameters:', { listId, effectiveCampaignId, active: true });
     
     // Query list_routings to get routing data including the bid
+    // CRITICAL FIX: Remove campaign_id filtering to avoid ID mismatches
     const { data: routingResults, error: routingError } = await supabase
       .from('list_routings')
       .select('*')
       .eq('list_id', listId)
-      .eq('campaign_id', effectiveCampaignId)
       .eq('active', true)
       .limit(1)
       .maybeSingle();
@@ -1351,11 +1351,11 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
     const normalizedListId = listId.trim().toLowerCase();
     
     // Query list_routings to get routing data including the bid
+    // CRITICAL FIX: Remove campaign_id filtering to avoid ID mismatches
     const { data: routingResults, error: routingError } = await supabase
       .from('list_routings')
       .select('*')
       .eq('list_id', listId)
-      .eq('campaign_id', effectiveCampaignId)
       .eq('active', true)
       .limit(1)
       .maybeSingle();
