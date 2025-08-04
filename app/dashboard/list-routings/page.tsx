@@ -15,7 +15,7 @@ interface ListRouting {
   description?: string;
   active: boolean;
   bid?: number;
-  dialer_type?: number; // 1 = Internal Dialer, 2 = Pitch BPO
+  dialer_type?: number; // 1 = Internal Dialer, 2 = Pitch BPO, 3 = Convoso
   auto_claim_trusted_form?: boolean;
   created_at: string;
   updated_at: string;
@@ -40,6 +40,9 @@ export default function ListRoutingsPage() {
   
   // Pitch BPO fixed values
   const PITCH_BPO_TOKEN = '70942646-125b-4ddd-96fc-b9a142c698b8';
+  
+  // Convoso fixed values (uses environment variables on backend)
+  const CONVOSO_TOKEN = 'convoso-env-var'; // Placeholder - actual values come from env vars
 
   // Maps to store cadence ID and token by list+campaign combination
   const [listCampaignCadenceMap, setListCampaignCadenceMap] = useState<Record<ListCampaignKey, string>>({});
@@ -351,9 +354,13 @@ export default function ListRoutingsPage() {
       dataIndex: 'dialer_type',
       key: 'dialer_type',
       render: (dialer_type: number) => {
-        return dialer_type === 2 ? 
-          <span style={{ color: '#1890ff' }}>Pitch BPO</span> : 
-          <span>Internal Dialer</span>;
+        if (dialer_type === 2) {
+          return <span style={{ color: '#1890ff' }}>Pitch BPO</span>;
+        } else if (dialer_type === 3) {
+          return <span style={{ color: '#52c41a' }}>Convoso (IBP BPO)</span>;
+        } else {
+          return <span>Internal Dialer</span>;
+        }
       }
     },
     {
@@ -546,6 +553,8 @@ export default function ListRoutingsPage() {
             label="Token"
             extra={currentDialerType === 2 ? 
               'For Pitch BPO, token is automatically set to 70942646-125b-4ddd-96fc-b9a142c698b8' : 
+              currentDialerType === 3 ?
+                'For Convoso, authentication is handled via environment variables (CONVOSO_AUTH_TOKEN)' :
               (currentListId && listTokenMap[currentListId] && !editMode ? 
                 `This List ID is already associated with token: ${listTokenMap[currentListId]}` : null)}
           >
@@ -556,6 +565,17 @@ export default function ListRoutingsPage() {
                 value={PITCH_BPO_TOKEN}
                 suffix={
                   <Tooltip title="Pitch BPO always uses a fixed token">
+                    <InfoCircleOutlined style={{ color: 'rgba(0,0,0,.45)' }} />
+                  </Tooltip>
+                }
+              />
+            ) : currentDialerType === 3 ? (
+              <Input 
+                placeholder="Environment variable: CONVOSO_AUTH_TOKEN"
+                disabled={true}
+                value={CONVOSO_TOKEN}
+                suffix={
+                  <Tooltip title="Convoso authentication is handled via environment variables">
                     <InfoCircleOutlined style={{ color: 'rgba(0,0,0,.45)' }} />
                   </Tooltip>
                 }
@@ -630,12 +650,19 @@ export default function ListRoutingsPage() {
                 });
                 // Hide campaign and cadence fields by forcing rerender
                 setCurrentDialerType(2);
+              } else if (value === 3) {
+                // Convoso uses environment variables, no token needed in form
+                form.setFieldsValue({
+                  token: CONVOSO_TOKEN,
+                });
+                setCurrentDialerType(3);
               } else {
                 setCurrentDialerType(1);
               }
             }}>
               <Select.Option value={1}>Internal Dialer</Select.Option>
               <Select.Option value={2}>Pitch BPO</Select.Option>
+              <Select.Option value={3}>Convoso (IBP BPO)</Select.Option>
             </Select>
           </Form.Item>
 

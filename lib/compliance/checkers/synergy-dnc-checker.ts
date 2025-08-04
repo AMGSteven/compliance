@@ -2,14 +2,15 @@ import { ComplianceChecker, ComplianceResult } from '../types';
 
 export class SynergyDNCChecker implements ComplianceChecker {
   name = 'Synergy DNC';
-  private apiUrl = 'https://izem71vgk8.execute-api.us-east-1.amazonaws.com/api/rtb/ping';
+  private apiUrl = 'https://izem71vgk8.execute-api.us-east-1.amazonaws.com/api/blacklist/check';
 
   /**
    * Formats a phone number for API request
    * @param phoneNumber Phone number to format
-   * @returns Formatted phone number (digits only)
+   * @returns Formatted phone number (digits only for query parameter)
    */
   private formatPhoneNumber(phoneNumber: string): string {
+    // Return digits only for query parameter
     return phoneNumber.replace(/\D/g, '');
   }
 
@@ -26,18 +27,18 @@ export class SynergyDNCChecker implements ComplianceChecker {
       try {
         console.log(`[SynergyDNCChecker] Checking number: ${phoneNumber} (attempt ${attempt}/${maxRetries})`);
         
-        // Format the phone number
+        // Format the phone number (digits only for query parameter)
         const formattedPhone = this.formatPhoneNumber(phoneNumber);
         
-        // Make the API request to check if caller ID is on Synergy DNC
-        const response = await fetch(this.apiUrl, {
-          method: 'POST',
+        // Build the URL with query parameter
+        const url = `${this.apiUrl}?phone_number=${encodeURIComponent(formattedPhone)}`;
+        
+        // Make the API request to check if phone number is on Synergy DNC
+        const response = await fetch(url, {
+          method: 'GET',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            caller_id: formattedPhone
-          }),
           // Add timeout of 10 seconds
           signal: AbortSignal.timeout(10000)
         });

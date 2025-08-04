@@ -14,6 +14,7 @@ export const dynamic = 'force-dynamic';
 // Define allowed states per dialer type
 const INTERNAL_DIALER_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'IN', 'KS', 'LA', 'MO', 'MS', 'OH', 'SC', 'TN', 'TX'];
 const PITCH_BPO_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'FL', 'IN', 'KS', 'LA', 'MI', 'MO', 'MS', 'OH', 'OK', 'SC', 'TN', 'TX'];
+const CONVOSO_ALLOWED_STATES = ['TX', 'FL', 'CA', 'PA', 'NY', 'IL', 'OH', 'GA', 'MI', 'NC', 'NJ', 'VA', 'WA', 'AZ', 'TN', 'MA', 'IN', 'MD', 'MO', 'WI', 'MN', 'CO', 'AL', 'SC', 'LA', 'OR', 'OK', 'CT', 'IA', 'AR', 'UT', 'NV', 'KS', 'NM', 'NE', 'WV', 'ID', 'HI', 'NH', 'ME', 'RI', 'MT', 'DE', 'SD', 'AK', 'ND', 'VT', 'WY'];
 
 // Test constants for bypassing compliance and forcing routing
 const TEST_PHONE_NUMBER = '6507769592'; // User's number for testing
@@ -22,11 +23,18 @@ const TEST_JUICED_MEDIA_LIST_ID = 'a38881ab-93b2-4750-9f9c-92ae6cd10b7e'; // Jui
 // Dialer type constants
 const DIALER_TYPE_INTERNAL = 1;
 const DIALER_TYPE_PITCH_BPO = 2;
+const DIALER_TYPE_CONVOSO = 3;
 
 // Pitch BPO constants
 const PITCH_BPO_UUID = '70942646-125b-4ddd-96fc-b9a142c698b8';
 const PITCH_BPO_CAMPAIGN = 'Jade ACA';
 const PITCH_BPO_SUBCAMPAIGN = 'Juiced Real Time'; // Juiced Media List ID
+
+// Convoso (IBP BPO) API constants - using environment variables for security
+const CONVOSO_AUTH_TOKEN = process.env.CONVOSO_AUTH_TOKEN || 'b3zkvwyo3gcxovyb0zhjhmqaer7ydhaf';
+const CONVOSO_CRITERIA_KEY = process.env.CONVOSO_CRITERIA_KEY || '8nb95qx1kf9a9wnvb4nmhd3105us3w02';
+const CONVOSO_LIST_ID_PROD = process.env.CONVOSO_LIST_ID_PROD || '6497'; // Production list ID
+const CONVOSO_LIST_ID_TEST = process.env.CONVOSO_LIST_ID_TEST || '5989'; // Test list ID
 
 /**
  * Forward a lead to the Pitch BPO dialer
@@ -133,6 +141,163 @@ async function forwardToPitchBPO(params: {
       bid: bidValue,
       dialer: {
         type: 'pitch_bpo',
+        forwarded: false,
+        error: dialerError instanceof Error ? dialerError.message : 'Unknown error'
+      }
+    });
+  }
+}
+
+/**
+ * Forward a lead to the Convoso (IBP BPO) dialer
+ * @param params Parameters for the Convoso dialer
+ * @returns API response with success status and lead data
+ */
+async function forwardToConvoso(params: {
+  data: any[],
+  listId: string,
+  phone: string,
+  firstName: string,
+  lastName: string,
+  email: string,
+  zipCode: string,
+  state: string,
+  bidValue: number,
+  routingData?: any
+}) {
+  const { data, listId, phone, firstName, lastName, email, zipCode, state, bidValue, routingData } = params;
+  const leadId = data[0].id;
+  
+  console.log('Forwarding lead to Convoso (IBP BPO) dialer');
+  console.log('Using Convoso auth token:', CONVOSO_AUTH_TOKEN);
+  
+  // Extract custom fields for additional tracking
+  const leadCustomFields = data[0].custom_fields || {};
+  const leadSubId = typeof leadCustomFields === 'string'
+    ? JSON.parse(leadCustomFields)?.subid || ''
+    : leadCustomFields?.subid || '';
+  
+  try {
+    // Determine which Convoso list ID to use - check routing data for test mode
+    const isTestMode = routingData?.test_mode || listId.includes('test') || phone === TEST_PHONE_NUMBER;
+    // Force test list ID 5989 for test mode to ensure proper routing
+    const convosoListId = isTestMode ? '5989' : CONVOSO_LIST_ID_PROD;
+    
+    console.log(`Using Convoso list ID: ${convosoListId} (test mode: ${isTestMode})`);
+    console.log('Test mode factors:', { 
+      test_mode_flag: routingData?.test_mode, 
+      listId_includes_test: listId.includes('test'), 
+      is_test_phone: phone === TEST_PHONE_NUMBER,
+      phone: phone,
+      listId: listId
+    });
+    
+    // Ensure phone number is properly formatted (remove any non-digits, ensure 10 digits)
+    const cleanPhone = phone.replace(/\D/g, '');
+    const formattedPhone = cleanPhone.length === 10 ? cleanPhone : cleanPhone.substring(cleanPhone.length - 10);
+    
+    console.log('Phone number formatting:', { original: phone, cleaned: cleanPhone, formatted: formattedPhone });
+    
+    // Prepare the payload according to Convoso API specs
+    const convosoPayload = {
+      auth_token: CONVOSO_AUTH_TOKEN,
+      criteria_key: CONVOSO_CRITERIA_KEY,
+      list_id: convosoListId,
+      first_name: firstName,
+      last_name: lastName,
+      email: email || '', // Optional but include if available
+      phone_number: formattedPhone, // Ensure 10-digit US number
+      address1: data[0].address || '', // Optional
+      city: data[0].city || '', // Optional
+      state: state, // Required - two-letter state abbreviation
+      postal_code: zipCode || '', // Optional
+      gender: data[0].gender || '', // Optional
+      date_of_birth: data[0].date_of_birth || data[0].dob || '', // Optional - YYYY-MM-DD format
+      trustedform: data[0].trusted_form_cert_url || '', // Optional TrustedForm certificate URL
+      jornaya: data[0].jornaya_token || '', // Optional Jornaya token
+      check_dnc: 1, // Required - DNC scrub flag
+      check_dup: 3, // Required - Duplicate check flag
+      subid_2: leadSubId || listId // Custom sub-ID for tracking
+    };
+    
+    console.log('Sending lead to Convoso API:', JSON.stringify(convosoPayload, null, 2));
+    
+    // Use the new Convoso API endpoint as provided by IBP (GET with query parameters)
+    const apiParams = new URLSearchParams({
+      auth_token: CONVOSO_AUTH_TOKEN,
+      list_id: convosoListId,
+      check_dup: '3',
+      phone_code: '1', // US country code
+      first_name: firstName,
+      last_name: lastName,
+      email: email || '', // Email field was missing
+      phone_number: formattedPhone,
+      address1: data[0].address || '',
+      city: data[0].city || '',
+      state: state,
+      postal_code: zipCode || '',
+      date_of_birth: data[0].date_of_birth || data[0].dob || '',
+      trustedform: data[0].trusted_form_cert_url || '',
+      jornaya: data[0].jornaya_token || '',
+      subid_2: leadSubId || listId
+    });
+    
+    const apiUrl = `https://api.convoso.com/v1/leads/insert?${apiParams.toString()}`;
+    console.log('Convoso API URL:', apiUrl);
+    
+    const convosoResponse = await fetch(apiUrl, {
+      method: 'GET'
+    });
+    
+    const responseData = await convosoResponse.json();
+    console.log('Convoso API response status:', convosoResponse.status);
+    console.log('Convoso API response:', responseData);
+    
+    // Check if the response indicates success
+    const isSuccess = responseData.success === true && responseData.data && responseData.data.lead_id;
+    
+    if (isSuccess) {
+      // Update our lead record with Convoso's lead ID for tracking
+      try {
+        const supabase = createServerClient();
+        await supabase
+          .from('leads')
+          .update({ 
+            dialer_compliance_id: responseData.data.lead_id.toString(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', data[0].id);
+        
+        console.log('Successfully associated Convoso lead_id with lead record');
+      } catch (updateError) {
+        console.error('Error updating lead with Convoso lead_id:', updateError);
+      }
+    }
+    
+    // Return the response with lead data and Convoso result
+    return NextResponse.json({
+      success: true,
+      lead_id: data[0].id,
+      data: data[0],
+      bid: bidValue,
+      dialer: {
+        type: 'convoso',
+        forwarded: true,
+        status: convosoResponse.status,
+        response: responseData,
+        convoso_lead_id: responseData.data?.lead_id || null
+      }
+    });
+  } catch (dialerError) {
+    console.error('Error forwarding lead to Convoso:', dialerError);
+    // Still return success for the lead insertion, but include the dialer error
+    return NextResponse.json({
+      success: true,
+      lead_id: data[0].id,
+      data: data[0],
+      bid: bidValue,
+      dialer: {
+        type: 'convoso',
         forwarded: false,
         error: dialerError instanceof Error ? dialerError.message : 'Unknown error'
       }
@@ -518,12 +683,14 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     effectiveCadenceId = cadenceId || '';
     
     console.log('Initial values:', { campaignId, cadenceId });
+    console.log('Routing lookup parameters:', { listId, effectiveCampaignId, active: true });
     
     // Query list_routings to get routing data including the bid
     const { data: routingResults, error: routingError } = await supabase
       .from('list_routings')
       .select('*')
       .eq('list_id', listId)
+      .eq('campaign_id', effectiveCampaignId)
       .eq('active', true)
       .limit(1)
       .maybeSingle();
@@ -685,12 +852,12 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     
     // Get the dialer type from routing data (default to internal dialer if not specified)
     const dialerType = routingData?.dialer_type || DIALER_TYPE_INTERNAL;
-    console.log(`Using dialer type: ${dialerType === DIALER_TYPE_INTERNAL ? 'Internal Dialer' : 'Pitch BPO'}`);
+    console.log(`Using dialer type: ${dialerType === DIALER_TYPE_INTERNAL ? 'Internal Dialer' : dialerType === DIALER_TYPE_PITCH_BPO ? 'Pitch BPO' : dialerType === DIALER_TYPE_CONVOSO ? 'Convoso (IBP BPO)' : 'Unknown'}`);
 
     // Validate state based on dialer type
     const normalizedState = state.toUpperCase();
-    const allowedStates = dialerType === DIALER_TYPE_PITCH_BPO ? PITCH_BPO_ALLOWED_STATES : INTERNAL_DIALER_ALLOWED_STATES;
-    const dialerName = dialerType === DIALER_TYPE_PITCH_BPO ? 'Pitch BPO' : 'Internal Dialer';
+    const allowedStates = dialerType === DIALER_TYPE_PITCH_BPO ? PITCH_BPO_ALLOWED_STATES : dialerType === DIALER_TYPE_CONVOSO ? CONVOSO_ALLOWED_STATES : INTERNAL_DIALER_ALLOWED_STATES;
+    const dialerName = dialerType === DIALER_TYPE_PITCH_BPO ? 'Pitch BPO' : dialerType === DIALER_TYPE_CONVOSO ? 'Convoso (IBP BPO)' : 'Internal Dialer';
     
     if (!allowedStates.includes(normalizedState)) {
       console.log(`[STATE VALIDATION] Rejecting lead with non-allowed state: ${state} for ${dialerName}`);
@@ -728,6 +895,23 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
           return await forwardToPitchBPO({
             data,
             listId, // We'll still pass this to the function but won't include it in the API payload
+            phone,
+            firstName,
+            lastName,
+            email,
+            zipCode,
+            state,
+            bidValue: bidValue,
+            routingData
+          });
+        }
+        
+        // If this is the Convoso (IBP BPO) dialer type, route to Convoso instead of internal dialer
+        if (dialerType === DIALER_TYPE_CONVOSO) {
+          console.log('Routing lead to Convoso (IBP BPO) (dialer_type=3)');
+          return await forwardToConvoso({
+            data,
+            listId,
             phone,
             firstName,
             lastName,
@@ -863,12 +1047,11 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
         }
         
         // Include the dialer response in our API response
-        const responseBidValue = routingData?.bid || 0.00;
         const responseObj: any = {
-          success: responseBidValue > 0.00,
+          success: true,
           lead_id: data[0].id,
           data: data[0],
-          bid: responseBidValue,
+          bid: routingData?.bid || 0.00,
           dialer: {
             type: 'internal',
             forwarded: true,
@@ -882,12 +1065,11 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
         console.error('Error forwarding lead to dialer:', dialerError);
         // Still return success for the lead insertion, but include the dialer error
         // Include bid information for successful lead submission even when dialer fails
-        const errorBidValue = routingData?.bid || 0.00;
         return NextResponse.json({ 
-          success: errorBidValue > 0.00, 
+          success: true, 
           lead_id: data[0].id, // Explicitly return the lead ID
           data: data[0],
-          bid: errorBidValue,
+          bid: routingData?.bid || 0.00,
           dialer: {
             forwarded: false,
             error: dialerError instanceof Error ? dialerError.message : 'Unknown error'
@@ -897,12 +1079,11 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     }
     
     // Include bid in the response for successful submissions
-    const finalBidValue = routingData?.bid || 0.00;
     return NextResponse.json({
-      success: finalBidValue > 0.00, 
+      success: true, 
       lead_id: data[0].id, // Explicitly return the lead ID
       data: data[0],
-      bid: finalBidValue
+      bid: routingData?.bid || 0.00
     });
   } catch (error: any) {
     console.error('Error in leads API:', error);
@@ -968,26 +1149,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
       );
     }
     
-    // Validate that the state is in the allowed list (health insurance leads use internal dialer)
-    const normalizedState = state.toUpperCase();
-    if (!INTERNAL_DIALER_ALLOWED_STATES.includes(normalizedState)) {
-      console.log(`[STATE VALIDATION] Rejecting health insurance lead with non-allowed state: ${state}`);
-      return NextResponse.json(
-        {
-          success: false,
-          bid: 0.00,
-          error: `State ${state} not allowed for Internal Dialer`,
-          details: {
-            state: state,
-            dialerType: 'Internal Dialer',
-            allowedStates: INTERNAL_DIALER_ALLOWED_STATES
-          }
-        },
-        { status: 400 }
-      );
-    }
-    
-    console.log(`[STATE VALIDATION] State ${state} is allowed for health insurance lead (Internal Dialer)`);
+    // State validation will be performed after routing data is loaded to support dynamic dialer types
     
     // Perform comprehensive compliance check for health insurance lead phone
     console.log('Performing compliance check for health insurance lead phone:', phone);
@@ -1193,6 +1355,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
       .from('list_routings')
       .select('*')
       .eq('list_id', listId)
+      .eq('campaign_id', effectiveCampaignId)
       .eq('active', true)
       .limit(1)
       .maybeSingle();
@@ -1202,10 +1365,38 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
     }
     
     console.log('Routing results:', routingResults);
+    
+    // Get the dialer type from routing data (default to internal dialer if not specified)
+    const dialerType = routingResults?.dialer_type || DIALER_TYPE_INTERNAL;
       
     if (routingResults) {
       routingData = routingResults;
       console.log(`Found list routing for ${listId}:`, routingData);
+      console.log(`Health insurance lead using dialer type: ${dialerType === DIALER_TYPE_INTERNAL ? 'Internal Dialer' : dialerType === DIALER_TYPE_PITCH_BPO ? 'Pitch BPO' : dialerType === DIALER_TYPE_CONVOSO ? 'Convoso (IBP BPO)' : 'Unknown'}`);
+      
+      // Validate state based on dialer type
+      const normalizedState = state.toUpperCase();
+      const allowedStates = dialerType === DIALER_TYPE_PITCH_BPO ? PITCH_BPO_ALLOWED_STATES : dialerType === DIALER_TYPE_CONVOSO ? CONVOSO_ALLOWED_STATES : INTERNAL_DIALER_ALLOWED_STATES;
+      const dialerName = dialerType === DIALER_TYPE_PITCH_BPO ? 'Pitch BPO' : dialerType === DIALER_TYPE_CONVOSO ? 'Convoso (IBP BPO)' : 'Internal Dialer';
+      
+      if (!allowedStates.includes(normalizedState)) {
+        console.log(`[STATE VALIDATION] Rejecting health insurance lead with non-allowed state: ${state} for ${dialerName}`);
+        return NextResponse.json(
+          {
+            success: false,
+            bid: 0.00,
+            error: `State ${state} not allowed for ${dialerName}`,
+            details: {
+              state: state,
+              dialerType: dialerName,
+              allowedStates: allowedStates
+            }
+          },
+          { status: 400 }
+        );
+      }
+      
+      console.log(`[STATE VALIDATION] State ${state} is allowed for health insurance lead (${dialerName})`);
       
       // STEP 1: TrustedForm Certificate Claiming (BEFORE compliance checks)
       // This must happen first - if claiming fails, reject the lead
@@ -1371,7 +1562,40 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
       }
       
       try {
-        console.log('Forwarding health insurance lead to dialer API for list:', listId);
+        console.log('Forwarding health insurance lead to dialer for list:', listId);
+        
+        // Route health insurance lead based on dialer type
+        if (dialerType === DIALER_TYPE_PITCH_BPO) {
+          console.log('Routing health insurance lead to Pitch BPO dialer');
+          return await forwardToPitchBPO({
+            data: [],
+            listId,
+            phone,
+            firstName,
+            lastName,
+            email,
+            zipCode: contactData.ZipCode || '',
+            state,
+            bidValue: bid,
+            routingData
+          });
+        } else if (dialerType === DIALER_TYPE_CONVOSO) {
+          console.log('Routing health insurance lead to Convoso (IBP BPO) dialer');
+          return await forwardToConvoso({
+            data: [],
+            listId,
+            phone,
+            firstName,
+            lastName,
+            email,
+            zipCode: contactData.ZipCode || '',
+            state,
+            bidValue: bid,
+            routingData
+          });
+        }
+        
+        console.log('Forwarding health insurance lead to internal dialer API for list:', listId);
         
         // Format phone number with +1 prefix if it doesn't have it already
         const formattedPhone = phone.startsWith('+1') ? phone : `+1${phone.replace(/\D/g, '')}`;        
@@ -1496,11 +1720,38 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
         console.error('Error forwarding health insurance lead to dialer:', dialerError);
         dialerResponse = { error: dialerError?.message || 'Unknown error' };
       }
+    } else {
+      // No routing data found, but still validate state and route based on dialer type
+      console.log(`No routing data found for list ${listId}, using default dialer: ${dialerType === DIALER_TYPE_INTERNAL ? 'Internal Dialer' : dialerType === DIALER_TYPE_PITCH_BPO ? 'Pitch BPO' : dialerType === DIALER_TYPE_CONVOSO ? 'Convoso (IBP BPO)' : 'Unknown'}`);
+      
+      // Validate state based on dialer type
+      const normalizedState = state.toUpperCase();
+      const allowedStates = dialerType === DIALER_TYPE_PITCH_BPO ? PITCH_BPO_ALLOWED_STATES : dialerType === DIALER_TYPE_CONVOSO ? CONVOSO_ALLOWED_STATES : INTERNAL_DIALER_ALLOWED_STATES;
+      const dialerName = dialerType === DIALER_TYPE_PITCH_BPO ? 'Pitch BPO' : dialerType === DIALER_TYPE_CONVOSO ? 'Convoso (IBP BPO)' : 'Internal Dialer';
+      
+      if (!allowedStates.includes(normalizedState)) {
+        console.log(`[STATE VALIDATION] Rejecting health insurance lead with non-allowed state: ${state} for ${dialerName}`);
+        return NextResponse.json(
+          {
+            success: false,
+            bid: 0.00,
+            error: `State ${state} not allowed for ${dialerName}`,
+            details: {
+              state: state,
+              dialerType: dialerName,
+              allowedStates: allowedStates
+            }
+          },
+          { status: 400 }
+        );
+      }
+      
+      console.log(`[STATE VALIDATION] State ${state} is allowed for health insurance lead (${dialerName})`);
     }
 
     // Include bid, lead_id, and dialer response in the API response
     const responseObj: any = {
-      success: bid > 0.00, 
+      success: true, 
       lead_id: data[0].id, // Explicitly return the lead ID
       data: data[0],
       bid: bid

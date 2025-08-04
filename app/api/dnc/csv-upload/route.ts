@@ -114,11 +114,11 @@ export async function POST(request: Request) {
 
       // Build entry object
       const entry = {
-        phoneNumber: phoneNumber,
+        phone_number: phoneNumber,
         reason: (reasonColumnIndex >= 0 && row[reasonColumnIndex]) ? 
           row[reasonColumnIndex].replace(/['"]/g, '') : reason,
         source: 'csv_upload',
-        addedBy: 'csv_import',
+        added_by: 'csv_import',
         metadata: {
           campaign: (campaignColumnIndex >= 0 && row[campaignColumnIndex]) ? 
             row[campaignColumnIndex].replace(/['"]/g, '') : campaign,

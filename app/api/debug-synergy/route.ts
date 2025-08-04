@@ -19,16 +19,20 @@ export async function GET(request: Request) {
     
     console.log(`Debug Synergy DNC API with phone: ${phone}`);
     
-    // Make a direct call to the Synergy DNC API
-    const apiUrl = 'https://izem71vgk8.execute-api.us-east-1.amazonaws.com/api/rtb/ping';
-    const response = await fetch(apiUrl, {
-      method: 'POST',
+    // Format phone number (digits only for query parameter)
+    const formattedPhone = phone.replace(/\D/g, '');
+    console.log(`Formatted phone for API: ${formattedPhone}`);
+    
+    // Make a direct call to the Synergy DNC API using new endpoint
+    const baseUrl = 'https://izem71vgk8.execute-api.us-east-1.amazonaws.com/api/blacklist/check';
+    const url = `${baseUrl}?phone_number=${encodeURIComponent(formattedPhone)}`;
+    console.log(`Full API URL: ${url}`);
+    
+    const response = await fetch(url, {
+      method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        caller_id: phone
-      }),
     });
     
     // Get the raw API response
