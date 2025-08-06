@@ -4,5 +4,8 @@
   "crons": [{
     "path": "/api/cron/bland-ai-balance",
     "schedule": "0 * * * *"
+  }, {
+    "path": "/api/cron/trackdrive-costs",
+    "schedule": "0 * * * *"
   }]
 }

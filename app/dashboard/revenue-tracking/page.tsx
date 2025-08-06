@@ -192,6 +192,8 @@ export default function RevenueTrackingPage() {
   const [blandAILoading, setBlandAILoading] = useState<boolean>(false);
   const [pitchPerfectCosts, setPitchPerfectCosts] = useState<number>(0);
   const [ppLoading, setPpLoading] = useState<boolean>(false);
+  const [trackdriveCosts, setTrackdriveCosts] = useState<number>(0);
+  const [trackdriveLoading, setTrackdriveLoading] = useState<boolean>(false);
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -409,7 +411,7 @@ export default function RevenueTrackingPage() {
       const totalLeadsForAllocation = totalLeadsCount;
       revenueArray.forEach(item => {
         item.ai_costs_allocated = totalLeadsForAllocation > 0 
-          ? (item.leads_count / totalLeadsForAllocation) * (blandAICosts + pitchPerfectCosts)
+          ? (item.leads_count / totalLeadsForAllocation) * (blandAICosts + pitchPerfectCosts + trackdriveCosts)
           : 0;
         
         item.net_profit = (item.synergy_payout || 0) - item.total_lead_costs - item.ai_costs_allocated;
@@ -519,6 +521,67 @@ export default function RevenueTrackingPage() {
     } finally {
       console.log('🏁 fetchBlandAICosts FINISHED');
       setBlandAILoading(false);
+    }
+  };
+
+  const fetchTrackdriveCosts = async () => {
+    console.log('🔍 fetchTrackdriveCosts STARTED - Using efficient SQL SUM');
+    setTrackdriveLoading(true);
+      
+    try {
+      // Check environment variables first
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      
+      if (!supabaseUrl || !supabaseKey) {
+        console.error('❌ CRITICAL: Missing Supabase environment variables');
+        setTrackdriveCosts(0);
+        return;
+      }
+      
+      // Create Supabase client for direct database query
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      
+      console.log('💰 Fetching Trackdrive costs with efficient SQL SUM...');
+
+      // ✅ FIXED: Use the same date calculation logic as main revenue tracking
+      let startDateStr: string, endDateStr: string;
+      const activeDateRange = getActiveDateRange();
+      
+      if (timeFrame === 'custom' && activeDateRange && activeDateRange[0] && activeDateRange[1]) {
+        startDateStr = activeDateRange[0].format('YYYY-MM-DD');
+        endDateStr = activeDateRange[1].format('YYYY-MM-DD');
+        console.log(`🕐 CUSTOM (${temporalViewMode} mode): Using dates ${startDateStr} to ${endDateStr}`);
+      } else {
+        // Use the same calculateDateRange logic as main system
+        const [calcStart, calcEnd] = calculateDateRange();
+        startDateStr = calcStart.format('YYYY-MM-DD');
+        endDateStr = calcEnd.format('YYYY-MM-DD');
+        console.log(`🕐 PRESET (${timeFrame}): Using calculated dates ${startDateStr} to ${endDateStr}`);
+      }
+
+      // ✅ EFFICIENT: Use SQL function via RPC instead of API call
+      const { data, error } = await supabase.rpc('get_trackdrive_costs', {
+        p_start_date: startDateStr,
+        p_end_date: endDateStr
+      });
+
+      if (error) {
+        console.error('❌ Supabase RPC error:', error);
+        setTrackdriveCosts(0);
+        return;
+      }
+
+      const totalCosts = data || 0;
+      console.log(`💰 Trackdrive costs calculated: $${totalCosts} for ${startDateStr} to ${endDateStr}`);
+      setTrackdriveCosts(totalCosts);
+
+    } catch (error) {
+      console.error('❌ Error fetching Trackdrive costs:', error);
+      setTrackdriveCosts(0);
+    } finally {
+      console.log('🏁 fetchTrackdriveCosts FINISHED');
+      setTrackdriveLoading(false);
     }
   };
 
@@ -857,16 +920,18 @@ export default function RevenueTrackingPage() {
     setExpandedRowKeys([]);
     setLoadingSubids({});
     fetchRevenueData();
-    // ✅ FORCE fetch both AI cost functions on every refresh
+    // ✅ FORCE fetch all AI cost functions on every refresh
     fetchPitchPerfectCosts();
     fetchBlandAICosts();
+    fetchTrackdriveCosts();
   };
 
-  // ✅ FORCE both AI cost functions to run on mount and data changes
+  // ✅ FORCE all AI cost functions to run on mount and data changes
   useEffect(() => {
     console.log('🔥 FORCING AI cost functions to run...');
     fetchPitchPerfectCosts();
     fetchBlandAICosts();
+    fetchTrackdriveCosts();
   }, [timeFrame, generationDateRange, processingDateRange]);
 
   // ✅ CLEAR SUBID CACHE when dates change to ensure fresh data with correct date ranges
@@ -1321,10 +1386,37 @@ export default function RevenueTrackingPage() {
         <Col span={6}>
           <Card>
             <Statistic
-              title="Net Profit"
-              value={totalSynergyPayout - totalLeadCosts - blandAICosts - pitchPerfectCosts}
+              title={getCostTitle('Trackdrive Costs')}
+              value={trackdriveCosts}
               precision={2}
-              valueStyle={{ color: totalSynergyPayout - totalLeadCosts - blandAICosts - pitchPerfectCosts >= 0 ? '#3f8600' : '#cf1322' }}
+              valueStyle={{ color: '#cf1322' }}
+              prefix={<DollarOutlined />}
+              loading={trackdriveLoading}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Net Profit"
+              value={totalSynergyPayout - totalLeadCosts - blandAICosts - pitchPerfectCosts - trackdriveCosts}
+              precision={2}
+              valueStyle={{ color: totalSynergyPayout - totalLeadCosts - blandAICosts - pitchPerfectCosts - trackdriveCosts >= 0 ? '#3f8600' : '#cf1322' }}
+              prefix={<DollarOutlined />}
+            />
+          </Card>
+        </Col>
+      </Row>
+      
+      {/* Additional Cost KPIs Row */}
+      <Row gutter={12} style={{ marginBottom: '24px' }}>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Total AI/Service Costs"
+              value={blandAICosts + pitchPerfectCosts + trackdriveCosts}
+              precision={2}
+              valueStyle={{ color: '#cf1322' }}
               prefix={<DollarOutlined />}
             />
           </Card>
@@ -1333,9 +1425,31 @@ export default function RevenueTrackingPage() {
           <Card>
             <Statistic
               title="AI Cost Per Lead"
-              value={totalLeads > 0 ? (blandAICosts + pitchPerfectCosts) / totalLeads : 0}
+              value={totalLeads > 0 ? (blandAICosts + pitchPerfectCosts + trackdriveCosts) / totalLeads : 0}
               precision={4}
               valueStyle={{ color: '#722ed1' }}
+              prefix={<DollarOutlined />}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Cost Efficiency"
+              value={totalSynergyPayout > 0 ? ((totalSynergyPayout - totalLeadCosts - blandAICosts - pitchPerfectCosts - trackdriveCosts) / totalSynergyPayout * 100) : 0}
+              precision={1}
+              valueStyle={{ color: '#722ed1' }}
+              suffix="%"
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Revenue Margin"
+              value={totalSynergyPayout > 0 ? (totalSynergyPayout - totalLeadCosts - blandAICosts - pitchPerfectCosts - trackdriveCosts) : 0}
+              precision={2}
+              valueStyle={{ color: totalSynergyPayout - totalLeadCosts - blandAICosts - pitchPerfectCosts - trackdriveCosts >= 0 ? '#3f8600' : '#cf1322' }}
               prefix={<DollarOutlined />}
             />
           </Card>
@@ -1523,9 +1637,9 @@ export default function RevenueTrackingPage() {
                 <Table.Summary.Cell index={9}><strong>{totalLeads > 0 ? ((totalSynergyIssuedLeads / totalLeads) * 100).toFixed(2) : '0.00'}%</strong></Table.Summary.Cell>
                 <Table.Summary.Cell index={10}><strong>{totalLeads > 0 ? ((totalTransfers / totalLeads) * 100).toFixed(2) : '0.00'}%</strong></Table.Summary.Cell>
                 <Table.Summary.Cell index={11}><strong>${totalSynergyPayout.toFixed(2)}</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={12}><strong>${(blandAICosts + pitchPerfectCosts).toFixed(2)}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={12}><strong>${(blandAICosts + pitchPerfectCosts + trackdriveCosts).toFixed(2)}</strong></Table.Summary.Cell>
                 <Table.Summary.Cell index={13}><strong>N/A</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={14}><strong>${(totalSynergyPayout - totalLeadCosts - blandAICosts - pitchPerfectCosts).toFixed(2)}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={14}><strong>${(totalSynergyPayout - totalLeadCosts - blandAICosts - pitchPerfectCosts - trackdriveCosts).toFixed(2)}</strong></Table.Summary.Cell>
               </Table.Summary.Row>
             )}
           />
