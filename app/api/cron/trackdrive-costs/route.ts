@@ -242,3 +242,8 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+// Also allow GET for manual testing and Vercel Cron (which issues GET requests)
+export async function GET(req: NextRequest) {
+  return POST(req);
+}
