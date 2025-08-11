@@ -132,12 +132,10 @@ export async function POST(req: NextRequest) {
       return roundedDate.toISOString().replace(/\.\d{3}Z$/, 'Z'); // Remove milliseconds
     };
 
-    // 6. Build Trackdrive API URL
+    // 6. Build Trackdrive API URL (simplified format)
     const baseUrl = 'https://synergy-marketplace.trackdrive.com/api/v1/charge_rollups';
     const params = new URLSearchParams({
-      'filterModel[offer_id][type]': 'equals',
-      'filterModel[offer_id][values][]': '10026786',
-      'filterModel[offer_id][filterType]': 'set',
+      'offer_id': '10026786',
       'created_at_from': formatTrackdriveDate(fromTime),
       'created_at_to': formatTrackdriveDate(toTime)
     });
