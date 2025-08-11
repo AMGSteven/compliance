@@ -89,36 +89,54 @@ export async function POST(req: NextRequest) {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
-    // 4. Calculate Time Window (1 hour before current time to current time)
+    // 4. Calculate Time Window (previous complete hour in Eastern timezone)
+    // If running at 3pm ET, track 2-3pm ET (the completed hour)
+    // Automatically handles EST (-5) vs EDT (-4) based on current date
+    
     const now = new Date();
-    const fromTime = new Date(now.getTime() - (60 * 60 * 1000)); // 1 hour before
-    const toTime = now; // Current time
+    
+    // Get current time in Eastern timezone using toLocaleString
+    const nowEastern = new Date(now.toLocaleString("en-US", {timeZone: "America/New_York"}));
+    
+    // Round down to the current hour boundary in Eastern time
+    const currentHourEastern = new Date(nowEastern);
+    currentHourEastern.setMinutes(0, 0, 0);
+    
+    // Get the previous hour in Eastern time  
+    const previousHourEastern = new Date(currentHourEastern);
+    previousHourEastern.setHours(currentHourEastern.getHours() - 1);
+    
+    // Convert back to UTC for the API
+    // The difference between local interpretation and UTC interpretation gives us the offset
+    const easternOffset = now.getTime() - nowEastern.getTime();
+    const fromTime = new Date(previousHourEastern.getTime() + easternOffset);
+    const toTime = new Date(currentHourEastern.getTime() + easternOffset);
     
     console.log('🕐 [TRACKDRIVE-CRON] Time window:', {
-      from: fromTime.toISOString(),
-      to: toTime.toISOString(),
+      nowUTC: now.toISOString(),
+      nowEastern: nowEastern.toLocaleString("en-US", {timeZone: "America/New_York"}),
+      fromUTC: fromTime.toISOString(),
+      toUTC: toTime.toISOString(),
+      fromEastern: previousHourEastern.toLocaleString("en-US", {timeZone: "America/New_York"}),
+      toEastern: currentHourEastern.toLocaleString("en-US", {timeZone: "America/New_York"}),
       periodHours: 1
     });
 
-    // 5. Format dates for Trackdrive API (following their expected format)
+    // 5. Format dates for Trackdrive API (ISO format with Z suffix)
     const formatTrackdriveDate = (date: Date): string => {
-      // Format: 2025-08-06 09:59:59 -0500
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      const hours = String(date.getHours()).padStart(2, '0');
-      const minutes = String(date.getMinutes()).padStart(2, '0');
-      const seconds = String(date.getSeconds()).padStart(2, '0');
+      // Format: 2025-08-11T14:00:00Z
+      // Round down to the nearest hour for clean time windows
+      const roundedDate = new Date(date);
+      roundedDate.setMinutes(0, 0, 0); // Set minutes, seconds, milliseconds to 0
       
-      // Use EST timezone offset (-0500)
-      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} -0500`;
+      return roundedDate.toISOString().replace(/\.\d{3}Z$/, 'Z'); // Remove milliseconds
     };
 
     // 6. Build Trackdrive API URL
     const baseUrl = 'https://synergy-marketplace.trackdrive.com/api/v1/charge_rollups';
     const params = new URLSearchParams({
       'filterModel[offer_id][type]': 'equals',
-      'filterModel[offer_id][values][]': 'ACABA',
+      'filterModel[offer_id][values][]': '10026786',
       'filterModel[offer_id][filterType]': 'set',
       'created_at_from': formatTrackdriveDate(fromTime),
       'created_at_to': formatTrackdriveDate(toTime)
@@ -176,7 +194,7 @@ export async function POST(req: NextRequest) {
       .from('trackdrive_cost_history')
       .insert([
         {
-          offer_id: 'ACABA',
+          offer_id: '10026786',
           total_amount: totalAmount,
           charge_count: chargeCount,
           period_start: fromTime.toISOString(),
