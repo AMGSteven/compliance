@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 
     // Try to load routing configurations, but don't fail if none exist
     let allRoutingData: any[] = []
-    const { data: routingData, error } = await supabase
+    const { data: dbRoutingData, error } = await supabase
       .from('list_routings')
       .select('*')
       .eq('active', true)
@@ -34,8 +34,8 @@ export async function GET(request: NextRequest) {
     if (error) {
       console.warn('Database error loading routing configs (non-fatal):', error)
       // Continue without routing data - we'll generate generic specs
-    } else if (routingData && routingData.length > 0) {
-      allRoutingData = routingData
+    } else if (dbRoutingData && dbRoutingData.length > 0) {
+      allRoutingData = dbRoutingData
     }
 
     // If we have routing data, use it. Otherwise, generate generic spec
