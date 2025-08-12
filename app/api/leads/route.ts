@@ -921,8 +921,23 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     // TrustedForm claiming now happens BEFORE compliance checks (above)
     // This section has been moved to the beginning of the function
     
-    // Get the dialer type from routing data (default to internal dialer if not specified)
-    const dialerType = routingData?.dialer_type || DIALER_TYPE_INTERNAL;
+    // Determine dialer type: use weighted selection when enabled, else routing default
+    let dialerType = routingData?.dialer_type || DIALER_TYPE_INTERNAL;
+    try {
+      if (routingData?.weighted_routing_enabled) {
+        const supabase = createServerClient();
+        const { data: selectedDialer, error: weightErr } = await supabase
+          .rpc('get_weighted_dialer', { p_list_id: listId });
+        if (!weightErr && typeof selectedDialer === 'number') {
+          dialerType = selectedDialer;
+          console.log(`[WEIGHTED_ROUTING] Selected dialer ${dialerType} via get_weighted_dialer for list ${listId}`);
+        } else if (weightErr) {
+          console.warn('[WEIGHTED_ROUTING] Fallback to routing dialer due to RPC error:', weightErr);
+        }
+      }
+    } catch (weightedSelectionErr) {
+      console.warn('[WEIGHTED_ROUTING] Exception selecting weighted dialer; using routing default:', weightedSelectionErr);
+    }
     console.log(`Using dialer type: ${dialerType === DIALER_TYPE_INTERNAL ? 'Internal Dialer' : dialerType === DIALER_TYPE_PITCH_BPO ? 'Pitch BPO' : dialerType === DIALER_TYPE_CONVOSO ? 'Convoso (IBP BPO)' : 'Unknown'}`);
 
     // Validate state based on dialer type
@@ -980,6 +995,19 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
         
         // If this is the Pitch BPO dialer type, route to Pitch BPO instead of internal dialer
         if (dialerType === DIALER_TYPE_PITCH_BPO) {
+          // WRITE-TIME ATTRIBUTION: set assigned_dialer_type and selection method
+          try {
+            const supabase = createServerClient();
+            await supabase
+              .from('leads')
+              .update({
+                assigned_dialer_type: DIALER_TYPE_PITCH_BPO,
+                dialer_selection_method: routingData?.weighted_routing_enabled ? 'weighted' : 'single'
+              })
+              .eq('id', data[0].id);
+          } catch (attrErr) {
+            console.warn('Non-fatal: failed to attribute dialer at write-time (Pitch BPO):', attrErr);
+          }
           console.log('✅ Pitch BPO dialer approved - routing lead to Pitch BPO (dialer_type=2)');
           return await forwardToPitchBPO({
             data,
@@ -997,6 +1025,19 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
         
         // If this is the Convoso (IBP BPO) dialer type, route to Convoso instead of internal dialer
         if (dialerType === DIALER_TYPE_CONVOSO) {
+          // WRITE-TIME ATTRIBUTION: set assigned_dialer_type and selection method
+          try {
+            const supabase = createServerClient();
+            await supabase
+              .from('leads')
+              .update({
+                assigned_dialer_type: DIALER_TYPE_CONVOSO,
+                dialer_selection_method: routingData?.weighted_routing_enabled ? 'weighted' : 'single'
+              })
+              .eq('id', data[0].id);
+          } catch (attrErr) {
+            console.warn('Non-fatal: failed to attribute dialer at write-time (Convoso):', attrErr);
+          }
           console.log('✅ Convoso dialer approved - routing lead to Convoso (IBP BPO) (dialer_type=3)');
           return await forwardToConvoso({
             data,
@@ -1015,6 +1056,19 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
         // For internal dialer (dialer_type=1), also check approval
         if (dialerType === DIALER_TYPE_INTERNAL) {
           console.log('✅ Internal dialer approved - routing lead to internal dialer (dialer_type=1)');
+          // WRITE-TIME ATTRIBUTION for Internal
+          try {
+            const supabase = createServerClient();
+            await supabase
+              .from('leads')
+              .update({
+                assigned_dialer_type: DIALER_TYPE_INTERNAL,
+                dialer_selection_method: routingData?.weighted_routing_enabled ? 'weighted' : 'single'
+              })
+              .eq('id', data[0].id);
+          } catch (attrErr) {
+            console.warn('Non-fatal: failed to attribute dialer at write-time (Internal):', attrErr);
+          }
         }
         
         console.log('Forwarding lead to internal dialer API for list:', listId);

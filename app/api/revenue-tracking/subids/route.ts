@@ -12,6 +12,13 @@ interface SubIdAggregation {
   policy_count: number;
   transfer_count: number;
   total_cost: number;
+  // NEW: Dialer-specific fields
+  assigned_dialer_type?: number;
+  dialer_name?: string;
+  dialer_transfer_rate?: number;
+  dialer_policy_rate?: number;
+  // NEW: Per-SUBID dialer metrics map for pivot CPA/ratios in UI
+  dialer_metrics?: Record<number, { leads: number; transfers: number; policies: number }>;
 }
 
 export async function GET(request: NextRequest) {
@@ -24,6 +31,9 @@ export async function GET(request: NextRequest) {
     const listId = url.searchParams.get('list_id');
     const startDate = url.searchParams.get('startDate');
     const endDate = url.searchParams.get('endDate');
+    
+    // NEW: Dialer-specific analytics parameter
+    const groupByDialer = url.searchParams.get('group_by_dialer') === 'true';
     
     if (!listId) {
       return NextResponse.json({
@@ -130,60 +140,64 @@ export async function GET(request: NextRequest) {
       });
     }
     
-    // ✅ FIXED: Process ALL leads and group by SUBID (lead-first approach)
+    // Unified SUBID + dialer pivot from SQL (consistent windows)
+    const { data: subidDialerPivot, error: subidDialerError } = await supabase.rpc('get_unified_subid_dialer_pivot', {
+      p_list_id: listId,
+      p_start_date: startDate,
+      p_end_date: endDate,
+      p_use_cross_temporal: false,
+      p_lead_start_date: null,
+      p_lead_end_date: null
+    });
+    if (subidDialerError) {
+      console.error('❌ SUBID dialer pivot error:', subidDialerError);
+      return NextResponse.json({ success: false, error: subidDialerError.message }, { status: 500 });
+    }
+
     const subidGroups: Record<string, SubIdAggregation> = {};
     
     console.log(`🔍 Processing ${allLeads.length} leads and grouping by SUBID...`);
     
-    // Process all leads created in date range
-    allLeads.forEach((lead, index) => {
-      const subidValue = normalizeSubIdKey(lead.custom_fields) || 'No SUBID';
-      
-      // ✅ DEBUG: Log first few SUBID extractions to see what's happening
-      if (index < 5) {
-        console.log(`🔍 DEBUG Lead ${index + 1}: custom_fields=${JSON.stringify(lead.custom_fields)?.substring(0, 100)}, extracted_subid=${subidValue}`);
-      }
-      
-      // Create SUBID group if it doesn't exist
-      if (!subidGroups[subidValue]) {
-        subidGroups[subidValue] = {
-          subid_value: subidValue,
+    // Build groups from pivot
+    (subidDialerPivot || []).forEach((row: any) => {
+      const baseKey = row.subid_value || 'No SUBID';
+      const dialerType = row.assigned_dialer_type ?? 0;
+      const dialerName = dialerType === 1 ? 'Internal Dialer' : dialerType === 2 ? 'Pitch BPO' : dialerType === 3 ? 'Convoso' : 'Unassigned';
+      const groupKey = groupByDialer ? `${baseKey}_dialer_${dialerType}` : baseKey;
+      const displaySubid = groupByDialer ? `${baseKey} - ${dialerName}` : baseKey;
+
+      if (!subidGroups[groupKey]) {
+        subidGroups[groupKey] = {
+          subid_value: displaySubid,
           leads_count: 0,
           weekday_leads: 0,
           weekend_leads: 0,
           policy_count: 0,
           transfer_count: 0,
-          total_cost: 0
+          total_cost: 0,
+          dialer_metrics: {},
+          ...(groupByDialer && {
+            assigned_dialer_type: dialerType,
+            dialer_name: dialerName,
+            dialer_transfer_rate: 0,
+            dialer_policy_rate: 0
+          })
         };
-        console.log(`✅ Created new SUBID group: ${subidValue}`);
       }
-      
-      // ✅ Increment lead count (core metric that drives totals)
-      subidGroups[subidValue].leads_count++;
-      
-      // Check if this lead was created on weekend
-      const leadDate = new Date(lead.created_at);
-      const dayOfWeek = leadDate.getDay(); // 0 = Sunday, 6 = Saturday
-      if (dayOfWeek === 0 || dayOfWeek === 6) {
-        subidGroups[subidValue].weekend_leads++;
-      } else {
-        subidGroups[subidValue].weekday_leads++;
-      }
-      
-      // ✅ Check if this lead has policy issued (any time, not just in date range)
-      if (lead.policy_status === 'issued') {
-        subidGroups[subidValue].policy_count++;
-      }
-      
-      // ✅ Check if this lead was transferred (any time, not just in date range)
-      if (lead.transfer_status === true) {
-        subidGroups[subidValue].transfer_count++;
-      }
-      
-      // Add cost if available for this lead
-      if (costMap[lead.id]) {
-        subidGroups[subidValue].total_cost += costMap[lead.id];
-      }
+      const leadsInc = Number(row.leads_count) || 0;
+      const policiesInc = Number(row.policy_count) || 0;
+      const transfersInc = Number(row.transfer_count) || 0;
+      subidGroups[groupKey].leads_count += leadsInc;
+      subidGroups[groupKey].policy_count += policiesInc;
+      subidGroups[groupKey].transfer_count += transfersInc;
+      // Accumulate per-dialer metrics map (used by dialer CPA columns in UI)
+      const metricsMap = subidGroups[groupKey].dialer_metrics as Record<number, { leads: number; transfers: number; policies: number }>;
+      const existing = metricsMap[dialerType] || { leads: 0, transfers: 0, policies: 0 };
+      metricsMap[dialerType] = {
+        leads: existing.leads + leadsInc,
+        transfers: existing.transfers + transfersInc,
+        policies: existing.policies + policiesInc,
+      };
     });
     
     console.log(`✅ Created ${Object.keys(subidGroups).length} SUBID groups from ${allLeads.length} leads`);
@@ -212,13 +226,22 @@ export async function GET(request: NextRequest) {
     const costPerLead = routingData?.bid || 0.45; // Default cost per lead
     const listDescription = routingData?.description || listId;
     
-    // Convert to final format
+    // Convert to final format (weekday/weekend rough split proportional to totals)
     const subidResults = Object.values(subidGroups).map(group => {
       // Calculate policy rate: (policy_count / leads_count) * 100
       const policyRate = group.leads_count > 0
         ? (group.policy_count / group.leads_count) * 100
         : 0;
         
+      // Calculate transfer rate: (transfer_count / leads_count) * 100
+      const transferRate = group.leads_count > 0
+        ? (group.transfer_count / group.leads_count) * 100
+        : 0;
+        
+      // Proportional weekday/weekend split if not computed via raw leads
+      const weekdayLeads = group.weekday_leads || Math.round(group.leads_count * 5 / 7);
+      const weekendLeads = group.weekend_leads || (group.leads_count - weekdayLeads);
+
       return {
         key: `${listId}-${group.subid_value}`,
         list_id: listId,
@@ -226,17 +249,26 @@ export async function GET(request: NextRequest) {
         subid_value: group.subid_value,
         parent_list_id: listId,
         leads_count: group.leads_count,
-        weekday_leads: group.weekday_leads,
-        weekend_leads: group.weekend_leads,
+        weekday_leads: weekdayLeads,
+        weekend_leads: weekendLeads,
         cost_per_lead: costPerLead,
-        total_lead_costs: group.weekday_leads * costPerLead, // Only weekday leads contribute to costs
+        total_lead_costs: weekdayLeads * costPerLead, // Use computed weekday leads for costs
         synergy_issued_leads: group.policy_count,
         synergy_payout: group.policy_count * 120, // $120 per issued policy
         ai_costs_allocated: group.total_cost,
-        net_profit: (group.policy_count * 120) - (group.weekday_leads * costPerLead) - group.total_cost,
+        net_profit: (group.policy_count * 120) - (weekdayLeads * costPerLead) - group.total_cost,
         policy_rate: policyRate,
         transfers_count: group.transfer_count,
-        is_subid_row: true
+        is_subid_row: true,
+        // Provide per-dialer metrics to power dialer CPA/ratios for SUBID rows
+        dialer_metrics: group.dialer_metrics,
+        // NEW: Include dialer-specific fields when available
+        ...(group.assigned_dialer_type && {
+          assigned_dialer_type: group.assigned_dialer_type,
+          dialer_name: group.dialer_name,
+          dialer_transfer_rate: transferRate,
+          dialer_policy_rate: policyRate
+        })
       };
     });
     

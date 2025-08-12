@@ -23,6 +23,11 @@ interface TrafficSourceRevenue {
     total_revenue: number;
     policy_count?: number;
     cost_per_acquisition?: number;
+    // NEW: Dialer-specific fields
+    assigned_dialer_type?: number;
+    dialer_name?: string;
+    dialer_transfer_rate?: number;
+    dialer_policy_rate?: number;
   }[];
 }
 
@@ -47,6 +52,9 @@ export async function GET(request: NextRequest) {
     let endDate = url.searchParams.get('endDate');
     const timeFrame = url.searchParams.get('timeFrame') || 'all';
     
+    // NEW: Dialer-specific analytics parameter
+    const groupByDialer = url.searchParams.get('group_by_dialer') === 'true';
+    
     // Cross-temporal filtering parameters
     const leadStartDate = url.searchParams.get('leadStartDate');
     const leadEndDate = url.searchParams.get('leadEndDate'); 
@@ -60,7 +68,8 @@ export async function GET(request: NextRequest) {
       leadStartDate, 
       leadEndDate, 
       useProcessingDate, 
-      isDualDateFiltering
+      isDualDateFiltering,
+      groupByDialer
     });
     
     // Handle date defaults
@@ -274,14 +283,17 @@ export async function GET(request: NextRequest) {
       
       console.log(`✅ Found ${listRoutings.length} active list routings with bids`);
       
-      // STEP 2: Use unified approach for each list
+      // STEP 2: Use unified approach for each list (with optional dialer grouping)
       const results = [];
       
       for (const routing of listRoutings) {
         try {
-          console.log(`🔍 Processing list ${routing.list_id} (${routing.description || 'No description'}) using unified SQL`);
+          console.log(`🔍 Processing list ${routing.list_id} (${routing.description || 'No description'}) using ${groupByDialer ? 'dialer-specific' : 'unified'} SQL`);
           
-          // Call the unified function with consistent EST timezone handling
+          // NEW: Use different query approach based on groupByDialer flag
+          // SCALABLE: Use identical logic for both modes, just add dialer grouping for dialer mode
+          
+          // STEP 1: Get lead counts using same unified function (IDENTICAL LOGIC)
           const { data: unifiedResults, error: unifiedError } = await supabase.rpc('get_lead_counts_unified', {
             p_list_id: routing.list_id,
             p_start_date: startDate,
@@ -316,13 +328,13 @@ export async function GET(request: NextRequest) {
             continue;
           }
           
-          // STEP 3: Get policy counts for policies ISSUED in date range (not lead cohort)
+          // STEP 2: Get policy counts for policies ISSUED in date range (IDENTICAL LOGIC)
           let policyCount = 0;
           const { data: policyResults, error: policyError } = await supabase.rpc('get_lead_counts_unified', {
             p_list_id: routing.list_id,
             p_start_date: startDate,
             p_end_date: endDate,
-            p_use_postback_date: true, // ✅ FIXED: Use policy_postback_date to get policies issued in date range
+            p_use_postback_date: true, // ✅ Use policy_postback_date to get policies issued in date range
             p_policy_status: 'issued',
             p_transfer_status: null,
             p_status: null,
@@ -336,12 +348,11 @@ export async function GET(request: NextRequest) {
             policyCount = parseInt(policyResults[0].total_count) || 0;
           }
           
-          // STEP 4: Get transfer counts for transfers COMPLETED in date range (not lead cohort)
+          // STEP 3: Get transfer counts for transfers COMPLETED in date range (IDENTICAL LOGIC)
           let transferCount = 0;
-          // ✅ FIXED: Use direct Supabase query with proper timezone conversion
           console.log(`🔍 Counting transfers with transferred_at between ${startDate} and ${endDate} for ${routing.list_id}`);
           
-          // Convert EST dates to UTC for proper comparison (July = EDT = UTC-4)
+          // Convert EST dates to UTC for proper comparison
           const startDateUTC = `${startDate}T04:00:00.000Z`; // EDT midnight = UTC 4am
           const nextDay = new Date(endDate);
           nextDay.setDate(nextDay.getDate() + 1);
@@ -352,7 +363,6 @@ export async function GET(request: NextRequest) {
             .from('leads')
             .select('id', { count: 'exact', head: true })
             .eq('list_id', routing.list_id)
-            // ✅ FIXED: Remove incorrect status filter - transferred leads can have status 'new'
             .eq('transfer_status', true) // Must be marked as transferred
             .not('transferred_at', 'is', null) // Must have transfer date
             .gte('transferred_at', startDateUTC) // UTC timezone start
@@ -360,32 +370,156 @@ export async function GET(request: NextRequest) {
           
           if (!transferError && transferDbCount !== null) {
             transferCount = transferDbCount;
-            console.log(`✅ Found ${transferCount} transfers for ${routing.list_id} between ${startDate}-${endDate} (UTC: ${startDateUTC} to ${endDateUTC})`);
+            console.log(`✅ Found ${transferCount} transfers for ${routing.list_id} between ${startDate}-${endDate}`);
           } else {
             console.error(`❌ Transfer count error for ${routing.list_id}:`, transferError);
           }
           
           const totalRevenue = totalLeads * routing.bid;
           const policyRate = totalLeads > 0 ? (policyCount / totalLeads) * 100 : 0;
-          
-          results.push({
-            list_id: routing.list_id,
-            description: routing.description || routing.list_id,
-            campaign_id: routing.campaign_id,
-            total_leads: totalLeads,
-            weekend_leads: weekendLeads,
-            weekday_leads: weekdayLeads,
-            total_revenue: totalRevenue,
-            policy_count: policyCount,
-            transfer_count: transferCount,
-            policy_rate: policyRate,
-            bid: routing.bid,
-            mathematical_consistency: true, // Unified approach ensures consistency
-            timezone_used: 'America/New_York (EST)', // Unified function uses EST
-            query_performance: 'Unified SQL with EST timezone handling'
+
+          // STEP 4: Build dialer breakdown via unified SQL pivot (consistent windows)
+          const { data: dialerPivot, error: dialerPivotError } = await supabase.rpc('get_unified_dialer_pivot', {
+            p_list_id: routing.list_id,
+            p_start_date: startDate,
+            p_end_date: endDate,
+            p_use_cross_temporal: isDualDateFiltering,
+            p_lead_start_date: leadStartDate,
+            p_lead_end_date: leadEndDate
           });
+
+          if (dialerPivotError) {
+            console.error(`❌ Dialer pivot error for ${routing.list_id}:`, dialerPivotError);
+            continue;
+          }
+
+          const dialerGroups: Record<number, { lead_count: number; transfer_count: number; policy_count: number }> = {};
+          for (const row of (dialerPivot || [])) {
+            const d = row.assigned_dialer_type ?? 0;
+            dialerGroups[d] = {
+              lead_count: Number(row.leads_count) || 0,
+              transfer_count: Number(row.transfer_count) || 0,
+              policy_count: Number(row.policy_count) || 0,
+            };
+          }
+
+          // CONSISTENCY check against unified totals
+          const dialerBreakdownTotal = Object.values(dialerGroups).reduce((s, g) => s + g.lead_count, 0);
+          if (dialerBreakdownTotal !== totalLeads) {
+            console.warn(`⚠️ CONSISTENCY WARNING: ${routing.list_id} - Unified: ${totalLeads}, Dialer breakdown: ${dialerBreakdownTotal}`);
+          }
+
+          // DIALER GROUPING (rows) or PIVOT (columns)
+          if (groupByDialer) {
+            // Use precomputed dialerGroups
+            
+            // CRITICAL FIX: If no dialer groups found, create an "Unassigned" group with the unified totals
+            if (Object.keys(dialerGroups).length === 0) {
+              console.log(`📊 No dialer assignments found for ${routing.list_id}, creating unassigned group with unified totals`);
+              dialerGroups[0] = {
+                lead_count: totalLeads,
+                transfer_count: transferCount, 
+                policy_count: policyCount
+              };
+            }
+            
+            // Create results for each dialer
+            for (const [dialerType, dialerData] of Object.entries(dialerGroups)) {
+              const dialerTypeInt = parseInt(dialerType);
+              const dialerName = dialerTypeInt === 1 ? 'Internal Dialer' : 
+                                dialerTypeInt === 2 ? 'Pitch BPO' : 
+                                dialerTypeInt === 3 ? 'Convoso' : 'Unassigned';
+              
+              const dialerLeads = dialerData.lead_count;
+              const dialerRevenue = dialerLeads * routing.bid;
+              const dialerTransferRate = dialerLeads > 0 ? (dialerData.transfer_count / dialerLeads) * 100 : 0;
+              const dialerPolicyRate = dialerLeads > 0 ? (dialerData.policy_count / dialerLeads) * 100 : 0;
+              
+              // Calculate proportional weekend/weekday split based on unified function results
+              const dialerWeekendLeads = totalLeads > 0 ? Math.round((weekendLeads / totalLeads) * dialerLeads) : 0;
+              const dialerWeekdayLeads = dialerLeads - dialerWeekendLeads;
+              
+              results.push({
+                list_id: routing.list_id,
+                description: `${routing.description || routing.list_id} - ${dialerName}`,
+                campaign_id: routing.campaign_id,
+                total_leads: dialerLeads,
+                weekend_leads: dialerWeekendLeads,
+                weekday_leads: dialerWeekdayLeads,
+                total_revenue: dialerRevenue,
+                policy_count: dialerData.policy_count,
+                transfer_count: dialerData.transfer_count,
+                policy_rate: dialerPolicyRate,
+                bid: routing.bid,
+                // Dialer-specific fields
+                assigned_dialer_type: dialerTypeInt,
+                dialer_name: dialerName,
+                dialer_transfer_rate: dialerTransferRate,
+                dialer_policy_rate: dialerPolicyRate,
+                mathematical_consistency: true,
+                timezone_used: 'America/New_York (EST)',
+                query_performance: 'Unified function + consistent dialer breakdown'
+              });
+            }
+            
+            console.log(`✅ DIALER: ${routing.description || routing.list_id}: ${totalLeads} leads (unified) split across ${Object.keys(dialerGroups).length} dialers (${dialerBreakdownTotal} breakdown)`);
+            
+          } else {
+            // NORMAL MODE: Single aggregate result + PIVOT columns per dialer
+            const get = (t: number) => dialerGroups[t] || { lead_count: 0, transfer_count: 0, policy_count: 0 };
+            const gInternal = get(1);
+            const gPitch = get(2);
+            const gConvoso = get(3);
+            const gUnassigned = get(0);
+
+            // Build dialer_metrics map for dynamic columns
+            const dialer_metrics: Record<number, { leads: number; transfers: number; policies: number }> = {
+              1: { leads: gInternal.lead_count, transfers: gInternal.transfer_count, policies: gInternal.policy_count },
+              2: { leads: gPitch.lead_count, transfers: gPitch.transfer_count, policies: gPitch.policy_count },
+              3: { leads: gConvoso.lead_count, transfers: gConvoso.transfer_count, policies: gConvoso.policy_count },
+              0: { leads: gUnassigned.lead_count, transfers: gUnassigned.transfer_count, policies: gUnassigned.policy_count },
+            };
+
+            // Push aggregate row including legacy per-dialer fields (for backward compat) and dialer_metrics
+            results.push({
+              list_id: routing.list_id,
+              description: routing.description || routing.list_id,
+              campaign_id: routing.campaign_id,
+              total_leads: totalLeads,
+              weekend_leads: weekendLeads,
+              weekday_leads: weekdayLeads,
+              total_revenue: totalRevenue,
+              policy_count: policyCount,
+              transfer_count: transferCount,
+              policy_rate: policyRate,
+              bid: routing.bid,
+              mathematical_consistency: true,
+              timezone_used: 'America/New_York (EST)',
+              query_performance: 'Identical logic as dialer mode',
+              // PIVOT: Internal
+              internal_leads: gInternal.lead_count,
+              internal_transfers: gInternal.transfer_count,
+              internal_policies: gInternal.policy_count,
+              // PIVOT: Pitch BPO
+              pitch_leads: gPitch.lead_count,
+              pitch_transfers: gPitch.transfer_count,
+              pitch_policies: gPitch.policy_count,
+              // PIVOT: Convoso
+              convoso_leads: gConvoso.lead_count,
+              convoso_transfers: gConvoso.transfer_count,
+              convoso_policies: gConvoso.policy_count,
+              // PIVOT: Unassigned (backfill gap)
+              unassigned_leads: gUnassigned.lead_count,
+              unassigned_transfers: gUnassigned.transfer_count,
+              unassigned_policies: gUnassigned.policy_count,
+              // Dynamic dialer map
+              dialer_metrics
+            });
+            
+            console.log(`✅ UNIFIED: ${routing.description || routing.list_id}: ${totalLeads} leads (${weekdayLeads} weekday, ${weekendLeads} weekend), ${policyCount} policies, ${transferCount} transfers, $${totalRevenue.toFixed(2)} revenue`);
+          }
           
-          console.log(`✅ UNIFIED: ${routing.description || routing.list_id}: ${totalLeads} leads (${weekdayLeads} weekday, ${weekendLeads} weekend), ${policyCount} policies (issued in date range), ${transferCount} transfers (completed in date range), $${totalRevenue.toFixed(2)} revenue`);
+          // Log completion moved to within each path where variables are available
           
         } catch (listError) {
           console.error(`❌ Error processing list ${routing.list_id} with unified approach:`, listError);
@@ -430,9 +564,14 @@ export async function GET(request: NextRequest) {
         transfer_count: number;
         cost_per_acquisition: number | null;
         policy_rate: number;
-          mathematical_consistency: boolean;
-          timezone_used: string;
-          query_performance: string;
+        mathematical_consistency: boolean;
+        timezone_used: string;
+        query_performance: string;
+        // NEW: Dialer-specific fields
+        assigned_dialer_type?: number;
+        dialer_name?: string;
+        dialer_transfer_rate?: number;
+        dialer_policy_rate?: number;
       }>;
     }
     
@@ -460,19 +599,34 @@ export async function GET(request: NextRequest) {
       // Calculate CPA
         const cpa = result.policy_count > 0 ? result.total_revenue / result.policy_count : null;
       
-      // Add list data
+      // Add list data (augment with dialer_metrics map when present)
       trafficSources[source].list_ids.push({
         list_id: result.list_id,
-          description: result.description,
-          leads_count: result.total_leads,
-          total_revenue: result.total_revenue,
-          policy_count: result.policy_count,
-          transfer_count: result.transfer_count,
+        description: result.description,
+        leads_count: result.total_leads,
+        total_revenue: result.total_revenue,
+        policy_count: result.policy_count,
+        transfer_count: result.transfer_count,
         cost_per_acquisition: cpa,
-          policy_rate: result.policy_rate,
-          mathematical_consistency: result.mathematical_consistency,
-          timezone_used: result.timezone_used,
-          query_performance: result.query_performance
+        policy_rate: result.policy_rate,
+        mathematical_consistency: result.mathematical_consistency,
+        timezone_used: result.timezone_used,
+        query_performance: result.query_performance,
+        // NEW: Include dialer-specific fields when available
+        ...(result.assigned_dialer_type && {
+          assigned_dialer_type: result.assigned_dialer_type,
+          dialer_name: result.dialer_name,
+          dialer_transfer_rate: result.dialer_transfer_rate,
+          dialer_policy_rate: result.dialer_policy_rate
+        }),
+        ...(result.internal_leads !== undefined && {
+          dialer_metrics: {
+            1: { leads: result.internal_leads, transfers: result.internal_transfers, policies: result.internal_policies },
+            2: { leads: result.pitch_leads, transfers: result.pitch_transfers, policies: result.pitch_policies },
+            3: { leads: result.convoso_leads, transfers: result.convoso_transfers, policies: result.convoso_policies },
+            0: { leads: result.unassigned_leads, transfers: result.unassigned_transfers, policies: result.unassigned_policies },
+          }
+        })
       });
       
       // Add to campaigns
@@ -509,6 +663,27 @@ export async function GET(request: NextRequest) {
       const queryTime = Date.now() - startTime;
       console.log(`🎯 UNIFIED APPROACH: Processed ${totalLeads} leads across ${formattedData.length} traffic sources in ${queryTime}ms with mathematical consistency`);
     
+    // Build dialer meta across all rows for dynamic columns
+    const dialerTotals: Record<string, { id: string; name: string; leads: number }> = {};
+    for (const src of formattedData as any[]) {
+      for (const row of src.list_ids as any[]) {
+        const m = row.dialer_metrics;
+        if (!m) continue;
+        const add = (id: string, name: string, leads?: number) => {
+          const v = leads || 0;
+          if (!(id in dialerTotals)) dialerTotals[id] = { id, name, leads: 0 };
+          dialerTotals[id].leads += v;
+        };
+        add('1', 'Internal Dialer', m[1]?.leads);
+        add('2', 'Pitch BPO', m[2]?.leads);
+        add('3', 'Convoso', m[3]?.leads);
+        add('0', 'Unassigned', m[0]?.leads);
+      }
+    }
+    const dialers = Object.values(dialerTotals)
+      .filter(d => d.leads > 0)
+      .sort((a, b) => b.leads - a.leads);
+
     return NextResponse.json({
       success: true,
       data: formattedData,
@@ -529,7 +704,8 @@ export async function GET(request: NextRequest) {
           scanType: 'unified_sql_consistent_timezone',
           mathematicalConsistency: true,
           timezoneHandling: 'America/New_York (EST)'
-        }
+        },
+        meta: { dialers }
       });
     }
     

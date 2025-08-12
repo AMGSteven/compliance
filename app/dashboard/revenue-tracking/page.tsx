@@ -2,8 +2,8 @@
 export const dynamic = 'force-dynamic';
 
 import { useState, useEffect } from 'react';
-import { Card, Table, Typography, DatePicker, Button, Select, Space, Statistic, Row, Col, Spin, message, Alert, Collapse, Segmented } from 'antd';
-import { DollarOutlined, DownloadOutlined, FilterOutlined, ReloadOutlined, CheckCircleOutlined, BugOutlined, ClockCircleOutlined, BarChartOutlined, ThunderboltOutlined, TeamOutlined } from '@ant-design/icons';
+import { Card, Table, Typography, DatePicker, Button, Select, Space, Statistic, Row, Col, Spin, message, Alert, Collapse, Segmented, Modal } from 'antd';
+import { DollarOutlined, DownloadOutlined, FilterOutlined, ReloadOutlined, CheckCircleOutlined, BugOutlined, ClockCircleOutlined, BarChartOutlined, ThunderboltOutlined, TeamOutlined, CopyOutlined } from '@ant-design/icons';
 import { format } from 'date-fns';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
@@ -97,6 +97,26 @@ interface RevenueData {
   parent_list_id?: string;
   is_subid_row?: boolean;
   transfers_count?: number;
+  // NEW: Dialer-specific fields
+  assigned_dialer_type?: number;
+  dialer_name?: string;
+  dialer_transfer_rate?: number;
+  dialer_policy_rate?: number;
+  // Dialer pivot fields (per-list, normal view)
+  internal_leads?: number;
+  internal_transfers?: number;
+  internal_policies?: number;
+  pitch_leads?: number;
+  pitch_transfers?: number;
+  pitch_policies?: number;
+  convoso_leads?: number;
+  convoso_transfers?: number;
+  convoso_policies?: number;
+  unassigned_leads?: number;
+  unassigned_transfers?: number;
+  unassigned_policies?: number;
+  // Dynamic per-dialer metrics map for pivot columns
+  dialer_metrics?: Record<number, { leads: number; transfers: number; policies: number }>;
   // Temporal attribution fields
   mathematical_consistency?: boolean;
   timezone_used?: string;
@@ -161,6 +181,7 @@ interface SubidResponse {
 
 export default function RevenueTrackingPage() {
   const [revenueData, setRevenueData] = useState<RevenueData[]>([]);
+  const [dialersMeta, setDialersMeta] = useState<{ id: string; name: string; leads: number }[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Enhanced state for dual date filtering
@@ -187,6 +208,17 @@ export default function RevenueTrackingPage() {
   const [expandedRowKeys, setExpandedRowKeys] = useState<string[]>([]);
   const [loadingSubids, setLoadingSubids] = useState<Record<string, boolean>>({});
   const [subidFilters, setSubidFilters] = useState<Record<string, number>>({});
+  
+  // NEW: Dialer-specific analytics state (default OFF per product decision)
+  const [groupByDialer, setGroupByDialer] = useState<boolean>(false);
+  
+  // NEW: Column customization state
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set([
+    'description', 'leads_count', 'weekday_leads', 'weekend_leads', 
+    'cost_per_lead', 'total_lead_costs', 'transfers_count', 'transfer_rate',
+    'synergy_issued_leads', 'policy_rate', 'synergy_payout', 'net_profit'
+  ]));
+  const [showColumnCustomizer, setShowColumnCustomizer] = useState<boolean>(false);
   const [totalSynergyPayout, setTotalSynergyPayout] = useState<number>(0);
   const [blandAICosts, setBlandAICosts] = useState<number>(0);
   const [blandAILoading, setBlandAILoading] = useState<boolean>(false);
@@ -355,11 +387,20 @@ export default function RevenueTrackingPage() {
         console.log(`🎯 Cross-temporal filter: Processing ${startDate}-${endDate}, Leads ${leadGenerationDateRange[0].format('YYYY-MM-DD')}-${leadGenerationDateRange[1].format('YYYY-MM-DD')}`);
           }
           
+      // NEW: Add dialer grouping parameter
+      if (groupByDialer) {
+        apiParams.append('group_by_dialer', 'true');
+        console.log('📞 Dialer grouping enabled - fetching dialer-specific analytics');
+          }
+          
       const response = await fetch(`/api/revenue-tracking?${apiParams.toString()}`, {
             headers: { 'x-api-key': process.env.NEXT_PUBLIC_API_KEY || 'test_key_123' }
           });
           
           const result = await response.json();
+      
+      // Ensure dialer metadata is captured for dynamic columns (normal view)
+      setDialersMeta(result?.meta?.dialers || []);
           
       if (!result.success) {
         throw new Error(`Revenue API failed: ${result.error}`);
@@ -388,6 +429,8 @@ export default function RevenueTrackingPage() {
             policy_rate: listData.policy_rate || 0,
             transfers_count: listData.transfer_count || 0, // FIXED: Use actual transfer count from API
             synergy_payout: (listData.policy_count || 0) * 120,
+            // Include per-dialer metrics map for pivot rendering
+            dialer_metrics: listData.dialer_metrics || undefined,
             mathematical_consistency: true,
             timezone_used: 'America/New_York (EST)',
             query_performance: 'Restored original revenue tracking API',
@@ -698,9 +741,21 @@ export default function RevenueTrackingPage() {
         endDate = calcEnd;
       }
       
-      const apiUrl = `/api/revenue-tracking/subids?list_id=${listId}&startDate=${startDate.format('YYYY-MM-DD')}&endDate=${endDate.format('YYYY-MM-DD')}`;
+      // Build SUBID API URL with dialer grouping parameter
+      const subidParams = new URLSearchParams({
+        list_id: listId,
+        startDate: startDate.format('YYYY-MM-DD'),
+        endDate: endDate.format('YYYY-MM-DD')
+      });
       
-      console.log(`✅ FIXED: Fetching SUBID data for list_id: ${listId}, dateRange: ${startDate.format('YYYY-MM-DD')} to ${endDate.format('YYYY-MM-DD')} (matches main API)`);
+      // NEW: Add dialer grouping parameter for SUBID breakdown
+      if (groupByDialer) {
+        subidParams.append('group_by_dialer', 'true');
+      }
+      
+      const apiUrl = `/api/revenue-tracking/subids?${subidParams.toString()}`;
+      
+      console.log(`✅ FIXED: Fetching SUBID data for list_id: ${listId}, dateRange: ${startDate.format('YYYY-MM-DD')} to ${endDate.format('YYYY-MM-DD')} (matches main API)${groupByDialer ? ' with dialer grouping' : ''}`);
       
       const response = await fetch(apiUrl, {
         headers: {
@@ -737,17 +792,21 @@ export default function RevenueTrackingPage() {
   // Handle row expansion for SUBID data
   const handleRowExpand = (expanded: boolean, record: RevenueData) => {
     const listId = record.list_id;
+    // Compute the exact row key as used by Table.rowKey to keep keys consistent
+    const computedKey = record.is_subid_row
+      ? `subid-${record.parent_list_id}-${record.subid_value}`
+      : `list-${record.list_id}__${record.description}`;
     
     if (expanded) {
       console.log(`Expanding row for list_id: ${listId}`);
       // Immediately update expanded keys to show the row
-      setExpandedRowKeys(prev => [...prev, listId]);
+      setExpandedRowKeys(prev => Array.from(new Set([...(prev || []), computedKey])));
       // Start fetching SUBID data (async, non-blocking)
       fetchSubidData(listId);
     } else {
       console.log(`Collapsing row for list_id: ${listId}`);
       // Remove from expanded keys
-      setExpandedRowKeys(prev => prev.filter(key => key !== listId));
+      setExpandedRowKeys(prev => (prev || []).filter(key => key !== computedKey));
     }
   };
 
@@ -841,7 +900,7 @@ export default function RevenueTrackingPage() {
       return {
         ...col,
         render: col.render ? (value: any, subidRecord: RevenueData) => {
-          return col.render!(value, subidRecord);
+          return (col.render as any)(value, subidRecord);
         } : undefined
       };
     });
@@ -941,6 +1000,14 @@ export default function RevenueTrackingPage() {
     setExpandedRowKeys([]);
   }, [temporalViewMode, generationDateRange, processingDateRange, timeFrame, enableLeadDateFilter, leadGenerationDateRange]);
 
+  // NEW: Refresh data when dialer grouping changes
+  useEffect(() => {
+    console.log(`📞 Dialer grouping changed to: ${groupByDialer}`);
+    setSubidData({}); // Clear SUBID cache since grouping affects both main and SUBID data
+    setExpandedRowKeys([]);
+    fetchRevenueData();
+  }, [groupByDialer]);
+
   // ✅ SIMPLE MOUNT EFFECT - This MUST run
   useEffect(() => {
     console.log('🚨 COMPONENT MOUNTED - Calling fetchPitchPerfectCosts NOW');
@@ -968,32 +1035,50 @@ export default function RevenueTrackingPage() {
     window.URL.revokeObjectURL(url);
   };
 
-  const columns = [
+  // NEW: Dynamic column configuration system
+  const allColumnConfigs = [
+    // CORE COLUMNS (always visible by default)
     {
-      title: 'List ID',
-      dataIndex: 'list_id',
-      key: 'list_id',
-      minWidth: 120,
-      ellipsis: true,
-    },
-    {
-      title: 'Description',
-      dataIndex: 'description',
       key: 'description',
+      title: 'Campaign',
+      dataIndex: 'description',
+      category: 'core',
+      description: 'Campaign or list description',
       minWidth: 200,
       ellipsis: true,
+      render: (value: string, record: any) => (
+        <Space size={6}>
+          <span>{value}</span>
+          <Button
+            size="small"
+            type="text"
+            icon={<CopyOutlined />}
+            onClick={() => {
+              navigator.clipboard.writeText(record.list_id || '');
+              message.success('List ID copied to clipboard');
+            }}
+          />
+        </Space>
+      ),
+      sorter: (a: RevenueData, b: RevenueData) => a.description.localeCompare(b.description),
     },
     {
+      key: 'leads_count',
       title: 'Total Leads',
       dataIndex: 'leads_count',
-      key: 'leads_count',
+      category: 'core',
+      description: 'Total number of leads',
       minWidth: 100,
       sorter: (a: RevenueData, b: RevenueData) => a.leads_count - b.leads_count,
     },
+    
+    // LEAD BREAKDOWN COLUMNS
     {
+      key: 'weekday_leads',
       title: 'Weekday Leads',
       dataIndex: 'weekday_leads',
-      key: 'weekday_leads',
+      category: 'breakdown',
+      description: 'Leads generated on weekdays',
       minWidth: 110,
       render: (value: number | undefined, record: RevenueData) => {
         const weekdayCount = value !== undefined ? value : (record.leads_count - (record.weekend_leads || 0));
@@ -1011,9 +1096,11 @@ export default function RevenueTrackingPage() {
         (b.weekday_leads || (b.leads_count - (b.weekend_leads || 0))),
     },
     {
+      key: 'weekend_leads',
       title: 'Weekend Leads',
       dataIndex: 'weekend_leads',
-      key: 'weekend_leads',
+      category: 'breakdown',
+      description: 'Leads generated on weekends',
       minWidth: 110,
       render: (value: number | undefined, record: RevenueData) => (
         <span style={{ 
@@ -1026,57 +1113,48 @@ export default function RevenueTrackingPage() {
           )}
         </span>
       ),
-      sorter: (a: RevenueData, b: RevenueData) => 
-        (a.weekend_leads || 0) - (b.weekend_leads || 0),
+      sorter: (a: RevenueData, b: RevenueData) => (a.weekend_leads || 0) - (b.weekend_leads || 0),
     },
+    
+    // COST COLUMNS
     {
+      key: 'cost_per_lead',
       title: 'Cost Per Lead',
       dataIndex: 'cost_per_lead',
-      key: 'cost_per_lead',
+      category: 'cost',
+      description: 'Cost per individual lead',
       minWidth: 110,
       render: (value: number) => `$${value.toFixed(2)}`,
       sorter: (a: RevenueData, b: RevenueData) => a.cost_per_lead - b.cost_per_lead,
     },
     {
+      key: 'total_lead_costs',
       title: 'Total Lead Costs',
       dataIndex: 'total_lead_costs',
-      key: 'total_lead_costs',
+      category: 'cost',
+      description: 'Total cost of all leads',
       minWidth: 130,
       render: (value: number) => `$${value.toFixed(2)}`,
       sorter: (a: RevenueData, b: RevenueData) => a.total_lead_costs - b.total_lead_costs,
     },
+    
+    // PERFORMANCE COLUMNS
     {
+      key: 'transfers_count',
       title: 'Transfers',
       dataIndex: 'transfers_count',
-      key: 'transfers_count',
+      category: 'performance',
+      description: 'Number of transferred leads',
       minWidth: 90,
       render: (value: number | undefined) => value || 0,
       sorter: (a: RevenueData, b: RevenueData) => (a.transfers_count || 0) - (b.transfers_count || 0),
     },
     {
-      title: 'Synergy Issued Leads',
-      dataIndex: 'synergy_issued_leads',
-      key: 'synergy_issued_leads',
-      minWidth: 140,
-      render: (value: number | undefined) => 
-        value !== undefined ? value : 0,
-      sorter: (a: RevenueData, b: RevenueData) => 
-        (a.synergy_issued_leads || 0) - (b.synergy_issued_leads || 0),
-    },
-    {
-      title: 'Policy Conversion Rate',
-      dataIndex: 'policy_rate',
-      key: 'policy_rate',
-      minWidth: 150,
-      render: (value: number | undefined) => 
-        value !== undefined ? `${value.toFixed(2)}%` : '0.00%',
-      sorter: (a: RevenueData, b: RevenueData) => 
-        (a.policy_rate || 0) - (b.policy_rate || 0),
-    },
-    {
+      key: 'transfer_rate',
       title: 'Transfer Rate',
       dataIndex: 'transfers_count',
-      key: 'transfer_rate',
+      category: 'performance',
+      description: 'Percentage of leads that transferred',
       minWidth: 110,
       render: (value: number | undefined, record: RevenueData) => 
         value !== undefined ? `${((value / (record.leads_count || 1)) * 100).toFixed(2)}%` : '0.00%',
@@ -1087,29 +1165,31 @@ export default function RevenueTrackingPage() {
       },
     },
     {
-      title: 'Synergy Payout',
-      dataIndex: 'synergy_payout',
-      key: 'synergy_payout',
+      key: 'synergy_issued_leads',
+      title: 'Policies Issued',
+      dataIndex: 'synergy_issued_leads',
+      category: 'performance',
+      description: 'Number of policies issued',
       minWidth: 120,
-      render: (value: number | undefined) => 
-        value !== undefined ? `$${value.toFixed(2)}` : '$0.00',
-      sorter: (a: RevenueData, b: RevenueData) => 
-        (a.synergy_payout || 0) - (b.synergy_payout || 0),
+      render: (value: number | undefined) => value !== undefined ? value : 0,
+      sorter: (a: RevenueData, b: RevenueData) => (a.synergy_issued_leads || 0) - (b.synergy_issued_leads || 0),
     },
     {
-      title: 'AI Costs Allocated',
-      dataIndex: 'ai_costs_allocated',
-      key: 'ai_costs_allocated',
-      minWidth: 130,
-      render: (value: number | undefined) => 
-        value !== undefined ? `$${value.toFixed(2)}` : '$0.00',
-      sorter: (a: RevenueData, b: RevenueData) => 
-        (a.ai_costs_allocated || 0) - (b.ai_costs_allocated || 0),
+      key: 'policy_rate',
+      title: 'Policy Rate',
+      dataIndex: 'policy_rate',
+      category: 'performance',
+      description: 'Percentage of leads that converted to policies',
+      minWidth: 110,
+      render: (value: number | undefined) => value !== undefined ? `${value.toFixed(2)}%` : '0.00%',
+      sorter: (a: RevenueData, b: RevenueData) => (a.policy_rate || 0) - (b.policy_rate || 0),
     },
     {
+      key: 'cost_per_acquisition',
       title: 'Cost Per Acquisition',
       dataIndex: 'synergy_issued_leads',
-      key: 'cost_per_acquisition',
+      category: 'performance',
+      description: 'Cost per policy issued (CPA)',
       minWidth: 140,
       render: (synergyLeads: number | undefined, record: RevenueData) => {
         if (!synergyLeads || synergyLeads === 0) return 'N/A';
@@ -1122,17 +1202,149 @@ export default function RevenueTrackingPage() {
         return cpaA - cpaB;
       },
     },
+    
+    // DIALER PIVOT COLUMNS (dynamic; generated from meta.dialers)
+    ...(dialersMeta as { id: string; name: string; leads: number }[]).flatMap((d: { id: string; name: string; leads: number }) => {
+      const id = d.id;
+      const prefix = `dialer_${id}`;
+      const name = d.name;
+      return [
+        {
+          key: `${prefix}_leads`,
+          title: `${name} Leads`,
+          dataIndex: 'leads_count',
+          category: 'dialer',
+          description: `Leads handled by ${name}`,
+          minWidth: 120,
+          render: (_: any, record: RevenueData) => {
+            const m: any = (record as any).dialer_metrics || {};
+            return m[id]?.leads ?? 0;
+          },
+          sorter: (a: any, b: any) => ((a.dialer_metrics?.[id]?.leads || 0) - (b.dialer_metrics?.[id]?.leads || 0)),
+        },
+        {
+          key: `${prefix}_transfer_rate`,
+          title: `${name} Transfer Rate`,
+          dataIndex: 'transfers_count',
+          category: 'dialer',
+          description: `Transfer rate for ${name}`,
+          minWidth: 140,
+          render: (_: any, record: RevenueData) => {
+            const m: any = (record as any).dialer_metrics || {};
+            const leads = m[id]?.leads || 0;
+            const transfers = m[id]?.transfers || 0;
+            if (leads === 0) return 'N/A';
+            return `${((transfers / leads) * 100).toFixed(2)}%`;
+          },
+          sorter: (a: any, b: any) => {
+            const ma: any = a.dialer_metrics || {}; const mb: any = b.dialer_metrics || {};
+            const ra = (ma[id]?.leads ? (ma[id].transfers / ma[id].leads) : 0);
+            const rb = (mb[id]?.leads ? (mb[id].transfers / mb[id].leads) : 0);
+            return ra - rb;
+          },
+        },
+        {
+          key: `${prefix}_policy_rate`,
+          title: `${name} Policy Rate`,
+          dataIndex: 'policy_rate',
+          category: 'dialer',
+          description: `Policy rate for ${name}`,
+          minWidth: 140,
+          render: (_: any, record: RevenueData) => {
+            const m: any = (record as any).dialer_metrics || {};
+            const leads = m[id]?.leads || 0;
+            const policies = m[id]?.policies || 0;
+            if (leads === 0) return 'N/A';
+            return `${((policies / leads) * 100).toFixed(2)}%`;
+          },
+          sorter: (a: any, b: any) => {
+            const ma: any = a.dialer_metrics || {}; const mb: any = b.dialer_metrics || {};
+            const ra = (ma[id]?.leads ? (ma[id].policies / ma[id].leads) : 0);
+            const rb = (mb[id]?.leads ? (mb[id].policies / mb[id].leads) : 0);
+            return ra - rb;
+          },
+        },
+        {
+          key: `${prefix}_cpa`,
+          title: `${name} CPA`,
+          dataIndex: 'total_lead_costs',
+          category: 'dialer',
+          description: `Cost per acquisition for ${name}`,
+          minWidth: 120,
+          render: (totalLeadCosts: number, record: RevenueData) => {
+            const m: any = (record as any).dialer_metrics || {};
+            const dialer = m[id];
+            if (!dialer || !dialer.policies) return 'N/A';
+            const proportionalCost = (totalLeadCosts || 0) * ((dialer.leads || 0) / (record.leads_count || 1));
+            const cpa = proportionalCost / dialer.policies;
+            return `$${cpa.toFixed(2)}`;
+          },
+          sorter: (a: any, b: any) => {
+            const ma: any = a.dialer_metrics || {}; const mb: any = b.dialer_metrics || {};
+            const costA = (a.total_lead_costs || 0) * ((ma[id]?.leads || 0) / (a.leads_count || 1));
+            const cpaA = (ma[id]?.policies ? costA / ma[id].policies : 0);
+            const costB = (b.total_lead_costs || 0) * ((mb[id]?.leads || 0) / (b.leads_count || 1));
+            const cpaB = (mb[id]?.policies ? costB / mb[id].policies : 0);
+            return cpaA - cpaB;
+          },
+        },
+      ];
+    }),
+    
+    // REVENUE COLUMNS
     {
+      key: 'synergy_payout',
+      title: 'Revenue',
+      dataIndex: 'synergy_payout',
+      category: 'revenue',
+      description: 'Total revenue from policies',
+      minWidth: 120,
+      render: (value: number | undefined) => value !== undefined ? `$${value.toFixed(2)}` : '$0.00',
+      sorter: (a: RevenueData, b: RevenueData) => (a.synergy_payout || 0) - (b.synergy_payout || 0),
+    },
+    {
+      key: 'ai_costs_allocated',
+      title: 'AI Costs',
+      dataIndex: 'ai_costs_allocated',
+      category: 'cost',
+      description: 'AI/automation costs allocated',
+      minWidth: 100,
+      render: (value: number | undefined) => value !== undefined ? `$${value.toFixed(2)}` : '$0.00',
+      sorter: (a: RevenueData, b: RevenueData) => (a.ai_costs_allocated || 0) - (b.ai_costs_allocated || 0),
+    },
+    {
+      key: 'net_profit',
       title: 'Net Profit',
       dataIndex: 'net_profit',
-      key: 'net_profit',
+      category: 'revenue',
+      description: 'Revenue minus all costs',
       minWidth: 110,
-      render: (value: number | undefined) => 
-        value !== undefined ? `$${value.toFixed(2)}` : '$0.00',
-      sorter: (a: RevenueData, b: RevenueData) => 
-        (a.net_profit || 0) - (b.net_profit || 0),
+      render: (value: number | undefined) => {
+        const profit = value || 0;
+        return (
+          <span style={{ 
+            color: profit >= 0 ? '#52c41a' : '#ff4d4f',
+            fontWeight: 'bold'
+          }}>
+            ${profit.toFixed(2)}
+          </span>
+        );
+      },
+      sorter: (a: RevenueData, b: RevenueData) => (a.net_profit || 0) - (b.net_profit || 0),
     },
   ];
+
+  // Generate columns based on visibility settings
+  const columns = allColumnConfigs
+    .filter(config => visibleColumns.has(config.key))
+    .map(config => ({
+      title: config.title,
+      dataIndex: config.dataIndex,
+      key: config.key,
+      minWidth: config.minWidth,
+      render: config.render,
+      sorter: config.sorter,
+    }));
 
   return (
     <div style={{ 
@@ -1286,6 +1498,7 @@ export default function RevenueTrackingPage() {
             </Space>
           </Col>
           <Col span={4}>
+            <Space direction="vertical" style={{ width: '100%' }}>
             <Button 
               type="primary"
               icon={<ReloadOutlined />}
@@ -1295,6 +1508,23 @@ export default function RevenueTrackingPage() {
             >
               Refresh Data
             </Button>
+              <Button 
+                icon={<FilterOutlined />}
+                onClick={() => setShowColumnCustomizer(true)}
+                block
+                style={{ fontSize: '12px' }}
+              >
+                Customize Columns
+              </Button>
+              <Button 
+                type={groupByDialer ? 'primary' : 'default'}
+                onClick={() => setGroupByDialer(!groupByDialer)}
+                block
+                style={{ fontSize: '12px' }}
+              >
+                {groupByDialer ? '📞 Dialer View ON' : '📞 Group by Dialer'}
+              </Button>
+            </Space>
           </Col>
         </Row>
       </Card>
@@ -1592,17 +1822,23 @@ export default function RevenueTrackingPage() {
           <Table
             columns={columns}
             dataSource={revenueData}
-            rowKey="list_id"
+            rowKey={(record) => record.is_subid_row 
+              ? `subid-${record.parent_list_id}-${record.subid_value}` 
+              : `list-${record.list_id}__${record.description}`}
             scroll={{ x: true }}
             expandable={{
               expandedRowRender: renderExpandedRow,
               expandedRowKeys: expandedRowKeys,
               onExpand: (expanded, record) => {
+                // Use same key computation as rowKey to avoid mismatches
+                const computedKey = record.is_subid_row
+                  ? `subid-${record.parent_list_id}-${record.subid_value}`
+                  : `list-${record.list_id}__${record.description}`;
                 if (expanded) {
-                  setExpandedRowKeys(prev => [...prev, record.list_id]);
+                  setExpandedRowKeys(prev => Array.from(new Set([...(prev || []), computedKey])));
                   fetchSubidData(record.list_id);
                 } else {
-                  setExpandedRowKeys(prev => prev.filter(key => key !== record.list_id));
+                  setExpandedRowKeys(prev => (prev || []).filter(key => key !== computedKey));
                 }
               },
               rowExpandable: () => true,
@@ -1735,6 +1971,104 @@ export default function RevenueTrackingPage() {
           }
         ]}
       />
+
+      {/* Column Customization Modal */}
+      <Modal
+        title="Customize Columns"
+        open={showColumnCustomizer}
+        onCancel={() => setShowColumnCustomizer(false)}
+        footer={[
+          <Button key="reset" onClick={() => {
+            // Reset to default columns
+            setVisibleColumns(new Set([
+              'description', 'leads_count', 'weekday_leads', 'weekend_leads', 
+              'cost_per_lead', 'total_lead_costs', 'transfers_count', 'transfer_rate',
+              'synergy_issued_leads', 'policy_rate', 'synergy_payout', 'net_profit'
+            ]));
+          }}>
+            Reset to Default
+          </Button>,
+          <Button key="close" type="primary" onClick={() => setShowColumnCustomizer(false)}>
+            Done
+          </Button>
+        ]}
+        width={800}
+      >
+        <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
+          {/* Group columns by category */}
+          {['core', 'breakdown', 'cost', 'performance', 'dialer', 'revenue'].map(category => {
+            const categoryColumns = allColumnConfigs.filter(col => col.category === category);
+            if (categoryColumns.length === 0) return null;
+            
+            const categoryNames: Record<string, string> = {
+              core: '📊 Core Metrics',
+              breakdown: '📈 Lead Breakdown', 
+              cost: '💰 Cost Analysis',
+              performance: '🎯 Performance Metrics',
+              dialer: '📞 Dialer-Specific (NEW!)',
+              revenue: '💵 Revenue & Profit'
+            };
+
+            return (
+              <div key={category} style={{ marginBottom: '24px' }}>
+                <Title level={5} style={{ color: category === 'dialer' ? '#1890ff' : 'inherit' }}>
+                  {categoryNames[category]}
+                </Title>
+                <Row gutter={[16, 8]}>
+                  {categoryColumns.map(column => (
+                    <Col span={12} key={column.key}>
+                      <div 
+                        style={{ 
+                          padding: '8px 12px', 
+                          border: '1px solid #d9d9d9', 
+                          borderRadius: '6px',
+                          background: visibleColumns.has(column.key) ? '#f6ffed' : '#fafafa',
+                          borderColor: visibleColumns.has(column.key) ? '#b7eb8f' : '#d9d9d9',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                        onClick={() => {
+                          const newVisible = new Set(visibleColumns);
+                          if (newVisible.has(column.key)) {
+                            newVisible.delete(column.key);
+                          } else {
+                            newVisible.add(column.key);
+                          }
+                          setVisibleColumns(newVisible);
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <input 
+                            type="checkbox" 
+                            checked={visibleColumns.has(column.key)}
+                            onChange={() => {}} // Handled by parent onClick
+                            style={{ margin: 0 }}
+                          />
+                          <div>
+                            <div style={{ fontWeight: 'bold', fontSize: '13px' }}>
+                              {column.title}
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#666', marginTop: '2px' }}>
+                              {column.description}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </Col>
+                  ))}
+                </Row>
+              </div>
+            );
+          })}
+          
+          <div style={{ marginTop: '16px', padding: '12px', background: '#f0f2f5', borderRadius: '6px' }}>
+            <Text style={{ fontSize: '12px', color: '#666' }}>
+              💡 <strong>Tip:</strong> The dialer-specific columns will only show data when you enable "Group by Dialer" mode. 
+              These columns show transfer rates, policy rates, and CPA broken down by each dialer (Internal, Pitch BPO, etc.).
+            </Text>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
