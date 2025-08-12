@@ -382,7 +382,13 @@ export default function RoutingManagementPage() {
       const response = await fetch('/api/vertical-configs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editingVerticalConfig)
+        body: JSON.stringify({
+          vertical: editingVerticalConfig.vertical,
+          dialer_type: editingVerticalConfig.dialer_type,
+          campaign_id: editingVerticalConfig.campaign_id || null,
+          cadence_id: editingVerticalConfig.cadence_id || null,
+          token: editingVerticalConfig.token || null,
+        })
       })
       
       const data = await response.json()
@@ -424,16 +430,22 @@ export default function RoutingManagementPage() {
       acc[vertical].push(integration)
       return acc
     }, {} as Record<string, Integration[]>)
-    
+    // Ensure verticals with configs but zero list IDs still appear
+    const configuredVerticals = Array.from(new Set((verticalConfigs || []).map((c: any) => c.vertical))).filter(Boolean)
+    configuredVerticals.forEach((v: string) => {
+      if (!grouped[v]) grouped[v] = []
+    })
     return grouped
   }
 
   const getVerticalConfigs = (vertical: string) => {
-    const configs = verticalConfigs.filter(config => config.vertical === vertical)
+    const configs = verticalConfigs.filter((config:any) => config.vertical === vertical)
     // Normalize against dialer types so we can render missing ones with an Add button
     const map: Record<number, any> = {}
     configs.forEach((c: any) => { map[c.dialer_type] = c })
-    return (dialerTypes.length ? dialerTypes : [{ id: 1 }, { id: 2 }, { id: 3 }]).map((dt: any) => map[dt.id] || { id: `${vertical}-${dt.id}-new`, vertical, dialer_type: dt.id, __isNew: true })
+    // Prefer existing configs; only add placeholders for truly missing pairs
+    const base = (dialerTypes.length ? dialerTypes : [{ id: 1 }, { id: 2 }, { id: 3 }])
+    return base.map((dt: any) => map[dt.id] ? map[dt.id] : { id: `${vertical}-${dt.id}-new`, vertical, dialer_type: dt.id, __isNew: true })
   }
 
   const getDataSourceFromDescription = (description: string | undefined) => {
@@ -1721,26 +1733,59 @@ export default function RoutingManagementPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="vertical-name" className="text-right">
-                Vertical
-              </Label>
-              <div className="col-span-3">
-                <Badge className={editingVerticalConfig?.vertical ? getVerticalColor(editingVerticalConfig.vertical) : 'bg-gray-100 text-gray-800'}>
-                  {editingVerticalConfig?.vertical || 'Unknown'}
-                </Badge>
-              </div>
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="dialer-type" className="text-right">
-                Dialer Type
-              </Label>
-              <div className="col-span-3">
-                <Badge className={editingVerticalConfig?.dialer_type ? getDialerTypeColor(editingVerticalConfig.dialer_type) : 'bg-gray-100 text-gray-800'}>
-                  {editingVerticalConfig?.dialer_type ? getDialerTypeLabel(editingVerticalConfig.dialer_type) : 'Unknown'}
-                </Badge>
-              </div>
-            </div>
+            {editingVerticalConfig?.__isNew ? (
+              <>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="vertical-select" className="text-right">Vertical</Label>
+                  <div className="col-span-3">
+                    <Select value={editingVerticalConfig?.vertical || 'ACA'} onValueChange={(v)=> setEditingVerticalConfig((prev:any)=> ({ ...(prev||{}), vertical: v }))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select vertical" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ACA">ACA</SelectItem>
+                        <SelectItem value="Final Expense">Final Expense</SelectItem>
+                        <SelectItem value="Medicare">Medicare</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="dialer-type-select" className="text-right">Dialer Type</Label>
+                  <div className="col-span-3">
+                    <Select value={String(editingVerticalConfig?.dialer_type || '')} onValueChange={(v)=> setEditingVerticalConfig((prev:any)=> ({ ...(prev||{}), dialer_type: parseInt(v) }))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select dialer type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(dialerTypes.length ? dialerTypes : [{id:1,name:'Internal Dialer'},{id:2,name:'Pitch BPO'},{id:3,name:'Convoso (Health Insurance)'}]).map((d:any)=> (
+                          <SelectItem key={d.id} value={String(d.id)}>{d.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="vertical-name" className="text-right">Vertical</Label>
+                  <div className="col-span-3">
+                    <Badge className={editingVerticalConfig?.vertical ? getVerticalColor(editingVerticalConfig.vertical) : 'bg-gray-100 text-gray-800'}>
+                      {editingVerticalConfig?.vertical || 'Unknown'}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="dialer-type" className="text-right">Dialer Type</Label>
+                  <div className="col-span-3">
+                    <Badge className={editingVerticalConfig?.dialer_type ? getDialerTypeColor(editingVerticalConfig.dialer_type) : 'bg-gray-100 text-gray-800'}>
+                      {editingVerticalConfig?.dialer_type ? getDialerTypeLabel(editingVerticalConfig.dialer_type) : 'Unknown'}
+                    </Badge>
+                  </div>
+                </div>
+              </>
+            )}
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="campaign-id" className="text-right">
                 Campaign ID
@@ -1794,7 +1839,7 @@ export default function RoutingManagementPage() {
               Cancel
             </Button>
             <Button onClick={handleUpdateVerticalConfig}>
-              Update Configuration
+              {editingVerticalConfig?.__isNew ? 'Create Configuration' : 'Update Configuration'}
             </Button>
           </div>
         </DialogContent>
