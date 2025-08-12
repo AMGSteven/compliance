@@ -23,97 +23,94 @@ export async function GET(request: NextRequest) {
       includePrePing
     })
 
-    // Load all list routings first, then filter using same logic as dashboard
-    const { data: allRoutingData, error } = await supabase
+    // Try to load routing configurations, but don't fail if none exist
+    let allRoutingData: any[] = []
+    const { data: routingData, error } = await supabase
       .from('list_routings')
       .select('*')
       .eq('active', true)
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('Database error:', error)
-      return NextResponse.json({ 
-        error: 'Database query failed', 
-        details: error.message 
-      }, { status: 500 })
+      console.warn('Database error loading routing configs (non-fatal):', error)
+      // Continue without routing data - we'll generate generic specs
+    } else if (routingData && routingData.length > 0) {
+      allRoutingData = routingData
     }
 
-    if (!allRoutingData || allRoutingData.length === 0) {
-      return NextResponse.json({ 
-        error: 'No routing configurations found in database',
-        details: 'No active routing configurations exist'
-      }, { status: 404 })
-    }
+    // If we have routing data, use it. Otherwise, generate generic spec
+    let filteredData: any[] = []
+    
+    if (allRoutingData.length > 0) {
+      // Map routing data to partners using same logic as dashboard
+      const routingWithPartners = allRoutingData.map((routing: any) => {
+        let mappedPartnerName = 'Unknown'
+        
+        const desc = routing.description?.toLowerCase() || ''
+        
+        // Specific List ID mappings first (same as dashboard)
+        if (routing.list_id === 'pitch-bpo-list-1750720674171') {
+          mappedPartnerName = 'iExecute'
+        } else if ([
+          'a5e7700e-6525-4401-9ef7-aa1bff188f12',
+          'pitch-bpo-list-1753907657505'
+        ].includes(routing.list_id)) {
+          mappedPartnerName = 'OPG'
+        }
+        // Description-based matching (complete mapping from dashboard)
+        else if (desc.includes('employers')) {
+          mappedPartnerName = 'Employers.io'
+        } else if (desc.includes('fluent')) {
+          mappedPartnerName = 'Fluent'
+        } else if (desc.includes('citadel')) {
+          mappedPartnerName = 'Citadel'
+        } else if (desc.includes('onpoint') || desc.includes('opg')) {
+          mappedPartnerName = 'Onpoint'
+        } else if (desc.includes('shift44')) {
+          mappedPartnerName = 'Shift44'
+        } else if (desc.includes('top of funnel') || desc.includes('topfunnel')) {
+          mappedPartnerName = 'Top of Funnel'
+        } else if (desc.includes('pushnami')) {
+          mappedPartnerName = 'Pushnami'
+        } else if (desc.includes('interest media')) {
+          mappedPartnerName = 'Interest Media'
+        } else if (desc.includes('what if media')) {
+          mappedPartnerName = 'What If Media'
+        } else if (desc.includes('flex mg')) {
+          mappedPartnerName = 'Flex MG'
+        } else if (desc.includes('iexcecute') || desc.includes('iexecute')) {
+          mappedPartnerName = 'iExecute'
+        } else if (desc.includes('launch')) {
+          mappedPartnerName = 'Launch Potato'
+        } else if (desc.includes('juiced')) {
+          mappedPartnerName = 'Juiced Media'
+        }
+        
+        return { ...routing, mappedPartnerName }
+      })
 
-    // Map routing data to partners using same logic as dashboard
-    const routingWithPartners = allRoutingData.map((routing: any) => {
-      let mappedPartnerName = 'Unknown'
-      
-      const desc = routing.description?.toLowerCase() || ''
-      
-      // Specific List ID mappings first (same as dashboard)
-      if (routing.list_id === 'pitch-bpo-list-1750720674171') {
-        mappedPartnerName = 'iExecute'
-      } else if ([
-        'a5e7700e-6525-4401-9ef7-aa1bff188f12',
-        'pitch-bpo-list-1753907657505'
-      ].includes(routing.list_id)) {
-        mappedPartnerName = 'OPG'
+      // Filter by partner name if specified
+      filteredData = routingWithPartners
+      if (partnerName) {
+        filteredData = routingWithPartners.filter(r => 
+          r.mappedPartnerName.toLowerCase() === partnerName.toLowerCase()
+        )
       }
-      // Description-based matching (complete mapping from dashboard)
-      else if (desc.includes('employers')) {
-        mappedPartnerName = 'Employers.io'
-      } else if (desc.includes('fluent')) {
-        mappedPartnerName = 'Fluent'
-      } else if (desc.includes('citadel')) {
-        mappedPartnerName = 'Citadel'
-      } else if (desc.includes('onpoint') || desc.includes('opg')) {
-        mappedPartnerName = 'Onpoint'
-      } else if (desc.includes('shift44')) {
-        mappedPartnerName = 'Shift44'
-      } else if (desc.includes('top of funnel') || desc.includes('topfunnel')) {
-        mappedPartnerName = 'Top of Funnel'
-      } else if (desc.includes('pushnami')) {
-        mappedPartnerName = 'Pushnami'
-      } else if (desc.includes('interest media')) {
-        mappedPartnerName = 'Interest Media'
-      } else if (desc.includes('what if media')) {
-        mappedPartnerName = 'What If Media'
-      } else if (desc.includes('flex mg')) {
-        mappedPartnerName = 'Flex MG'
-      } else if (desc.includes('iexcecute') || desc.includes('iexecute')) {
-        mappedPartnerName = 'iExecute'
-      } else if (desc.includes('launch')) {
-        mappedPartnerName = 'Launch Potato'
-      } else if (desc.includes('juiced')) {
-        mappedPartnerName = 'Juiced Media'
+
+      // Filter by specific list IDs if specified
+      if (listId) {
+        filteredData = filteredData.filter(r => r.list_id === listId)
       }
-      
-      return { ...routing, mappedPartnerName }
-    })
 
-    // Filter by partner name if specified
-    let filteredData = routingWithPartners
-    if (partnerName) {
-      filteredData = routingWithPartners.filter(r => 
-        r.mappedPartnerName.toLowerCase() === partnerName.toLowerCase()
-      )
+      if (listIds.length > 0) {
+        filteredData = filteredData.filter(r => listIds.includes(r.list_id))
+      }
     }
 
-    // Filter by specific list IDs if specified
-    if (listId) {
-      filteredData = filteredData.filter(r => r.list_id === listId)
-    }
-
-    if (listIds.length > 0) {
-      filteredData = filteredData.filter(r => listIds.includes(r.list_id))
-    }
-
+    // If no routing data found, generate generic spec for the partner
     if (filteredData.length === 0) {
-      return NextResponse.json({ 
-        error: 'No matching routing configurations found',
-        details: { partnerName, listId, listIds, campaignType, totalConfigs: allRoutingData.length }
-      }, { status: 404 })
+      console.log('No routing configurations found, generating generic API spec for:', partnerName)
+      filteredData = generateGenericCampaigns(partnerName, campaignType)
     }
 
     const routingData = filteredData
@@ -129,7 +126,6 @@ export async function GET(request: NextRequest) {
     // Group campaigns by data source type
     const groupedCampaigns = filteredData.reduce((acc: any, routing: any) => {
       const dataSourceType = extractDataSourceType(routing.description || '')
-      const dialerTypeString = getDialerTypeString(routing.dialer_type)
       
       console.log('Processing routing:', {
         listId: routing.list_id,
@@ -150,8 +146,7 @@ export async function GET(request: NextRequest) {
         cadence_id: routing.cadence_id,
         token: routing.token,
         bid: routing.bid,
-        dialerType: routing.dialer_type,
-        dialerTypeString,
+        // Don't include dialer info - partners don't need to know about our internal routing
         description: routing.description,
         dataSourceType
       }
@@ -193,6 +188,30 @@ export async function GET(request: NextRequest) {
   }
 }
 
+function generateGenericCampaigns(partnerName: string | null, campaignType: string | null): any[] {
+  const campaigns = []
+  const timestamp = Date.now()
+  
+  // Generate generic campaigns for common types
+  const campaignTypes = campaignType ? [campaignType] : ['Standard', 'Aged', 'On Hours', 'After Hours']
+  
+  campaignTypes.forEach((type, index) => {
+    campaigns.push({
+      list_id: `generic-${partnerName?.toLowerCase().replace(/\s+/g, '-') || 'partner'}-${type.toLowerCase().replace(/\s+/g, '-')}-${timestamp + index}`,
+      campaign_id: `campaign-${timestamp + index}`,
+      cadence_id: `cadence-${timestamp + index}`,
+      token: 'YOUR_API_TOKEN_HERE',
+      bid: 25.00,
+      // Remove dialer info from generic campaigns too
+      description: `${partnerName || 'Partner'} - ${type} Campaign`,
+      dataSourceType: type,
+      mappedPartnerName: partnerName || 'Integration Partner'
+    })
+  })
+  
+  return campaigns
+}
+
 function extractDataSourceType(description: string): string {
   const lowerDesc = description.toLowerCase()
   if (lowerDesc.includes('after hour')) return 'After Hours'
@@ -201,14 +220,7 @@ function extractDataSourceType(description: string): string {
   return 'Standard'
 }
 
-function getDialerTypeString(dialerType: number): string {
-  switch (dialerType) {
-    case 1: return 'internal'
-    case 2: return 'pitch_bpo'
-    case 3: return 'convoso'
-    default: return 'unknown'
-  }
-}
+// Removed getDialerTypeString - dialer info is not exposed to partners
 
 function generateAPISpecText(groupedCampaigns: any, partnerName: string | null, includePrePing: boolean): string {
   let content = ''
@@ -217,10 +229,21 @@ function generateAPISpecText(groupedCampaigns: any, partnerName: string | null, 
   content += `===============================================\n`
   content += `API INTEGRATION SPECIFICATION\n`
   content += `===============================================\n`
-  content += `Partner: ${partnerName || 'Integration'}\n`
+  content += `Partner: ${partnerName || 'Integration Partner'}\n`
   content += `Generated: ${new Date().toISOString()}\n`
   content += `Workflow: ${includePrePing ? '2-Step (Pre-Ping + Full Submission)' : 'Single-Step (Direct Submission)'}\n`
   content += `===============================================\n\n`
+  
+  // Add note if this is a generic spec
+  const isGenericSpec = Object.values(groupedCampaigns).some((campaigns: any) => 
+    campaigns.some((c: any) => c.list_id.startsWith('generic-'))
+  )
+  
+  if (isGenericSpec) {
+    content += `NOTE: This is a generic API specification template.\n`
+    content += `Actual list IDs, tokens, and campaign details will be provided\n`
+    content += `during the integration setup process.\n\n`
+  }
 
   // Authentication
   content += `AUTHENTICATION:\n`
@@ -242,7 +265,6 @@ function generateAPISpecText(groupedCampaigns: any, partnerName: string | null, 
       content += `Campaign ID: ${campaign.campaign_id}\n`
       content += `Cadence ID: ${campaign.cadence_id}\n`
       content += `API Token: ${campaign.token}\n`
-      content += `Dialer Type: ${campaign.dialerTypeString}\n`
       content += `Bid Amount: $${campaign.bid}\n\n`
 
       if (includePrePing) {
@@ -257,7 +279,6 @@ function generateAPISpecText(groupedCampaigns: any, partnerName: string | null, 
         content += `  "firstName": "John",\n`
         content += `  "lastName": "Doe",\n`
         content += `  "email": "john@example.com",\n`
-        content += `  "dialer_type": "${campaign.dialerTypeString}",\n`
         content += `  "list_id": "${campaign.list_id}"\n`
         content += `}\n\n`
 
@@ -304,7 +325,6 @@ function generateAPISpecText(groupedCampaigns: any, partnerName: string | null, 
       content += `  "firstName": "John",\n`
       content += `  "lastName": "Doe",\n`
       content += `  "email": "john@example.com",\n`
-      content += `  "dialer_type": "${campaign.dialerTypeString}",\n`
       content += `  "list_id": "${campaign.list_id}",\n`
       content += `  "campaign_id": "${campaign.campaign_id}",\n`
       content += `  "cadence_id": "${campaign.cadence_id}",\n`
@@ -330,7 +350,6 @@ function generateAPISpecText(groupedCampaigns: any, partnerName: string | null, 
         content += `  "lead_id": "lead_123456789",\n`
         content += `  "estimated_bid": ${campaign.bid},\n`
         content += `  "routing_info": {\n`
-        content += `    "dialer": "${campaign.dialerTypeString}",\n`
         content += `    "campaign": "${campaign.campaign_id}"\n`
         content += `  }\n`
         content += `}\n\n`
@@ -340,11 +359,7 @@ function generateAPISpecText(groupedCampaigns: any, partnerName: string | null, 
         content += `  "message": "Lead submitted successfully",\n`
         content += `  "lead_id": "lead_123456789",\n`
         content += `  "bid": ${campaign.bid},\n`
-        content += `  "dialer": {\n`
-        content += `    "type": "${campaign.dialerTypeString}",\n`
-        content += `    "forwarded": true,\n`
-        content += `    "status": 200\n`
-        content += `  }\n`
+        content += `  "status": "processed"\n`
         content += `}\n\n`
       }
 
@@ -367,7 +382,6 @@ function generateAPISpecText(groupedCampaigns: any, partnerName: string | null, 
         content += `    "firstName": "John",\n`
         content += `    "lastName": "Doe",\n`
         content += `    "email": "john@example.com",\n`
-        content += `    "dialer_type": "${campaign.dialerTypeString}",\n`
         content += `    "list_id": "${campaign.list_id}"\n`
         content += `  }'\n\n`
 
@@ -385,7 +399,6 @@ function generateAPISpecText(groupedCampaigns: any, partnerName: string | null, 
       content += `    "firstName": "John",\n`
       content += `    "lastName": "Doe",\n`
       content += `    "email": "john@example.com",\n`
-      content += `    "dialer_type": "${campaign.dialerTypeString}",\n`
       content += `    "list_id": "${campaign.list_id}",\n`
       content += `    "campaign_id": "${campaign.campaign_id}",\n`
       content += `    "cadence_id": "${campaign.cadence_id}",\n`
