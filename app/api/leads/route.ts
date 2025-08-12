@@ -37,6 +37,52 @@ const CONVOSO_LIST_ID_PROD = process.env.CONVOSO_LIST_ID_PROD || '6497'; // Prod
 const CONVOSO_LIST_ID_TEST = process.env.CONVOSO_LIST_ID_TEST || '5989'; // Test list ID
 
 /**
+ * Check if a dialer is approved for a specific list ID
+ * @param listId The list ID to check
+ * @param dialerType The dialer type (1=Internal, 2=Pitch BPO, 3=Convoso)
+ * @returns Promise<boolean> true if approved, false if denied
+ */
+async function isDialerApproved(listId: string, dialerType: number): Promise<boolean> {
+  try {
+    console.log(`⚙️ DIALER APPROVAL CHECK: Starting check for list_id=${listId}, dialer_type=${dialerType}`);
+    
+    const supabase = createServerClient();
+    
+    const { data, error } = await supabase
+      .from('dialer_approvals')
+      .select('approved, reason, approved_by')
+      .eq('list_id', listId)
+      .eq('dialer_type', dialerType)
+      .single();
+
+    if (error) {
+      console.warn(`⚠️ DIALER APPROVAL: No record found for list_id: ${listId}, dialer_type: ${dialerType}. Error: ${error.message}. DEFAULTING TO APPROVED.`);
+      return true; // Default to approved if no record exists (backward compatibility)
+    }
+
+    const isApproved = data.approved === true;
+    const dialerName = dialerType === 1 ? 'Internal' : dialerType === 2 ? 'Pitch BPO' : dialerType === 3 ? 'Convoso' : 'Unknown';
+    
+    console.log(`✅ DIALER APPROVAL RESULT:`, {
+      list_id: listId,
+      dialer_type: dialerType,
+      dialer_name: dialerName,
+      approved: data.approved,
+      is_approved: isApproved,
+      reason: data.reason || 'N/A',
+      approved_by: data.approved_by || 'N/A',
+      decision: isApproved ? 'ALLOW ROUTING' : 'BLOCK ROUTING'
+    });
+
+    return isApproved;
+  } catch (error) {
+    console.error(`❌ DIALER APPROVAL ERROR: Unexpected error checking approval for list_id: ${listId}, dialer_type: ${dialerType}:`, error);
+    console.log('ℹ️ DIALER APPROVAL: DEFAULTING TO APPROVED due to error (fail-safe)');
+    return true; // Default to approved on error (fail-safe)
+  }
+}
+
+/**
  * Forward a lead to the Pitch BPO dialer
  * @param params Parameters for the Pitch BPO dialer
  * @returns API response with success status and lead data
@@ -914,9 +960,27 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
       }
       
       try {
+        // *** DIALER APPROVAL ENFORCEMENT ***
+        // Check if the target dialer is approved for this list ID
+        const isApproved = await isDialerApproved(listId, dialerType);
+        if (!isApproved) {
+          console.error(`❌ COMPLIANCE BLOCK: Dialer type ${dialerType} is DENIED for list_id: ${listId}. Lead routing blocked.`);
+          return NextResponse.json({
+            success: false,
+            error: 'COMPLIANCE_VIOLATION',
+            message: `Dialer type ${dialerType} is not approved for this list ID. Contact compliance team.`,
+            details: {
+              list_id: listId,
+              dialer_type: dialerType,
+              phone: phone,
+              reason: 'Dialer approval denied by compliance team'
+            }
+          }, { status: 403 }); // 403 Forbidden
+        }
+        
         // If this is the Pitch BPO dialer type, route to Pitch BPO instead of internal dialer
         if (dialerType === DIALER_TYPE_PITCH_BPO) {
-          console.log('Routing lead to Pitch BPO (dialer_type=2)');
+          console.log('✅ Pitch BPO dialer approved - routing lead to Pitch BPO (dialer_type=2)');
           return await forwardToPitchBPO({
             data,
             listId, // We'll still pass this to the function but won't include it in the API payload
@@ -933,7 +997,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
         
         // If this is the Convoso (IBP BPO) dialer type, route to Convoso instead of internal dialer
         if (dialerType === DIALER_TYPE_CONVOSO) {
-          console.log('Routing lead to Convoso (IBP BPO) (dialer_type=3)');
+          console.log('✅ Convoso dialer approved - routing lead to Convoso (IBP BPO) (dialer_type=3)');
           return await forwardToConvoso({
             data,
             listId,
@@ -946,6 +1010,11 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
             bidValue: bidValue,
             routingData
           });
+        }
+        
+        // For internal dialer (dialer_type=1), also check approval
+        if (dialerType === DIALER_TYPE_INTERNAL) {
+          console.log('✅ Internal dialer approved - routing lead to internal dialer (dialer_type=1)');
         }
         
         console.log('Forwarding lead to internal dialer API for list:', listId);
@@ -1589,9 +1658,28 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
       try {
         console.log('Forwarding health insurance lead to dialer for list:', listId);
         
+        // *** DIALER APPROVAL ENFORCEMENT FOR HEALTH INSURANCE ***
+        // Check if the target dialer is approved for this list ID
+        const isApproved = await isDialerApproved(listId, dialerType);
+        if (!isApproved) {
+          console.error(`❌ COMPLIANCE BLOCK: Dialer type ${dialerType} is DENIED for list_id: ${listId}. Health insurance lead routing blocked.`);
+          return NextResponse.json({
+            success: false,
+            error: 'COMPLIANCE_VIOLATION',
+            message: `Dialer type ${dialerType} is not approved for this list ID. Contact compliance team.`,
+            details: {
+              list_id: listId,
+              dialer_type: dialerType,
+              phone: phone,
+              lead_type: 'health_insurance',
+              reason: 'Dialer approval denied by compliance team'
+            }
+          }, { status: 403 }); // 403 Forbidden
+        }
+        
         // Route health insurance lead based on dialer type
         if (dialerType === DIALER_TYPE_PITCH_BPO) {
-          console.log('Routing health insurance lead to Pitch BPO dialer');
+          console.log('✅ Pitch BPO dialer approved - routing health insurance lead to Pitch BPO dialer');
           return await forwardToPitchBPO({
             data: [],
             listId,
@@ -1605,7 +1693,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
             routingData
           });
         } else if (dialerType === DIALER_TYPE_CONVOSO) {
-          console.log('Routing health insurance lead to Convoso (IBP BPO) dialer');
+          console.log('✅ Convoso dialer approved - routing health insurance lead to Convoso (IBP BPO) dialer');
           return await forwardToConvoso({
             data: [],
             listId,

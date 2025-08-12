@@ -37,6 +37,9 @@ export default function ListRoutingsPage() {
   const [currentToken, setCurrentToken] = useState<string>('');
   const [currentBid, setCurrentBid] = useState<number>(0);
   const [currentDialerType, setCurrentDialerType] = useState<number>(1); // Default to Internal Dialer
+  const [selectedDataSourceType, setSelectedDataSourceType] = useState<string>('on_hour');
+  const [selectedVertical, setSelectedVertical] = useState<string>('ACA');
+  const [approvedDialers, setApprovedDialers] = useState<number[]>([1, 2, 3]); // Default all approved
   
   // Pitch BPO fixed values
   const PITCH_BPO_TOKEN = '70942646-125b-4ddd-96fc-b9a142c698b8';
@@ -96,6 +99,73 @@ export default function ListRoutingsPage() {
       notification.error({ message: 'Error', description: 'Failed to fetch list routings' });
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Create dialer approvals for a new list routing
+  const handleCreateDialerApprovals = async (listId: string, approvedDialers: number[]) => {
+    try {
+      console.log('Creating dialer approvals for:', listId, 'approved dialers:', approvedDialers);
+      
+      // Create approval records for each dialer type (1, 2, 3)
+      const dialerTypes = [1, 2, 3];
+      
+      for (const dialerType of dialerTypes) {
+        const approved = approvedDialers.includes(dialerType);
+        const reason = approved ? 'Approved during routing setup' : 'Not selected during routing setup';
+        
+        const response = await fetch('/api/dialer-approvals', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': process.env.NEXT_PUBLIC_API_KEY || 'test_key_123'
+          },
+          body: JSON.stringify({
+            list_id: listId,
+            dialer_type: dialerType,
+            approved: approved,
+            reason: reason,
+            approved_by: 'routing-setup'
+          })
+        });
+        
+        if (!response.ok) {
+          console.error(`Failed to create approval for dialer type ${dialerType}:`, await response.text());
+        }
+      }
+      
+      console.log('Dialer approvals created successfully');
+    } catch (error) {
+      console.error('Error creating dialer approvals:', error);
+      // Don't throw - we don't want to fail the entire routing creation for this
+    }
+  };
+
+  // Set vertical assignment for a list routing
+  const handleSetVerticalAssignment = async (listId: string, vertical: string) => {
+    try {
+      console.log('Setting vertical assignment for:', listId, 'vertical:', vertical);
+      
+      const response = await fetch('/api/vertical-configs', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.NEXT_PUBLIC_API_KEY || 'test_key_123'
+        },
+        body: JSON.stringify({
+          list_id: listId,
+          vertical: vertical
+        })
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to set vertical assignment:', await response.text());
+      } else {
+        console.log('Vertical assignment set successfully');
+      }
+    } catch (error) {
+      console.error('Error setting vertical assignment:', error);
+      // Don't throw - we don't want to fail the entire routing creation for this
     }
   };
 
@@ -257,14 +327,20 @@ export default function ListRoutingsPage() {
       
       console.log('Form values received:', values);
       
+      // Enhance description with data source type for parsing
+      const dataSourcePrefix = values.data_source_type === 'on_hour' ? 'On Hour' : 
+                              values.data_source_type === 'after_hour' ? 'After Hour' : 'Aged';
+      const enhancedDescription = `${dataSourcePrefix} - ${values.description || 'Auto-generated routing'}`;
+      
       // Prepare the payload, with special handling for Pitch BPO
       const payload = {
         // For all dialer types
-        description: values.description || '',
+        description: enhancedDescription,
         bid: bidValue,
         active: values.active !== undefined ? values.active : true,
         dialer_type: values.dialer_type || 1, // Default to 1 if missing
         auto_claim_trusted_form: values.auto_claim_trusted_form || false,
+        vertical: values.vertical || 'ACA', // Default to ACA if missing
         
         // For Pitch BPO, these values were already set correctly above
         list_id: values.list_id || '', 
@@ -313,9 +389,19 @@ export default function ListRoutingsPage() {
         console.log('API response:', result);
         
         if (result.success) {
+          // If this is a new routing (not edit mode), create dialer approvals and set vertical
+          if (!editMode && values.approved_dialers && values.approved_dialers.length > 0) {
+            await handleCreateDialerApprovals(values.list_id, values.approved_dialers);
+          }
+          
+          // Set vertical assignment for the list ID
+          if (values.vertical && values.list_id) {
+            await handleSetVerticalAssignment(values.list_id, values.vertical);
+          }
+          
           notification.success({
             message: 'Success',
-            description: editMode ? 'Routing updated successfully' : 'New routing created successfully'
+            description: editMode ? 'Routing updated successfully' : 'New routing created successfully with approvals and vertical assignment'
           });
           setModalVisible(false);
           fetchListRoutings();
@@ -605,6 +691,40 @@ export default function ListRoutingsPage() {
           </Form.Item>
           
           <Form.Item
+            name="data_source_type"
+            label="Data Source Type"
+            rules={[{ required: true, message: 'Please select a data source type' }]}
+            initialValue="on_hour"
+            tooltip="Specify when these leads are typically received and processed"
+          >
+            <Select 
+              placeholder="Select data source type"
+              onChange={(value) => setSelectedDataSourceType(value)}
+            >
+              <Select.Option value="on_hour">⏰ On Hour - Live leads during business hours</Select.Option>
+              <Select.Option value="after_hour">🌙 After Hour - Leads received outside business hours</Select.Option>
+              <Select.Option value="aged">📅 Aged - Older leads being reprocessed</Select.Option>
+            </Select>
+          </Form.Item>
+          
+          <Form.Item
+            name="vertical"
+            label="Vertical Assignment"
+            rules={[{ required: true, message: 'Please select a vertical' }]}
+            initialValue="ACA"
+            tooltip="Categorize the type of insurance or product this List ID represents"
+          >
+            <Select 
+              placeholder="Select vertical"
+              onChange={(value) => setSelectedVertical(value)}
+            >
+              <Select.Option value="ACA">🏥 ACA - Affordable Care Act Health Insurance</Select.Option>
+              <Select.Option value="Final Expense">⚰️ Final Expense - Burial/Funeral Insurance</Select.Option>
+              <Select.Option value="Medicare">👴 Medicare - Senior Health Insurance</Select.Option>
+            </Select>
+          </Form.Item>
+          
+          <Form.Item
             name="bid"
             label="Bid Amount"
             rules={[
@@ -687,6 +807,58 @@ export default function ListRoutingsPage() {
             tooltip="Automatically claim TrustedForm certificates for leads in this routing"
           >
             <Switch />
+          </Form.Item>
+          
+          <Form.Item
+            name="approved_dialers"
+            label="Approved Dialers"
+            rules={[{ required: true, message: 'Please select at least one approved dialer' }]}
+            initialValue={[1, 2, 3]}
+            tooltip="Select which dialers are approved for compliance reasons. Only approved dialers can receive leads from this List ID."
+          >
+            <Select 
+              mode="multiple"
+              placeholder="Select approved dialers"
+              onChange={(values) => setApprovedDialers(values)}
+              style={{ width: '100%' }}
+            >
+              <Select.Option value={1}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ 
+                    background: '#10b981', 
+                    color: 'white', 
+                    padding: '2px 6px', 
+                    borderRadius: '4px', 
+                    fontSize: '11px' 
+                  }}>INTERNAL</span>
+                  Internal Dialer
+                </div>
+              </Select.Option>
+              <Select.Option value={2}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ 
+                    background: '#3b82f6', 
+                    color: 'white', 
+                    padding: '2px 6px', 
+                    borderRadius: '4px', 
+                    fontSize: '11px' 
+                  }}>PITCH BPO</span>
+                  Pitch BPO
+                </div>
+              </Select.Option>
+              <Select.Option value={3}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ 
+                    background: '#8b5cf6', 
+                    color: 'white', 
+                    padding: '2px 6px', 
+                    borderRadius: '4px', 
+                    fontSize: '11px' 
+                  }}>CONVOSO</span>
+                  Convoso (IBP BPO)
+                </div>
+              </Select.Option>
+            </Select>
           </Form.Item>
           
           <Form.Item>

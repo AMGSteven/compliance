@@ -69,6 +69,11 @@ const navigationItems = [
         icon: DollarSign,
       },
       {
+        title: "Routing Management",
+        href: "/dashboard/routing-management",
+        icon: Route,
+      },
+      {
         title: "Returns",
         href: "/dashboard/monthly-dnc-export",
         icon: RotateCcw,

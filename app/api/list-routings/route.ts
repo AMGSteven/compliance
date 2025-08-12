@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { isDialerApproved, getDialerTypeName } from '@/lib/utils/dialer-approval';
 
 // Initialize Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -73,6 +74,27 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { list_id, campaign_id, cadence_id, description, active, bid, token, dialer_type, auto_claim_trusted_form } = body;
     console.log('Received POST with bid:', bid);
+    
+    // *** DIALER APPROVAL ENFORCEMENT ***
+    // Check if the dialer is approved for this list ID before allowing configuration
+    if (list_id && dialer_type) {
+      const isApproved = await isDialerApproved(list_id, dialer_type);
+      if (!isApproved) {
+        console.error(`❌ COMPLIANCE BLOCK: Cannot create routing config - ${getDialerTypeName(dialer_type)} is DENIED for list_id: ${list_id}`);
+        return NextResponse.json({
+          success: false,
+          error: 'COMPLIANCE_VIOLATION',
+          message: `${getDialerTypeName(dialer_type)} is not approved for this list ID. Contact compliance team.`,
+          details: {
+            list_id: list_id,
+            dialer_type: dialer_type,
+            dialer_name: getDialerTypeName(dialer_type),
+            reason: 'Dialer approval denied by compliance team - configuration changes blocked'
+          }
+        }, { status: 403 }); // 403 Forbidden
+      }
+      console.log(`✅ ${getDialerTypeName(dialer_type)} approved for list_id: ${list_id} - allowing configuration create`);
+    }
     
     // Validate required fields based on dialer type
     // For Pitch BPO (dialer_type=2), all three fields (list_id, campaign_id, cadence_id) are optional
@@ -253,8 +275,29 @@ export async function PUT(req: NextRequest) {
   
   try {
     const body = await req.json();
-    const { id, list_id, campaign_id, cadence_id, token, description, active, bid, auto_claim_trusted_form } = body;
+    const { id, list_id, campaign_id, cadence_id, token, description, active, bid, auto_claim_trusted_form, dialer_type } = body;
     console.log('Received PUT with bid:', bid);
+    
+    // *** DIALER APPROVAL ENFORCEMENT FOR UPDATES ***
+    // Check if the dialer is approved for this list ID before allowing configuration updates
+    if (list_id && dialer_type) {
+      const isApproved = await isDialerApproved(list_id, dialer_type);
+      if (!isApproved) {
+        console.error(`❌ COMPLIANCE BLOCK: Cannot update routing config - ${getDialerTypeName(dialer_type)} is DENIED for list_id: ${list_id}`);
+        return NextResponse.json({
+          success: false,
+          error: 'COMPLIANCE_VIOLATION',
+          message: `${getDialerTypeName(dialer_type)} is not approved for this list ID. Contact compliance team.`,
+          details: {
+            list_id: list_id,
+            dialer_type: dialer_type,
+            dialer_name: getDialerTypeName(dialer_type),
+            reason: 'Dialer approval denied by compliance team - configuration updates blocked'
+          }
+        }, { status: 403 }); // 403 Forbidden
+      }
+      console.log(`✅ ${getDialerTypeName(dialer_type)} approved for list_id: ${list_id} - allowing configuration update`);
+    }
     
     // Validate required fields
     if (!id) {
