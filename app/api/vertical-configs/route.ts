@@ -10,9 +10,10 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const vertical = searchParams.get('vertical')
 
+    // Join with dialer_types for names when present
     let query = supabase
       .from('vertical_configs')
-      .select('*')
+      .select('*, dialer_types!inner(id, name, slug, default_color)')
       .eq('active', true)
       .order('vertical', { ascending: true })
       .order('dialer_type', { ascending: true })

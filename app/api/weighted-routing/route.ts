@@ -66,6 +66,15 @@ export async function POST(request: NextRequest) {
     // *** DIALER APPROVAL ENFORCEMENT FOR WEIGHTED ROUTING ***
     // Check if all dialers in the weighted routing are approved for this list ID
     const dialerTypes = weights.map(w => parseInt(w.dialer_type))
+    // Validate dialers exist in registry
+    const { data: validDialers, error: dtErr } = await supabase
+      .from('dialer_types')
+      .select('id')
+      .in('id', dialerTypes)
+      .eq('active', true)
+    if (dtErr || (validDialers || []).length !== dialerTypes.length) {
+      return NextResponse.json({ error: 'One or more dialer types are invalid or inactive' }, { status: 400 })
+    }
     const approvalValidation = await validateDialerApprovals(list_id, dialerTypes)
     
     if (!approvalValidation.isValid) {

@@ -49,12 +49,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (![1, 2, 3].includes(dialer_type)) {
-      return NextResponse.json(
-        { error: 'Invalid dialer_type. Must be 1 (Internal), 2 (Pitch BPO), or 3 (Convoso)' },
-        { status: 400 }
-      )
-    }
+  // Validate against dialer_types registry instead of fixed list
+  const { data: validDialer, error: dialerErr } = await supabase
+    .from('dialer_types')
+    .select('id')
+    .eq('id', dialer_type)
+    .eq('active', true)
+    .single()
+
+  if (dialerErr || !validDialer) {
+    return NextResponse.json(
+      { error: 'Invalid dialer_type. Not found/active in dialer_types registry' },
+      { status: 400 }
+    )
+  }
 
     // Upsert dialer approval
     const { data, error } = await supabase

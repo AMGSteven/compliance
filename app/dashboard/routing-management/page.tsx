@@ -67,6 +67,9 @@ export default function RoutingManagementPage() {
   const [weightConfig, setWeightConfig] = useState<{ dialer_type: number; weight_percentage: number }[]>([])  
   const [updatingWeights, setUpdatingWeights] = useState(false)
   const [dialerApprovals, setDialerApprovals] = useState<any[]>([])
+  const [dialerTypes, setDialerTypes] = useState<any[]>([])
+  const [editingDialerType, setEditingDialerType] = useState<any | null>(null)
+  const [savingDialerType, setSavingDialerType] = useState(false)
   const [editingApproval, setEditingApproval] = useState<{ integration: Integration; dialer_type: number } | null>(null)
   const [approvalStatus, setApprovalStatus] = useState<boolean>(true)
   const [approvalReason, setApprovalReason] = useState<string>('')
@@ -77,6 +80,7 @@ export default function RoutingManagementPage() {
     loadData()
     loadVerticalConfigs()
     loadDialerApprovals()
+    loadDialerTypes()
   }, [])
 
   const loadData = async () => {
@@ -255,6 +259,16 @@ export default function RoutingManagementPage() {
     }
   }
 
+  const loadDialerTypes = async () => {
+    try {
+      const res = await fetch('/api/dialer-types')
+      const data = await res.json()
+      if (res.ok) setDialerTypes(data.dialers || [])
+    } catch (e) {
+      console.error('Failed to load dialer types', e)
+    }
+  }
+
   const getPartnerIntegrations = (partnerId: string) => {
     return integrations.filter(integration => 
       partners.find(p => p.name === integration.partner_name)?.id === partnerId
@@ -301,21 +315,15 @@ export default function RoutingManagementPage() {
   }
 
   const getDialerTypeLabel = (dialerType: number) => {
-    switch (dialerType) {
-      case 1: return 'Internal Dialer'
-      case 2: return 'Pitch BPO'
-      case 3: return 'Convoso (Health Insurance)'
-      default: return 'Unknown'
-    }
+    const t = dialerTypes.find((d: any) => d.id === dialerType)
+    if (t) return t.name
+    switch (dialerType) { case 1: return 'Internal Dialer'; case 2: return 'Pitch BPO'; case 3: return 'Convoso (Health Insurance)'; default: return 'Unknown' }
   }
 
   const getDialerTypeColor = (dialerType: number) => {
-    switch (dialerType) {
-      case 1: return 'bg-blue-100 text-blue-800'
-      case 2: return 'bg-orange-100 text-orange-800'
-      case 3: return 'bg-green-100 text-green-800'
-      default: return 'bg-gray-100 text-gray-800'
-    }
+    const t = dialerTypes.find((d: any) => d.id === dialerType)
+    if (t?.default_color) return t.default_color
+    switch (dialerType) { case 1: return 'bg-blue-100 text-blue-800'; case 2: return 'bg-orange-100 text-orange-800'; case 3: return 'bg-green-100 text-green-800'; default: return 'bg-gray-100 text-gray-800' }
   }
 
   const handleEditListVertical = (integration: Integration) => {
@@ -421,42 +429,11 @@ export default function RoutingManagementPage() {
   }
 
   const getVerticalConfigs = (vertical: string) => {
-    const existingConfigs = verticalConfigs.filter(config => config.vertical === vertical)
-    
-    // If no configs exist (table not created yet), provide defaults
-    if (existingConfigs.length === 0) {
-      return [
-        {
-          id: `${vertical}-1`,
-          vertical,
-          dialer_type: 1,
-          campaign_id: vertical === 'ACA' ? 'b2c3d4e5-f6a1-4a1a-bde0-1a733c8d1c00' : `${vertical.toLowerCase().replace(' ', '-')}-internal-campaign`,
-          cadence_id: vertical === 'ACA' ? 'd669792b-2b43-4c8e-bb9d-d19e5420de63' : `${vertical.toLowerCase().replace(' ', '-')}-internal-cadence`,
-          token: null,
-          active: true
-        },
-        {
-          id: `${vertical}-2`,
-          vertical,
-          dialer_type: 2,
-          campaign_id: vertical === 'ACA' ? 'pitch-bpo-campaign-aca' : `${vertical.toLowerCase().replace(' ', '-')}-pitch-campaign`,
-          cadence_id: vertical === 'ACA' ? 'pitch-bpo-cadence-aca' : `${vertical.toLowerCase().replace(' ', '-')}-pitch-cadence`,
-          token: '70942646-125b-4ddd-96fc-b9a142c698b8',
-          active: true
-        },
-        {
-          id: `${vertical}-3`,
-          vertical,
-          dialer_type: 3,
-          campaign_id: vertical === 'ACA' ? 'convoso-campaign-aca' : `${vertical.toLowerCase().replace(' ', '-')}-convoso-campaign`,
-          cadence_id: vertical === 'ACA' ? 'convoso-cadence-aca' : `${vertical.toLowerCase().replace(' ', '-')}-convoso-cadence`,
-          token: null,
-          active: true
-        }
-      ]
-    }
-    
-    return existingConfigs
+    const configs = verticalConfigs.filter(config => config.vertical === vertical)
+    // Normalize against dialer types so we can render missing ones with an Add button
+    const map: Record<number, any> = {}
+    configs.forEach((c: any) => { map[c.dialer_type] = c })
+    return (dialerTypes.length ? dialerTypes : [{ id: 1 }, { id: 2 }, { id: 3 }]).map((dt: any) => map[dt.id] || { id: `${vertical}-${dt.id}-new`, vertical, dialer_type: dt.id, __isNew: true })
   }
 
   const getDataSourceFromDescription = (description: string | undefined) => {
@@ -893,15 +870,45 @@ export default function RoutingManagementPage() {
       </div>
 
       <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList>
+          <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="partners">Partners</TabsTrigger>
           <TabsTrigger value="integrations">Integrations</TabsTrigger>
           <TabsTrigger value="data-sources">Data Sources</TabsTrigger>
           <TabsTrigger value="verticals">Verticals</TabsTrigger>
           <TabsTrigger value="dialer-approvals">Dialer Approval</TabsTrigger>
+            <TabsTrigger value="dialers">Dialers</TabsTrigger>
           <TabsTrigger value="api-specs">API Specs</TabsTrigger>
         </TabsList>
+        <TabsContent value="dialers" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Dialer Types</CardTitle>
+              <CardDescription>Manage global dialer types available across all verticals</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex justify-end mb-3">
+                <Button size="sm" onClick={() => setEditingDialerType({ id: '', name: '', slug: '', default_color: 'bg-gray-100 text-gray-800', active: true })}>
+                  <Plus className="h-3 w-3 mr-1" /> New Dialer Type
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {(dialerTypes || []).map((dt:any) => (
+                  <div key={dt.id} className="flex items-center justify-between p-3 border rounded">
+                    <div className="flex items-center gap-3">
+                      <Badge className={dt.default_color || 'bg-gray-100 text-gray-800'}>{dt.name}</Badge>
+                      <span className="text-xs text-muted-foreground">ID: {dt.id} • {dt.slug || 'no-slug'}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={dt.active ? 'default' : 'secondary'}>{dt.active ? 'Active' : 'Inactive'}</Badge>
+                      <Button size="sm" variant="outline" onClick={() => setEditingDialerType({ ...dt })}><Edit2 className="h-3 w-3 mr-1"/>Edit</Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="overview" className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1174,32 +1181,46 @@ export default function RoutingManagementPage() {
                               {getDialerTypeLabel(config.dialer_type)}
                             </Badge>
                           </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEditVerticalConfig(config)}
-                            className="flex items-center gap-1"
-                          >
-                            <Edit2 className="h-3 w-3" />
-                            Edit Config
-                          </Button>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <span className="text-muted-foreground">Campaign ID:</span>
-                            <div className="font-mono">{config.campaign_id || 'Not set'}</div>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Cadence ID:</span>
-                            <div className="font-mono">{config.cadence_id || 'Not set'}</div>
-                          </div>
-                          {config.dialer_type === 2 && (
-                            <div className="col-span-2">
-                              <span className="text-muted-foreground">Token:</span>
-                              <div className="font-mono">{config.token || 'Not set'}</div>
-                            </div>
+                          {config.__isNew ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEditVerticalConfig(config)}
+                              className="flex items-center gap-1"
+                            >
+                              <Plus className="h-3 w-3" />
+                              Add Config
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEditVerticalConfig(config)}
+                              className="flex items-center gap-1"
+                            >
+                              <Edit2 className="h-3 w-3" />
+                              Edit Config
+                            </Button>
                           )}
                         </div>
+                        {!config.__isNew && (
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <span className="text-muted-foreground">Campaign ID:</span>
+                              <div className="font-mono">{config.campaign_id || 'Not set'}</div>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Cadence ID:</span>
+                              <div className="font-mono">{config.cadence_id || 'Not set'}</div>
+                            </div>
+                            {config.dialer_type === 2 && (
+                              <div className="col-span-2">
+                                <span className="text-muted-foreground">Token:</span>
+                                <div className="font-mono">{config.token || 'Not set'}</div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1652,9 +1673,9 @@ export default function RoutingManagementPage() {
                     <SelectValue placeholder="Select dialer type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="1">Internal Dialer</SelectItem>
-                    <SelectItem value="2">Pitch BPO</SelectItem>
-                    <SelectItem value="3">Convoso (Health Insurance)</SelectItem>
+                      {(dialerTypes.length ? dialerTypes : [{id:1,name:'Internal Dialer'},{id:2,name:'Pitch BPO'},{id:3,name:'Convoso (Health Insurance)'}]).map((d:any)=> (
+                        <SelectItem key={d.id} value={String(d.id)}>{d.name}</SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -1774,6 +1795,94 @@ export default function RoutingManagementPage() {
             </Button>
             <Button onClick={handleUpdateVerticalConfig}>
               Update Configuration
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialer Type Modal */}
+      <Dialog open={!!editingDialerType} onOpenChange={() => setEditingDialerType(null)}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>{editingDialerType?.id ? 'Edit Dialer Type' : 'New Dialer Type'}</DialogTitle>
+            <DialogDescription>Define global dialer type used across lists and verticals</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label className="text-right">ID</Label>
+              <div className="col-span-3">
+                <input
+                  type="number"
+                  value={editingDialerType?.id ?? ''}
+                  onChange={(e)=> setEditingDialerType((p:any)=> ({ ...(p||{}), id: e.target.value }))}
+                  className="w-full px-3 py-2 border rounded"
+                  placeholder="Unique integer ID"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label className="text-right">Name</Label>
+              <div className="col-span-3">
+                <input
+                  type="text"
+                  value={editingDialerType?.name ?? ''}
+                  onChange={(e)=> setEditingDialerType((p:any)=> ({ ...(p||{}), name: e.target.value }))}
+                  className="w-full px-3 py-2 border rounded"
+                  placeholder="Dialer display name"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label className="text-right">Slug</Label>
+              <div className="col-span-3">
+                <input
+                  type="text"
+                  value={editingDialerType?.slug ?? ''}
+                  onChange={(e)=> setEditingDialerType((p:any)=> ({ ...(p||{}), slug: e.target.value }))}
+                  className="w-full px-3 py-2 border rounded"
+                  placeholder="slug-for-dialer"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label className="text-right">Badge Class</Label>
+              <div className="col-span-3">
+                <input
+                  type="text"
+                  value={editingDialerType?.default_color ?? ''}
+                  onChange={(e)=> setEditingDialerType((p:any)=> ({ ...(p||{}), default_color: e.target.value }))}
+                  className="w-full px-3 py-2 border rounded"
+                  placeholder="e.g. bg-blue-100 text-blue-800"
+                />
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setEditingDialerType(null)}>Cancel</Button>
+            <Button
+              onClick={async ()=>{
+                if (!editingDialerType?.id || !editingDialerType?.name) return
+                setSavingDialerType(true)
+                try {
+                  const res = await fetch('/api/dialer-types', {
+                    method: editingDialerType.__isExisting ? 'PUT' : 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: editingDialerType.id, name: editingDialerType.name, slug: editingDialerType.slug, default_color: editingDialerType.default_color, active: true })
+                  })
+                  const data = await res.json()
+                  if (!res.ok) throw new Error(data.error)
+                  await loadDialerTypes()
+                  setEditingDialerType(null)
+                } catch (e:any) {
+                  console.error('Failed to save dialer type', e)
+                  toast({ title: 'Error', description: e.message || 'Failed to save dialer type', variant: 'destructive' })
+                } finally {
+                  setSavingDialerType(false)
+                }
+              }}
+              disabled={savingDialerType || !editingDialerType?.id || !editingDialerType?.name}
+            >
+              {savingDialerType ? 'Saving...' : 'Save Dialer Type'}
             </Button>
           </div>
         </DialogContent>
