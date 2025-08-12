@@ -159,13 +159,41 @@ export default function ListRoutingsPage() {
       });
       
       if (!response.ok) {
-        console.error('Failed to set vertical assignment:', await response.text());
+        const errorText = await response.text();
+        console.error('Failed to set vertical assignment:', errorText);
+        
+        // Show user notification for vertical assignment failure
+        notification.warning({
+          message: 'Vertical Assignment Warning',
+          description: `Routing was created successfully, but vertical assignment to "${vertical}" failed. Please update it manually.`,
+          duration: 8
+        });
+        
+        throw new Error(`Vertical assignment failed: ${errorText}`);
       } else {
         console.log('Vertical assignment set successfully');
+        
+        // Show success notification for vertical assignment
+        notification.success({
+          message: 'Vertical Assignment Updated',
+          description: `Successfully assigned "${vertical}" vertical to list ${listId}`,
+          duration: 4
+        });
       }
     } catch (error) {
       console.error('Error setting vertical assignment:', error);
-      // Don't throw - we don't want to fail the entire routing creation for this
+      
+      // Show user notification for vertical assignment error
+      if (!error.message?.includes('Vertical assignment failed:')) {
+        notification.warning({
+          message: 'Vertical Assignment Error',
+          description: `Routing was created successfully, but there was an error setting the vertical assignment. Please update it manually.`,
+          duration: 8
+        });
+      }
+      
+      // Still throw the error so calling code knows it failed
+      throw error;
     }
   };
 
@@ -396,7 +424,13 @@ export default function ListRoutingsPage() {
           
           // Set vertical assignment for the list ID
           if (values.vertical && values.list_id) {
-            await handleSetVerticalAssignment(values.list_id, values.vertical);
+            try {
+              await handleSetVerticalAssignment(values.list_id, values.vertical);
+            } catch (error) {
+              console.warn('Vertical assignment failed, but routing was created successfully:', error);
+              // The error notification is already shown in handleSetVerticalAssignment
+              // We don't want to fail the entire operation for this
+            }
           }
           
           notification.success({
