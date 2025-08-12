@@ -519,29 +519,33 @@ export default function ListRoutingsPage() {
           <Form.Item
             name="campaign_id"
             label="Campaign ID"
-            rules={[{ required: currentDialerType !== 2, message: 'Please enter a campaign ID' }]}
-            hidden={currentDialerType === 2}
+            rules={[{ required: true, message: 'Please enter a campaign ID' }]}
+            extra={currentDialerType === 2 ? 'Campaign ID is now editable for Pitch BPO campaigns' : null}
           >
             <Input 
               placeholder="e.g., b2c3d4e5-f6a1-4a1a-bde0-1a733c8d1c00" 
               onChange={handleCampaignIdChange}
-              disabled={currentDialerType === 2}
             />
           </Form.Item>
           
           <Form.Item
             name="cadence_id"
             label="Cadence ID"
-            rules={[{ required: currentDialerType !== 2, message: 'Please enter a cadence ID' }]}
-            extra={currentListId && currentCampaignId && listCampaignCadenceMap[`${currentListId}:${currentCampaignId}`] && !editMode ? 
-              `This List ID + Campaign ID combination is already using cadence ID: ${listCampaignCadenceMap[`${currentListId}:${currentCampaignId}`]}` : null}
-            hidden={currentDialerType === 2}
+            rules={[{ required: true, message: 'Please enter a cadence ID' }]}
+            extra={currentDialerType === 2 ? 
+              'Cadence ID is now editable for Pitch BPO campaigns' : 
+              (currentListId && currentCampaignId && listCampaignCadenceMap[`${currentListId}:${currentCampaignId}`] && !editMode ? 
+                `This List ID + Campaign ID combination is already using cadence ID: ${listCampaignCadenceMap[`${currentListId}:${currentCampaignId}`]}` : null)
+            }
           >
             <Input 
               placeholder="e.g., 39a9381e-14ef-4fdd-a95a-9649025590a4" 
-              disabled={currentDialerType === 2 || (!editMode && !!currentListId && !!currentCampaignId && !!listCampaignCadenceMap[`${currentListId}:${currentCampaignId}`])} 
+              disabled={currentDialerType !== 2 && (!editMode && !!currentListId && !!currentCampaignId && !!listCampaignCadenceMap[`${currentListId}:${currentCampaignId}`])} 
               suffix={
-                <Tooltip title="When editing, you can change the cadence ID. For new entries, if a List ID + Campaign ID combination already exists, the cadence ID will be pre-selected.">
+                <Tooltip title={currentDialerType === 2 ? 
+                  "Cadence ID is now editable for Pitch BPO campaigns. Set this to match your vendor's campaign requirements." :
+                  "When editing, you can change the cadence ID. For new entries, if a List ID + Campaign ID combination already exists, the cadence ID will be pre-selected."
+                }>
                   <InfoCircleOutlined style={{ color: 'rgba(0,0,0,.45)' }} />
                 </Tooltip>
               }

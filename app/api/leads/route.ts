@@ -430,11 +430,9 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     const normalizedPhone = phone ? phone.replace(/\D/g, '') : '';
 
     if (isTestModeForPhoneNumber && normalizedPhone === TEST_PHONE_NUMBER) {
-      console.log(`[TEST MODE] In handleStandardLead: Detected test phone number ${TEST_PHONE_NUMBER}. ListId will be forced.`);
-      listId = TEST_JUICED_MEDIA_LIST_ID;
-      // campaignId and cadenceId from request will be used for initial validation,
-      // but will be overridden by list_routings for TEST_JUICED_MEDIA_LIST_ID later.
-      console.log(`[TEST MODE] Set listId to ${listId}. Original campaignId ('${campaignId}') and cadenceId ('${cadenceId}') will be used for initial validation only.`);
+      console.log(`[TEST MODE] In handleStandardLead: Detected test phone number ${TEST_PHONE_NUMBER}. Bypassing duplicate checks only - listId will NOT be overridden.`);
+      // Note: listId override removed - test phone will now use the actual listId provided in request
+      // This allows testing of actual routing configurations while still bypassing compliance/duplicate checks
     }
     const token = body.token || body.Token;
     
@@ -700,11 +698,38 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     }
     
     console.log('Routing results:', routingResults);
+    
+    // For Pitch BPO lists, if strict match fails, try listId-only match for flexibility
+    let finalRoutingResults = routingResults;
+    if (!routingResults && listId.startsWith('pitch-bpo-list-')) {
+      console.log(`[PITCH BPO] Strict match failed for ${listId}, trying listId-only match for flexibility...`);
+      
+      const { data: fallbackResults, error: fallbackError } = await supabase
+        .from('list_routings')
+        .select('*')
+        .eq('list_id', listId)
+        .eq('active', true)
+        .limit(1)
+        .maybeSingle();
+        
+      if (fallbackError) {
+        console.error('Error looking up list routing (listId-only fallback):', fallbackError);
+      } else if (fallbackResults) {
+        console.log(`[PITCH BPO] Found routing with listId-only match:`, fallbackResults);
+        finalRoutingResults = fallbackResults;
+        // Override with routing data's campaign and cadence IDs
+        console.log(`[PITCH BPO] Using routing config campaignId: ${fallbackResults.campaign_id}, cadenceId: ${fallbackResults.cadence_id}`);
+        effectiveCampaignId = fallbackResults.campaign_id;
+        effectiveCadenceId = fallbackResults.cadence_id;
+      }
+    }
+    
+    console.log('Final routing results:', finalRoutingResults);
       
     // Get the bid value to store with the lead
     
-    if (routingResults) {
-      routingData = routingResults;
+    if (finalRoutingResults) {
+      routingData = finalRoutingResults;
       console.log(`Found list routing for ${listId}:`, routingData);
       
       // STEP 1: TrustedForm Certificate Claiming (BEFORE compliance checks)

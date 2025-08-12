@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Shield,
   DollarSign,
+  RotateCcw,
 } from "lucide-react"
 
 import {
@@ -66,6 +67,11 @@ const navigationItems = [
         title: "SUBID Bids",
         href: "/dashboard/subid-bids",
         icon: DollarSign,
+      },
+      {
+        title: "Returns",
+        href: "/dashboard/monthly-dnc-export",
+        icon: RotateCcw,
       },
     ],
   },
