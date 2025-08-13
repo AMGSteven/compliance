@@ -129,7 +129,7 @@ export async function GET(request: NextRequest) {
       routingDescriptions: filteredData.map(r => r.description)
     })
 
-    // Group campaigns by data source type
+    // Group campaigns by data source type (with optional campaignType filter)
     const groupedCampaigns = filteredData.reduce((acc: any, routing: any) => {
       const dataSourceType = extractDataSourceType(routing.description || '')
       
@@ -165,6 +165,38 @@ export async function GET(request: NextRequest) {
     }, {})
 
     console.log('Grouped campaigns result:', Object.keys(groupedCampaigns), 'Total groups:', Object.keys(groupedCampaigns).length)
+
+    // Fallback: if list_ids were provided and campaign_type filtering removed everything, rebuild without the filter
+    if ((listId || listIds.length > 0) && campaignType && Object.keys(groupedCampaigns).length === 0) {
+      const fallbackGroups = filteredData.reduce((acc: any, routing: any) => {
+        const dataSourceType = extractDataSourceType(routing.description || '')
+        if (!acc[dataSourceType]) acc[dataSourceType] = []
+        acc[dataSourceType].push({
+          list_id: routing.list_id,
+          campaign_id: routing.campaign_id,
+          cadence_id: routing.cadence_id,
+          token: routing.token,
+          bid: routing.bid,
+          description: routing.description,
+          dataSourceType
+        })
+        return acc
+      }, {})
+      console.log('Fallback (no-filter) groups used due to empty result with campaign_type and list_ids')
+      // Use fallback groups
+      const textContent = generateAPISpecText(fallbackGroups, partnerName, includePrePing)
+      const timestamp = new Date().toISOString().split('T')[0]
+      const prePingSuffix = includePrePing ? '-with-pre-ping' : ''
+      const campaignSuffix = campaignType ? `-${campaignType.toLowerCase().replace(/\s+/g, '-')}` : ''
+      const filename = `api-spec-${partnerName?.toLowerCase().replace(/\s+/g, '-') || 'integration'}${campaignSuffix}${prePingSuffix}-${timestamp}.txt`
+      return new NextResponse(textContent, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/plain',
+          'Content-Disposition': `attachment; filename="${filename}"`
+        }
+      })
+    }
 
     // Generate text content
     const textContent = generateAPISpecText(groupedCampaigns, partnerName, includePrePing)
@@ -220,7 +252,15 @@ function generateGenericCampaigns(partnerName: string | null, campaignType: stri
 
 function extractDataSourceType(description: string): string {
   const lowerDesc = description.toLowerCase()
-  if (lowerDesc.includes('after hour')) return 'After Hours'
+  // Normalize common synonyms
+  if (
+    lowerDesc.includes('after hour') ||
+    lowerDesc.includes('after-hour') ||
+    lowerDesc.includes('after hours') ||
+    lowerDesc.includes('off hour') ||
+    lowerDesc.includes('off-hour') ||
+    lowerDesc.includes('off hours')
+  ) return 'After Hours'
   if (lowerDesc.includes('aged')) return 'Aged'
   if (lowerDesc.includes('on hour')) return 'On Hours'
   return 'Standard'
