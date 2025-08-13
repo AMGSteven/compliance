@@ -690,11 +690,13 @@ export default function RoutingManagementPage() {
     }
   }
 
-  const handleDownloadPartnerSpec = async (partnerName: string) => {
+  const handleDownloadPartnerSpec = async (partnerName: string, partnerIntegrations: Integration[]) => {
     try {
       setGeneratingPDF(true)
       
-      const response = await fetch(`/api/generate-api-spec-text?partner_name=${encodeURIComponent(partnerName)}`)
+      // Use list_ids instead of partner_name for more precise spec generation
+      const listIds = partnerIntegrations.map(integration => integration.list_id).join(',')
+      const response = await fetch(`/api/generate-api-spec?list_ids=${encodeURIComponent(listIds)}`)
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
@@ -706,7 +708,7 @@ export default function RoutingManagementPage() {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${partnerName}-API-Integration-Specs.txt`
+      a.download = `${partnerName}-API-Integration-Specs.pdf`
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)
@@ -735,7 +737,7 @@ export default function RoutingManagementPage() {
       
       // Build query params for specific campaigns
       const listIds = campaigns.map(c => c.list_id).join(',')
-      const response = await fetch(`/api/generate-api-spec-text?partner_name=${encodeURIComponent(partnerName)}&list_ids=${encodeURIComponent(listIds)}&campaign_type=${encodeURIComponent(campaignType)}`)
+      const response = await fetch(`/api/generate-api-spec?partner_name=${encodeURIComponent(partnerName)}&list_ids=${encodeURIComponent(listIds)}&campaign_type=${encodeURIComponent(campaignType)}`)
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
@@ -747,7 +749,7 @@ export default function RoutingManagementPage() {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${partnerName}-${campaignType}-API-Specs.txt`
+      a.download = `${partnerName}-${campaignType}-API-Specs.pdf`
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)
@@ -770,11 +772,13 @@ export default function RoutingManagementPage() {
     }
   }
 
-  const handleDownloadPartnerSpecWithPrePing = async (partnerName: string) => {
+  const handleDownloadPartnerSpecWithPrePing = async (partnerName: string, partnerIntegrations: Integration[]) => {
     try {
       setGeneratingPDF(true)
       
-      const response = await fetch(`/api/generate-api-spec-text?partner_name=${encodeURIComponent(partnerName)}&include_pre_ping=true`)
+      // Use list_ids instead of partner_name for more precise spec generation
+      const listIds = partnerIntegrations.map(integration => integration.list_id).join(',')
+      const response = await fetch(`/api/generate-api-spec?list_ids=${encodeURIComponent(listIds)}&include_pre_ping=true`)
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
@@ -786,7 +790,7 @@ export default function RoutingManagementPage() {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${partnerName}-API-Integration-Specs-with-PrePing.txt`
+      a.download = `${partnerName}-API-Integration-Specs-with-PrePing.pdf`
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)
@@ -815,7 +819,7 @@ export default function RoutingManagementPage() {
       
       // Build query params for specific campaigns with pre-ping
       const listIds = campaigns.map(c => c.list_id).join(',')
-      const response = await fetch(`/api/generate-api-spec-text?partner_name=${encodeURIComponent(partnerName)}&list_ids=${encodeURIComponent(listIds)}&campaign_type=${encodeURIComponent(campaignType)}&include_pre_ping=true`)
+      const response = await fetch(`/api/generate-api-spec?partner_name=${encodeURIComponent(partnerName)}&list_ids=${encodeURIComponent(listIds)}&campaign_type=${encodeURIComponent(campaignType)}&include_pre_ping=true`)
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
@@ -827,7 +831,7 @@ export default function RoutingManagementPage() {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${partnerName}-${campaignType}-API-Specs-with-PrePing.txt`
+      a.download = `${partnerName}-${campaignType}-API-Specs-with-PrePing.pdf`
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)
@@ -1027,14 +1031,7 @@ export default function RoutingManagementPage() {
                                 <Edit2 className="h-3 w-3" />
                                 Edit Dialer
                               </Button>
-                              {false && getWeightedRouting(integration.list_id) && (
-                                <div className="flex items-center gap-1 text-xs text-blue-600">
-                                  <Percent className="h-3 w-3" />
-                                  Weighted: {getWeightedRouting(integration.list_id)?.map(w => 
-                                    `${w.weight_percentage}% ${getDialerTypeLabel(w.dialer_type)}`
-                                  ).join(', ')}
-                                </div>
-                              )}
+
                             </div>
                           </div>
                         ))
@@ -1459,7 +1456,7 @@ export default function RoutingManagementPage() {
                       </div>
                       <div className="flex gap-2">
                         <Button
-                          onClick={() => handleDownloadPartnerSpec(partner.name)}
+                          onClick={() => handleDownloadPartnerSpec(partner.name, partnerIntegrations)}
                           className="flex items-center gap-2"
                           disabled={generatingPDF}
                         >
@@ -1468,7 +1465,7 @@ export default function RoutingManagementPage() {
                         </Button>
                         <Button
                           variant="outline"
-                          onClick={() => handleDownloadPartnerSpecWithPrePing(partner.name)}
+                          onClick={() => handleDownloadPartnerSpecWithPrePing(partner.name, partnerIntegrations)}
                           className="flex items-center gap-2"
                           disabled={generatingPDF}
                         >

@@ -227,7 +227,7 @@ export async function GET(request: NextRequest) {
 }
 
 function generateGenericCampaigns(partnerName: string | null, campaignType: string | null): any[] {
-  const campaigns = []
+  const campaigns: any[] = []
   const timestamp = Date.now()
   
   // Generate generic campaigns for common types
@@ -325,7 +325,10 @@ function generateAPISpecText(groupedCampaigns: any, partnerName: string | null, 
         content += `  "firstName": "John",\n`
         content += `  "lastName": "Doe",\n`
         content += `  "email": "john@example.com",\n`
-        content += `  "list_id": "${campaign.list_id}"\n`
+        content += `  "list_id": "${campaign.list_id}",\n`
+        content += `  "custom_fields": {\n`
+        content += `    "subid": "12345"\n`
+        content += `  }\n`
         content += `}\n\n`
 
         content += `Response - ACCEPTED:\n`
@@ -385,7 +388,10 @@ function generateAPISpecText(groupedCampaigns: any, partnerName: string | null, 
       content += `  "trusted_form_cert_url": "https://cert.trustedform.com/...",\n`
       content += `  "ip_address": "192.168.1.1",\n`
       content += `  "user_agent": "Mozilla/5.0...",\n`
-      content += `  "landing_page_url": "https://yoursite.com/form"\n`
+      content += `  "landing_page_url": "https://yoursite.com/form",\n`
+      content += `  "custom_fields": {\n`
+      content += `    "subid": "12345"\n`
+      content += `  }\n`
       content += `}\n\n`
 
       content += `Response - SUCCESS:\n`
@@ -428,7 +434,10 @@ function generateAPISpecText(groupedCampaigns: any, partnerName: string | null, 
         content += `    "firstName": "John",\n`
         content += `    "lastName": "Doe",\n`
         content += `    "email": "john@example.com",\n`
-        content += `    "list_id": "${campaign.list_id}"\n`
+        content += `    "list_id": "${campaign.list_id}",\n`
+        content += `    "custom_fields": {\n`
+        content += `      "subid": "12345"\n`
+        content += `    }\n`
         content += `  }'\n\n`
 
         content += `# Full Lead Submission (if pre-ping accepted)\n`
@@ -455,7 +464,10 @@ function generateAPISpecText(groupedCampaigns: any, partnerName: string | null, 
       content += `    "gender": "M",\n`
       content += `    "incomeBracket": "50000-75000",\n`
       content += `    "homeownerStatus": "Own",\n`
-      content += `    "ageRange": "35-44"\n`
+      content += `    "ageRange": "35-44",\n`
+      content += `    "custom_fields": {\n`
+      content += `      "subid": "12345"\n`
+      content += `    }\n`
       content += `  }'\n\n`
 
       content += `===============================================\n\n`

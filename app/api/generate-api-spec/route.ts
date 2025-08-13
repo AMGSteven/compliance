@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
 }
 
 function generateGenericCampaignsForPDF(partnerName: string | null, campaignType: string | null): any[] {
-  const campaigns = []
+  const campaigns: any[] = []
   const timestamp = Date.now()
   
   // Generate generic campaigns for common types
@@ -258,7 +258,10 @@ async function generateAPISpecPDF(groupedRoutings: any, title: string, includePr
               "firstName": "John",
               "lastName": "Doe",
               "email": "john@example.com",
-              "list_id": campaign.listId
+              "list_id": campaign.listId,
+              "custom_fields": {
+                "subid": "12345"
+              }
             }, null, 2)
             
             doc.text(prePingBody)
@@ -347,7 +350,10 @@ async function generateAPISpecPDF(groupedRoutings: any, title: string, includePr
             "trusted_form_cert_url": "https://cert.trustedform.com/...",
             "ip_address": "192.168.1.1",
             "user_agent": "Mozilla/5.0...",
-            "landing_page_url": "https://yoursite.com/form"
+            "landing_page_url": "https://yoursite.com/form",
+            "custom_fields": {
+              "subid": "12345"
+            }
           }, null, 2)
           
           doc.text(requestExample)
@@ -403,8 +409,10 @@ async function generateAPISpecPDF(groupedRoutings: any, title: string, includePr
     "firstName": "John",
     "lastName": "Doe",
     "email": "john@example.com",
-    "dialer_type": "${campaign.dialerTypeString}",
-    "list_id": "${campaign.listId}"
+    "list_id": "${campaign.listId}",
+    "custom_fields": {
+      "subid": "12345"
+    }
   }'`
             
             doc.text(prePingCurl)
@@ -421,7 +429,6 @@ async function generateAPISpecPDF(groupedRoutings: any, title: string, includePr
     "firstName": "John",
     "lastName": "Doe",
     "email": "john@example.com",
-    "dialer_type": "${campaign.dialerTypeString}",
     "list_id": "${campaign.listId}",
     "campaign_id": "${campaign.campaignId}",
     "cadence_id": "${campaign.cadenceId}",
@@ -432,7 +439,10 @@ async function generateAPISpecPDF(groupedRoutings: any, title: string, includePr
     "gender": "M",
     "incomeBracket": "50000-75000",
     "homeownerStatus": "Own",
-    "ageRange": "35-44"
+    "ageRange": "35-44",
+    "custom_fields": {
+      "subid": "12345"
+    }
   }'`
             
             doc.text(fullCurl)
@@ -449,7 +459,6 @@ async function generateAPISpecPDF(groupedRoutings: any, title: string, includePr
     "firstName": "John",
     "lastName": "Doe",
     "email": "john@example.com",
-    "dialer_type": "${campaign.dialerTypeString}",
     "list_id": "${campaign.listId}",
     "campaign_id": "${campaign.campaignId}",
     "cadence_id": "${campaign.cadenceId}",
@@ -460,7 +469,10 @@ async function generateAPISpecPDF(groupedRoutings: any, title: string, includePr
     "gender": "M",
     "incomeBracket": "50000-75000",
     "homeownerStatus": "Own",
-    "ageRange": "35-44"
+    "ageRange": "35-44",
+    "custom_fields": {
+      "subid": "12345"
+    }
   }'`
             
             doc.text(curlCommand)
