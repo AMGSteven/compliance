@@ -3,7 +3,7 @@ import { createServerClient } from '@/lib/supabase/server';
 import { ComplianceEngine } from '@/lib/compliance/engine';
 import { checkPhoneCompliance } from '@/app/lib/real-phone-validation';
 import { validatePhoneDirectly } from '@/app/lib/phone-validation-hook';
-import { checkForDuplicateLead } from '@/app/lib/duplicate-lead-check';
+import { checkForDuplicateLead, checkForDuplicateLeadInVertical } from '@/app/lib/duplicate-lead-check';
 import { TrustedFormService } from '@/lib/services/trusted-form';
 import { normalizeSubIdKey } from '@/lib/utils/subid';
 
@@ -44,19 +44,19 @@ const CONVOSO_LIST_ID_TEST = process.env.CONVOSO_LIST_ID_TEST || '5989'; // Test
  */
 async function isDialerApproved(listId: string, dialerType: number): Promise<boolean> {
   try {
-    console.log(`⚙️ DIALER APPROVAL CHECK: Starting check for list_id=${listId}, dialer_type=${dialerType}`);
+    console.log(`⚙️ DIALER APPROVAL CHECK: Starting check for listId=${listId}, dialer_type=${dialerType}`);
     
     const supabase = createServerClient();
     
     const { data, error } = await supabase
       .from('dialer_approvals')
       .select('approved, reason, approved_by')
-      .eq('list_id', listId)
+      .eq('listId', listId)
       .eq('dialer_type', dialerType)
       .single();
 
     if (error) {
-      console.warn(`⚠️ DIALER APPROVAL: No record found for list_id: ${listId}, dialer_type: ${dialerType}. Error: ${error.message}. DEFAULTING TO APPROVED.`);
+      console.warn(`⚠️ DIALER APPROVAL: No record found for listId: ${listId}, dialer_type: ${dialerType}. Error: ${error.message}. DEFAULTING TO APPROVED.`);
       return true; // Default to approved if no record exists (backward compatibility)
     }
 
@@ -64,7 +64,7 @@ async function isDialerApproved(listId: string, dialerType: number): Promise<boo
     const dialerName = dialerType === 1 ? 'Internal' : dialerType === 2 ? 'Pitch BPO' : dialerType === 3 ? 'Convoso' : 'Unknown';
     
     console.log(`✅ DIALER APPROVAL RESULT:`, {
-      list_id: listId,
+      listId: listId,
       dialer_type: dialerType,
       dialer_name: dialerName,
       approved: data.approved,
@@ -76,7 +76,7 @@ async function isDialerApproved(listId: string, dialerType: number): Promise<boo
 
     return isApproved;
   } catch (error) {
-    console.error(`❌ DIALER APPROVAL ERROR: Unexpected error checking approval for list_id: ${listId}, dialer_type: ${dialerType}:`, error);
+    console.error(`❌ DIALER APPROVAL ERROR: Unexpected error checking approval for listId: ${listId}, dialer_type: ${dialerType}:`, error);
     console.log('ℹ️ DIALER APPROVAL: DEFAULTING TO APPROVED due to error (fail-safe)');
     return true; // Default to approved on error (fail-safe)
   }
@@ -248,7 +248,7 @@ async function forwardToConvoso(params: {
     const convosoPayload = {
       auth_token: CONVOSO_AUTH_TOKEN,
       criteria_key: CONVOSO_CRITERIA_KEY,
-      list_id: convosoListId,
+      listId: convosoListId,
       first_name: firstName,
       last_name: lastName,
       email: email || '', // Optional but include if available
@@ -271,7 +271,7 @@ async function forwardToConvoso(params: {
     // Use the new Convoso API endpoint as provided by IBP (GET with query parameters)
     const apiParams = new URLSearchParams({
       auth_token: CONVOSO_AUTH_TOKEN,
-      list_id: convosoListId,
+      listId: convosoListId,
       check_dup: '3',
       phone_code: '1', // US country code
       first_name: firstName,
@@ -357,16 +357,19 @@ export async function POST(request: Request) {
     const body = await request.json();
     console.log('Received lead submission body:', JSON.stringify(body).slice(0, 500) + '...');
     
-    // CRITICAL IMMEDIATE VALIDATION: Extract phone number from the request
+    // CRITICAL IMMEDIATE VALIDATION: Extract phone number and list ID from the request
     let phoneToCheck = '';
+    let listId = '';
     
     // Extract phone number from appropriate field based on lead format
     if (body.ContactData && body.ContactData.Phone) {
       // Health insurance format
       phoneToCheck = body.ContactData.Phone;
+      listId = body.SubId || body.listId || body.list_id || '';
     } else {
       // Standard format
       phoneToCheck = body.phone || body.Phone || '';
+      listId = body.listId || body.list_id || '';
     }
     
     // Determine if this is a test call for the specific phone number
@@ -402,13 +405,25 @@ export async function POST(request: Request) {
     //   console.log(`[DIRECT VALIDATION] Phone passed validation: ${phoneToCheck}`);
     // }
     
-    // Duplicate check (re-enabled) - check if this is a duplicate lead within the past 30 days
+    // Duplicate check (re-enabled) - Vertical-specific if listId provided
     if (phoneToCheck && !isTestModeForPhoneNumber) {
       console.log(`[DUPLICATE CHECK] Checking if phone ${phoneToCheck} was submitted in the past 30 days`);
-      const duplicateCheck = await checkForDuplicateLead(phoneToCheck);
+      
+      let duplicateCheck;
+      if (listId) {
+        // Use vertical-specific duplicate check
+        duplicateCheck = await checkForDuplicateLeadInVertical(phoneToCheck, listId);
+        console.log(`[DUPLICATE CHECK] Using vertical-specific check for listId: ${listId}`);
+      } else {
+        // Fallback to global duplicate check
+        duplicateCheck = await checkForDuplicateLead(phoneToCheck);
+        console.log('[DUPLICATE CHECK] Using global check (no listId provided)');
+      }
       
       if (duplicateCheck.isDuplicate) {
-        console.log(`[DUPLICATE CHECK] BLOCKING LEAD: Phone ${phoneToCheck} was submitted ${duplicateCheck.details?.daysAgo} days ago`);
+        const vertical = duplicateCheck.details?.vertical || 'unknown';
+        const checkType = duplicateCheck.details?.checkType || 'unknown';
+        console.log(`[DUPLICATE CHECK] BLOCKING LEAD: Phone ${phoneToCheck} was submitted ${duplicateCheck.details?.daysAgo} days ago in vertical: ${vertical} (${checkType})`);
         return NextResponse.json(
           {
             success: false,
@@ -417,7 +432,9 @@ export async function POST(request: Request) {
             details: {
               phoneNumber: phoneToCheck,
               originalSubmissionDate: duplicateCheck.details?.originalSubmissionDate,
-              daysAgo: duplicateCheck.details?.daysAgo
+              daysAgo: duplicateCheck.details?.daysAgo,
+              vertical: vertical,
+              checkType: checkType
             }
           },
           { status: 400 }
@@ -469,7 +486,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     const zipCode = body.zipCode || body.zip_code || body.ZipCode;
     const trustedFormCertUrl = body.trustedFormCertUrl || body.trusted_form_cert_url || body.TrustedForm;
     // Use 'let' instead of 'const' to allow correcting the list ID for special cases
-    let listId = body.listId || body.list_id;
+    let listId = body.listId || body.listId;
     let campaignId = body.campaignId || body.campaign_id; // Changed to let
     let cadenceId = body.cadenceId || body.cadence_id;   // Changed to let
 
@@ -521,13 +538,25 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     // Clean the phone number for consistency checks
     const normalizedPhoneForComplianceCheck = phone ? phone.replace(/\D/g, '') : '';
     
-    // Check for duplicate leads in the last 30 days - using normalized phone number for compliance
+    // Check for duplicate leads in the last 30 days - Vertical-specific if listId provided
     if (!isTestModeForPhoneNumber || normalizedPhoneForComplianceCheck !== TEST_PHONE_NUMBER) {
       console.log(`[DUPLICATE CHECK] Checking for duplicates for phone: ${normalizedPhoneForComplianceCheck}`);
-      const duplicateCheck = await checkForDuplicateLead(normalizedPhoneForComplianceCheck);
+      
+      let duplicateCheck;
+      if (listId) {
+        // Use vertical-specific duplicate check
+        duplicateCheck = await checkForDuplicateLeadInVertical(normalizedPhoneForComplianceCheck, listId);
+        console.log(`[DUPLICATE CHECK] Using vertical-specific check for listId: ${listId}`);
+      } else {
+        // Fallback to global duplicate check
+        duplicateCheck = await checkForDuplicateLead(normalizedPhoneForComplianceCheck);
+        console.log('[DUPLICATE CHECK] Using global check (no listId provided)');
+      }
       
       if (duplicateCheck.isDuplicate) {
-        console.log(`[DUPLICATE CHECK] BLOCKING LEAD: Phone ${normalizedPhoneForComplianceCheck} was submitted ${duplicateCheck.details?.daysAgo} days ago`);
+        const vertical = duplicateCheck.details?.vertical || 'unknown';
+        const checkType = duplicateCheck.details?.checkType || 'unknown';
+        console.log(`[DUPLICATE CHECK] BLOCKING LEAD: Phone ${normalizedPhoneForComplianceCheck} was submitted ${duplicateCheck.details?.daysAgo} days ago in vertical: ${vertical} (${checkType})`);
         return NextResponse.json(
           {
             success: false,
@@ -537,6 +566,8 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
               phoneNumber: normalizedPhoneForComplianceCheck,
               originalSubmissionDate: duplicateCheck.details?.originalSubmissionDate,
               daysAgo: duplicateCheck.details?.daysAgo,
+              vertical: vertical,
+              checkType: checkType,
               source: 'shift44' // Adding source info for debugging
             }
           },
@@ -622,10 +653,10 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     let effectiveCampaignId = campaignId; // Default is the one passed in the request
     let effectiveCadenceId = cadenceId; // Default is the one passed in the request
     
-    // Determine traffic source based on list_id
+    // Determine traffic source based on listId
     let trafficSource = body.trafficSource || body.traffic_source;
     
-    // If no traffic_source is provided, set it based on list_id mapping
+    // If no traffic_source is provided, set it based on listId mapping
     if (!trafficSource) {
       if (listId === '1b759535-2a5e-421e-9371-3bde7f855c60') {
         trafficSource = 'Onpoint';
@@ -657,7 +688,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
           trusted_form_cert_url: trustedFormCertUrl || '',
           transaction_id: body.transactionId || body.transaction_id || '',
           custom_fields: body.customFields || body.custom_fields || null,
-          list_id: listId,
+          listId: listId,
           campaign_id: campaignId,
           traffic_source: trafficSource,
           cadence_id: cadenceId || null,
@@ -734,7 +765,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     const { data: routingResults, error: routingError } = await supabase
       .from('list_routings')
       .select('*')
-      .eq('list_id', listId)
+      .eq('listId', listId)
       .eq('active', true)
       .limit(1)
       .maybeSingle();
@@ -753,7 +784,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
       const { data: fallbackResults, error: fallbackError } = await supabase
         .from('list_routings')
         .select('*')
-        .eq('list_id', listId)
+        .eq('listId', listId)
         .eq('active', true)
         .limit(1)
         .maybeSingle();
@@ -865,13 +896,13 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
       const leadCustomFields = body.custom_fields || body.customFields;
       const extractedSubId = normalizeSubIdKey(leadCustomFields);
       
-      console.log(`🎯 SUBID-Aware Bidding: list_id=${listId}, subid=${extractedSubId || 'none'}`);
+      console.log(`🎯 SUBID-Aware Bidding: listId=${listId}, subid=${extractedSubId || 'none'}`);
       
       try {
         // Use optimized SQL function to get SUBID-specific bid or fallback to list-level bid
         const { data: effectiveBid, error: bidError } = await supabase
           .rpc('get_effective_bid', {
-            p_list_id: listId,
+            p_listId: listId,
             p_subid: extractedSubId
           });
           
@@ -927,7 +958,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
       if (routingData?.weighted_routing_enabled) {
         const supabase = createServerClient();
         const { data: selectedDialer, error: weightErr } = await supabase
-          .rpc('get_weighted_dialer', { p_list_id: listId });
+          .rpc('get_weighted_dialer', { p_listId: listId });
         if (!weightErr && typeof selectedDialer === 'number') {
           dialerType = selectedDialer;
           console.log(`[WEIGHTED_ROUTING] Selected dialer ${dialerType} via get_weighted_dialer for list ${listId}`);
@@ -979,13 +1010,13 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
         // Check if the target dialer is approved for this list ID
         const isApproved = await isDialerApproved(listId, dialerType);
         if (!isApproved) {
-          console.error(`❌ COMPLIANCE BLOCK: Dialer type ${dialerType} is DENIED for list_id: ${listId}. Lead routing blocked.`);
+          console.error(`❌ COMPLIANCE BLOCK: Dialer type ${dialerType} is DENIED for listId: ${listId}. Lead routing blocked.`);
           return NextResponse.json({
             success: false,
             error: 'COMPLIANCE_VIOLATION',
             message: `Dialer type ${dialerType} is not approved for this list ID. Contact compliance team.`,
             details: {
-              list_id: listId,
+              listId: listId,
               dialer_type: dialerType,
               phone: phone,
               reason: 'Dialer approval denied by compliance team'
@@ -1094,7 +1125,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
           dob: string;
           homeowner_status: string;
           custom_fields: Record<string, any>;
-          list_id: string;
+          listId: string;
           campaign_id: string;
           cadence_id: string | null;
           compliance_lead_id: string; // Add compliance_lead_id to the interface
@@ -1127,7 +1158,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
           },
           
           // Include the routing IDs directly in the payload
-          list_id: listId,
+          listId: listId,
           campaign_id: effectiveCampaignId,
           cadence_id: effectiveCadenceId,
           
@@ -1135,7 +1166,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
           compliance_lead_id: data[0].id
         };
         
-        // The dialer API expects list_id and token as URL parameters, not just in the JSON payload
+        // The dialer API expects listId and token as URL parameters, not just in the JSON payload
         // Use the routing token if available, then the provided token, then fallback to a default
         let authToken = '';
         
@@ -1152,7 +1183,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
         
         // Construct the URL with required parameters in the query string
         const dialerUrl = new URL('https://dialer.juicedmedia.io/api/webhooks/lead-postback');
-        dialerUrl.searchParams.append('list_id', listId);
+        dialerUrl.searchParams.append('listId', listId);
         dialerUrl.searchParams.append('campaign_id', effectiveCampaignId);
         dialerUrl.searchParams.append('cadence_id', effectiveCadenceId);
         dialerUrl.searchParams.append('token', authToken);
@@ -1385,7 +1416,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
           email: email,
           phone: phone,
           trusted_form_cert_url: body.TrustedForm || '',
-          list_id: body.SubId || 'health-insurance-default',
+          listId: body.SubId || 'health-insurance-default',
           campaign_id: body.Vertical || 'health-insurance-campaign',
           traffic_source: body.Source || (body.SubId === 'OPG4' ? 'Onpoint' : ''),
           
@@ -1503,7 +1534,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
     const { data: routingResults, error: routingError } = await supabase
       .from('list_routings')
       .select('*')
-      .eq('list_id', listId)
+      .eq('listId', listId)
       .eq('active', true)
       .limit(1)
       .maybeSingle();
@@ -1657,11 +1688,25 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
     
     if (!isTestModeForPhoneNumber) {
       console.log(`[DUPLICATE CHECK] Checking for duplicates for health insurance phone: ${normalizedPhoneForComplianceCheck}`);
-      const duplicateCheck = await checkForDuplicateLead(normalizedPhoneForComplianceCheck);
+      
+      let duplicateCheck;
+      if (listId) {
+        // Use vertical-specific duplicate check
+        duplicateCheck = await checkForDuplicateLeadInVertical(normalizedPhoneForComplianceCheck, listId);
+        console.log(`[DUPLICATE CHECK] Using vertical-specific check for listId: ${listId}`);
+      } else {
+        // Fallback to global duplicate check
+        duplicateCheck = await checkForDuplicateLead(normalizedPhoneForComplianceCheck);
+        console.log('[DUPLICATE CHECK] Using global check (no listId provided)');
+      }
       
       if (duplicateCheck.isDuplicate) {
+        const vertical = duplicateCheck.details?.vertical || 'unknown';
+        const checkType = duplicateCheck.details?.checkType || 'unknown';
         console.log('[DUPLICATE CHECK] BLOCKING HEALTH INSURANCE LEAD: Duplicate phone number found:', {
           phone: normalizedPhoneForComplianceCheck,
+          vertical: vertical,
+          checkType: checkType,
           details: duplicateCheck.details
         });
         
@@ -1672,6 +1717,8 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
             error: 'Duplicate phone number found in system',
             details: {
               phone: normalizedPhoneForComplianceCheck,
+              vertical: vertical,
+              checkType: checkType,
               duplicateInfo: duplicateCheck.details,
               source: 'duplicate-check'
             }
@@ -1716,13 +1763,13 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
         // Check if the target dialer is approved for this list ID
         const isApproved = await isDialerApproved(listId, dialerType);
         if (!isApproved) {
-          console.error(`❌ COMPLIANCE BLOCK: Dialer type ${dialerType} is DENIED for list_id: ${listId}. Health insurance lead routing blocked.`);
+          console.error(`❌ COMPLIANCE BLOCK: Dialer type ${dialerType} is DENIED for listId: ${listId}. Health insurance lead routing blocked.`);
           return NextResponse.json({
             success: false,
             error: 'COMPLIANCE_VIOLATION',
             message: `Dialer type ${dialerType} is not approved for this list ID. Contact compliance team.`,
             details: {
-              list_id: listId,
+              listId: listId,
               dialer_type: dialerType,
               phone: phone,
               lead_type: 'health_insurance',
@@ -1784,7 +1831,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
           dob: string;
           homeowner_status: string;
           custom_fields: Record<string, any>;
-          list_id: string;
+          listId: string;
           campaign_id: string;
           cadence_id: string | null;
           compliance_lead_id: string; // Add compliance_lead_id to the interface
@@ -1816,7 +1863,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
           },
           
           // Include the routing IDs directly in the payload
-          list_id: listId,
+          listId: listId,
           campaign_id: effectiveCampaignId,
           cadence_id: effectiveCadenceId,
           
@@ -1824,7 +1871,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
           compliance_lead_id: data[0].id
         };
         
-        // The dialer API expects list_id and token as URL parameters, not just in the JSON payload
+        // The dialer API expects listId and token as URL parameters, not just in the JSON payload
         // Use the routing token if available, then the provided token, then fallback to a default
         let authToken = '';
         
@@ -1841,7 +1888,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
         
         // Construct the URL with required parameters in the query string
         const dialerUrl = new URL('https://dialer.juicedmedia.io/api/webhooks/lead-postback');
-        dialerUrl.searchParams.append('list_id', listId);
+        dialerUrl.searchParams.append('listId', listId);
         dialerUrl.searchParams.append('campaign_id', effectiveCampaignId);
         dialerUrl.searchParams.append('cadence_id', effectiveCadenceId);
         dialerUrl.searchParams.append('token', authToken);

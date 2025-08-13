@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateApiKey } from '@/lib/auth';
 import { ComplianceEngine } from '@/lib/compliance/engine';
-import { checkForDuplicateLead } from '@/app/lib/duplicate-lead-check';
+import { checkForDuplicateLead, checkForDuplicateLeadInVertical } from '@/app/lib/duplicate-lead-check';
 
 // Allowed states for leads
 const INTERNAL_DIALER_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'IN', 'KS', 'LA', 'MO', 'MS', 'OH', 'SC', 'TN', 'TX'];
@@ -94,18 +94,32 @@ async function performPrePingValidation(body: PrePingRequest, startTime: number)
       console.log(`[Pre-Ping] State check failed: ${stateCheck.reason}`);
     }
 
-    // 2. Duplicate check (30-day window)
+    // 2. Duplicate check (30-day window) - Vertical-specific if list_id provided
     try {
-      const duplicateResult = await checkForDuplicateLead(normalizedPhone);
+      let duplicateResult;
+      
+      if (list_id) {
+        // Use vertical-specific duplicate check
+        duplicateResult = await checkForDuplicateLeadInVertical(normalizedPhone, list_id);
+        console.log(`[Pre-Ping] Using vertical-specific duplicate check for list_id: ${list_id}`);
+      } else {
+        // Fallback to global duplicate check
+        duplicateResult = await checkForDuplicateLead(normalizedPhone);
+        console.log('[Pre-Ping] Using global duplicate check (no list_id provided)');
+      }
+      
       checks.duplicate = {
         isCompliant: !duplicateResult.isDuplicate,
         reason: duplicateResult.isDuplicate ? 'Duplicate lead found within 30 days' : undefined,
         details: duplicateResult.isDuplicate ? duplicateResult.details : undefined
       };
+      
       if (duplicateResult.isDuplicate) {
         const daysAgo = duplicateResult.details?.daysAgo || 0;
-        rejectionReasons.push(`Duplicate lead (last seen ${daysAgo} days ago)`);
-        console.log(`[Pre-Ping] Duplicate check failed: ${daysAgo} days since last lead`);
+        const vertical = duplicateResult.details?.vertical || 'unknown';
+        const checkType = duplicateResult.details?.checkType || 'unknown';
+        rejectionReasons.push(`Duplicate lead (last seen ${daysAgo} days ago, vertical: ${vertical}, check: ${checkType})`);
+        console.log(`[Pre-Ping] Duplicate check failed: ${daysAgo} days since last lead in vertical: ${vertical} (${checkType})`);
       }
     } catch (error) {
       console.error('[Pre-Ping] Duplicate check failed:', error);
