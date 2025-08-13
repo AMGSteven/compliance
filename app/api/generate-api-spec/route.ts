@@ -9,6 +9,7 @@ const supabase = createClient(supabaseUrl, supabaseKey)
 // GET - Generate API specification PDF for a partner or specific list ID
 export async function GET(request: NextRequest) {
   try {
+    console.log('🔥 PDF Generation Request:', request.url)
     const { searchParams } = new URL(request.url)
     const partnerId = searchParams.get('partner_id')
     const listId = searchParams.get('list_id')
@@ -68,9 +69,12 @@ export async function GET(request: NextRequest) {
 
     // Group routings by partner and data source type
     const groupedRoutings = groupRoutingsByPartner(routingsToUse)
+    console.log('📊 Grouped routings:', Object.keys(groupedRoutings))
     
     // Generate PDF
+    console.log('📄 Starting PDF generation...')
     const pdfBuffer = await generateAPISpecPDF(groupedRoutings, partnerName || 'API Integration', includePrePing)
+    console.log('✅ PDF generation completed, buffer size:', pdfBuffer.length)
 
     // Return PDF as downloadable file
     const headers = new Headers()
@@ -208,6 +212,9 @@ async function generateAPISpecPDF(groupedRoutings: any, title: string, includePr
       doc.on('data', (chunk) => chunks.push(chunk))
       doc.on('end', () => resolve(Buffer.concat(chunks)))
       doc.on('error', (error) => reject(error))
+
+      // Set font to a built-in PostScript font that doesn't require external files
+      doc.font('Times-Roman')
 
       // Title page
       doc.fontSize(24).text(title + ' API Integration Specifications', { align: 'center' })
