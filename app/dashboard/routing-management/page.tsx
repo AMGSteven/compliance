@@ -114,7 +114,19 @@ export default function RoutingManagementPage() {
         
         console.log('Processing routing:', routing.list_id, routing.description, routing.dialer_type, routing.active)
         
-        // Map campaigns to partners based on actual database data
+        // Use partner_name from database first, fall back to description parsing if needed
+        if (routing.partner_name && routing.partner_name.trim() !== '' && routing.partner_name !== 'Unknown') {
+          partnerName = routing.partner_name
+          // Determine integration type based on dialer_type when using database partner_name
+          if (routing.dialer_type === 3) {
+            integrationType = 'health_insurance'
+          } else if (routing.dialer_type === 2) {
+            integrationType = 'pitch_bpo'
+          } else if (routing.dialer_type === 1) {
+            integrationType = 'internal_dialer'
+          }
+        } else {
+          // Fallback to description-based mapping when partner_name is not available
         const desc = routing.description?.toLowerCase() || ''
         
         // Specific List ID mappings first
@@ -190,6 +202,7 @@ export default function RoutingManagementPage() {
           partnerName = 'Internal Dialer'
           integrationType = 'internal_dialer'
         }
+        } // Close the else block for fallback logic
         
         return {
           id: routing.id,
@@ -886,7 +899,7 @@ export default function RoutingManagementPage() {
       </div>
 
       <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList>
+        <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="partners">Partners</TabsTrigger>
           <TabsTrigger value="integrations">Integrations</TabsTrigger>
@@ -1201,34 +1214,34 @@ export default function RoutingManagementPage() {
                               Add Config
                             </Button>
                           ) : (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleEditVerticalConfig(config)}
-                              className="flex items-center gap-1"
-                            >
-                              <Edit2 className="h-3 w-3" />
-                              Edit Config
-                            </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEditVerticalConfig(config)}
+                            className="flex items-center gap-1"
+                          >
+                            <Edit2 className="h-3 w-3" />
+                            Edit Config
+                          </Button>
                           )}
                         </div>
                         {!config.__isNew && (
-                          <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                              <span className="text-muted-foreground">Campaign ID:</span>
-                              <div className="font-mono">{config.campaign_id || 'Not set'}</div>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Cadence ID:</span>
-                              <div className="font-mono">{config.cadence_id || 'Not set'}</div>
-                            </div>
-                            {config.dialer_type === 2 && (
-                              <div className="col-span-2">
-                                <span className="text-muted-foreground">Token:</span>
-                                <div className="font-mono">{config.token || 'Not set'}</div>
-                              </div>
-                            )}
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <span className="text-muted-foreground">Campaign ID:</span>
+                            <div className="font-mono">{config.campaign_id || 'Not set'}</div>
                           </div>
+                          <div>
+                            <span className="text-muted-foreground">Cadence ID:</span>
+                            <div className="font-mono">{config.cadence_id || 'Not set'}</div>
+                          </div>
+                          {config.dialer_type === 2 && (
+                            <div className="col-span-2">
+                              <span className="text-muted-foreground">Token:</span>
+                              <div className="font-mono">{config.token || 'Not set'}</div>
+                            </div>
+                          )}
+                        </div>
                         )}
                       </div>
                     ))}
@@ -1732,7 +1745,7 @@ export default function RoutingManagementPage() {
           <div className="grid gap-4 py-4">
             {editingVerticalConfig?.__isNew ? (
               <>
-                <div className="grid grid-cols-4 items-center gap-4">
+            <div className="grid grid-cols-4 items-center gap-4">
                   <Label htmlFor="vertical-select" className="text-right">Vertical</Label>
                   <div className="col-span-3">
                     <Select value={editingVerticalConfig?.vertical || 'ACA'} onValueChange={(v)=> setEditingVerticalConfig((prev:any)=> ({ ...(prev||{}), vertical: v }))}>
@@ -1767,20 +1780,20 @@ export default function RoutingManagementPage() {
               <>
                 <div className="grid grid-cols-4 items-center gap-4">
                   <Label htmlFor="vertical-name" className="text-right">Vertical</Label>
-                  <div className="col-span-3">
-                    <Badge className={editingVerticalConfig?.vertical ? getVerticalColor(editingVerticalConfig.vertical) : 'bg-gray-100 text-gray-800'}>
-                      {editingVerticalConfig?.vertical || 'Unknown'}
-                    </Badge>
-                  </div>
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
+              <div className="col-span-3">
+                <Badge className={editingVerticalConfig?.vertical ? getVerticalColor(editingVerticalConfig.vertical) : 'bg-gray-100 text-gray-800'}>
+                  {editingVerticalConfig?.vertical || 'Unknown'}
+                </Badge>
+              </div>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
                   <Label htmlFor="dialer-type" className="text-right">Dialer Type</Label>
-                  <div className="col-span-3">
-                    <Badge className={editingVerticalConfig?.dialer_type ? getDialerTypeColor(editingVerticalConfig.dialer_type) : 'bg-gray-100 text-gray-800'}>
-                      {editingVerticalConfig?.dialer_type ? getDialerTypeLabel(editingVerticalConfig.dialer_type) : 'Unknown'}
-                    </Badge>
-                  </div>
-                </div>
+              <div className="col-span-3">
+                <Badge className={editingVerticalConfig?.dialer_type ? getDialerTypeColor(editingVerticalConfig.dialer_type) : 'bg-gray-100 text-gray-800'}>
+                  {editingVerticalConfig?.dialer_type ? getDialerTypeLabel(editingVerticalConfig.dialer_type) : 'Unknown'}
+                </Badge>
+              </div>
+            </div>
               </>
             )}
             <div className="grid grid-cols-4 items-center gap-4">

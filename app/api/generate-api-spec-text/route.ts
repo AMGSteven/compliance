@@ -47,48 +47,56 @@ export async function GET(request: NextRequest) {
         const ids = new Set<string>([...(listId ? [listId] : []), ...listIds])
         filteredData = allRoutingData.filter(r => ids.has(r.list_id))
       } else {
-      // Map routing data to partners using same logic as dashboard
+      // Map routing data to partners - use database partner_name field, fall back to description parsing
       const routingWithPartners = allRoutingData.map((routing: any) => {
-        let mappedPartnerName = 'Unknown'
+        // Use the partner_name field from database first
+        let mappedPartnerName = routing.partner_name || 'Unknown'
         
-        const desc = routing.description?.toLowerCase() || ''
-        
-        // Specific List ID mappings first (same as dashboard)
-        if (routing.list_id === 'pitch-bpo-list-1750720674171') {
-          mappedPartnerName = 'iExecute'
-        } else if ([
-          'a5e7700e-6525-4401-9ef7-aa1bff188f12',
-          'pitch-bpo-list-1753907657505'
-        ].includes(routing.list_id)) {
-          mappedPartnerName = 'OPG'
-        }
-        // Description-based matching (complete mapping from dashboard)
-        else if (desc.includes('employers')) {
-          mappedPartnerName = 'Employers.io'
-        } else if (desc.includes('fluent')) {
-          mappedPartnerName = 'Fluent'
-        } else if (desc.includes('citadel')) {
-          mappedPartnerName = 'Citadel'
-        } else if (desc.includes('onpoint') || desc.includes('opg')) {
-          mappedPartnerName = 'Onpoint'
-        } else if (desc.includes('shift44')) {
-          mappedPartnerName = 'Shift44'
-        } else if (desc.includes('top of funnel') || desc.includes('topfunnel')) {
-          mappedPartnerName = 'Top of Funnel'
-        } else if (desc.includes('pushnami')) {
-          mappedPartnerName = 'Pushnami'
-        } else if (desc.includes('interest media')) {
-          mappedPartnerName = 'Interest Media'
-        } else if (desc.includes('what if media')) {
-          mappedPartnerName = 'What If Media'
-        } else if (desc.includes('flex mg')) {
-          mappedPartnerName = 'Flex MG'
-        } else if (desc.includes('iexcecute') || desc.includes('iexecute')) {
-          mappedPartnerName = 'iExecute'
-        } else if (desc.includes('launch')) {
-          mappedPartnerName = 'Launch Potato'
-        } else if (desc.includes('juiced')) {
-          mappedPartnerName = 'Juiced Media'
+        // If partner_name is null/empty, fall back to description parsing
+        if (!mappedPartnerName || mappedPartnerName.trim() === '' || mappedPartnerName === 'Unknown') {
+          const desc = routing.description?.toLowerCase() || ''
+          
+          // Specific List ID mappings first (same as dashboard)
+          if (routing.list_id === 'pitch-bpo-list-1750720674171') {
+            mappedPartnerName = 'iExecute'
+          } else if ([
+            'a5e7700e-6525-4401-9ef7-aa1bff188f12',
+            'pitch-bpo-list-1753907657505'
+          ].includes(routing.list_id)) {
+            mappedPartnerName = 'OPG'
+          }
+          // Description-based matching (complete mapping from dashboard)
+          else if (desc.includes('employers')) {
+            mappedPartnerName = 'Employers.io'
+          } else if (desc.includes('fluent')) {
+            mappedPartnerName = 'Fluent'
+          } else if (desc.includes('citadel')) {
+            mappedPartnerName = 'Citadel'
+          } else if (desc.includes('onpoint') || desc.includes('opg')) {
+            mappedPartnerName = 'Onpoint'
+          } else if (desc.includes('shift44')) {
+            mappedPartnerName = 'Shift44'
+          } else if (desc.includes('top of funnel') || desc.includes('topfunnel')) {
+            mappedPartnerName = 'Top of Funnel'
+          } else if (desc.includes('pushnami')) {
+            mappedPartnerName = 'Pushnami'
+          } else if (desc.includes('interest media')) {
+            mappedPartnerName = 'Interest Media'
+          } else if (desc.includes('what if media')) {
+            mappedPartnerName = 'What If Media'
+          } else if (desc.includes('flex mg')) {
+            mappedPartnerName = 'Flex MG'
+          } else if (desc.includes('iexcecute') || desc.includes('iexecute')) {
+            mappedPartnerName = 'iExecute'
+          } else if (desc.includes('launch')) {
+            mappedPartnerName = 'Launch Potato'
+          } else if (desc.includes('juiced')) {
+            mappedPartnerName = 'Juiced Media'
+          } else if (desc.includes('moxxi')) {
+            mappedPartnerName = 'Moxxi'
+          } else {
+            mappedPartnerName = 'Unknown'
+          }
         }
         
         return { ...routing, mappedPartnerName }

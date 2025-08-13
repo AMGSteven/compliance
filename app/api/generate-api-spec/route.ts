@@ -38,13 +38,18 @@ export async function GET(request: NextRequest) {
       query = query.in('list_id', listIdArray)
     }
 
+    console.log('🔍 Executing database query for list_ids:', listIds)
     const { data: dbRoutings, error } = await query
 
     if (error) {
-      console.warn('Database error loading routing configs (non-fatal):', error)
+      console.warn('❌ Database error loading routing configs (non-fatal):', error)
       // Continue without routing data - we'll generate generic specs
     } else if (dbRoutings && dbRoutings.length > 0) {
+      console.log('✅ Found routing data:', dbRoutings.length, 'records')
+      console.log('📋 Routing data preview:', dbRoutings.map(r => ({ list_id: r.list_id, description: r.description })))
       allRoutings = dbRoutings
+    } else {
+      console.log('⚠️ No routing data found for the provided list_ids:', listIds)
     }
 
     // If we have routing data, use it. Otherwise, generate generic spec
@@ -71,14 +76,50 @@ export async function GET(request: NextRequest) {
     const groupedRoutings = groupRoutingsByPartner(routingsToUse)
     console.log('📊 Grouped routings:', Object.keys(groupedRoutings))
     
-    // Generate PDF
-    console.log('📄 Starting PDF generation...')
-    const pdfBuffer = await generateAPISpecPDF(groupedRoutings, partnerName || 'API Integration', includePrePing)
-    console.log('✅ PDF generation completed, buffer size:', pdfBuffer.length)
+    // TEMPORARY FIX: Return text-based spec instead of PDF to bypass font issues
+    console.log('📄 Generating text-based spec (temporary workaround)...')
+    
+    let textSpec = `API Integration Specifications\n`
+    textSpec += `=====================================\n\n`
+    
+    Object.keys(groupedRoutings).forEach(partnerKey => {
+      const partner = groupedRoutings[partnerKey]
+      textSpec += `Partner: ${partner.partner}\n`
+      textSpec += `Campaigns:\n`
+      
+      partner.campaigns.forEach((campaign: any, index: number) => {
+        textSpec += `\n${index + 1}. ${campaign.name}\n`
+        textSpec += `   List ID: ${campaign.listId}\n`
+        textSpec += `   Campaign ID: ${campaign.campaignId}\n`
+        textSpec += `   Cadence ID: ${campaign.cadenceId}\n`
+        textSpec += `   Token: ${campaign.token}\n`
+        textSpec += `   Bid: $${campaign.bid}\n`
+        textSpec += `   Description: ${campaign.description}\n`
+      })
+      textSpec += `\n`
+    })
+    
+    textSpec += `\nAPI Endpoint: https://compliance.juicedmedia.io/api/v1/leads\n`
+    textSpec += `Method: POST\n`
+    textSpec += `Content-Type: application/json\n\n`
+    
+    textSpec += `Sample Request Body:\n`
+    textSpec += `{\n`
+    textSpec += `  "list_id": "YOUR_LIST_ID",\n`
+    textSpec += `  "campaign_id": "YOUR_CAMPAIGN_ID",\n`
+    textSpec += `  "cadence_id": "YOUR_CADENCE_ID",\n`
+    textSpec += `  "first_name": "John",\n`
+    textSpec += `  "last_name": "Doe",\n`
+    textSpec += `  "phone": "555-123-4567",\n`
+    textSpec += `  "email": "john@example.com",\n`
+    textSpec += `  "custom_fields": {\n`
+    textSpec += `    "subid": "12345"\n`
+    textSpec += `  }\n`
+    textSpec += `}\n`
 
-    // Return PDF as downloadable file
+    // Return text file
     const headers = new Headers()
-    headers.set('Content-Type', 'application/pdf')
+    headers.set('Content-Type', 'text/plain')
     
     // Generate appropriate filename
     let filename = `${partnerName || 'API'}-Integration-Specs`
@@ -88,11 +129,11 @@ export async function GET(request: NextRequest) {
     if (includePrePing) {
       filename += '-with-PrePing'
     }
-    filename += '.pdf'
+    filename += '.txt'
     
     headers.set('Content-Disposition', `attachment; filename="${filename}"`)
 
-    return new NextResponse(pdfBuffer, {
+    return new NextResponse(textSpec, {
       status: 200,
       headers
     })
@@ -135,28 +176,35 @@ function groupRoutingsByPartner(routings: any[]) {
   const grouped: { [key: string]: { partner: string; campaigns: any[] } } = {}
 
   for (const routing of routings) {
-    // Determine partner name from description or list_id
-    let partnerName = 'Unknown Partner'
+    // Use the partner_name field from database, fall back to parsing description if needed
+    let partnerName = routing.partner_name || 'Unknown Partner'
     const desc = routing.description?.toLowerCase() || ''
     
-    if (desc.includes('pushnami')) {
-      partnerName = 'Pushnami'
-    } else if (desc.includes('citadel')) {
-      partnerName = 'Citadel'
-    } else if (desc.includes('employers')) {
-      partnerName = 'Employers.io'
-    } else if (desc.includes('fluent')) {
-      partnerName = 'Fluent'
-    } else if (desc.includes('juiced')) {
-      partnerName = 'Juiced Media'
-    } else if (desc.includes('iexecute') || desc.includes('iexcecute')) {
-      partnerName = 'iExecute'
-    } else if (desc.includes('onpoint')) {
-      partnerName = 'Onpoint Global'
-    } else if (desc.includes('ifficent')) {
-      partnerName = 'Ifficent'
-    } else if (desc.includes('interest media')) {
-      partnerName = 'Interest Media'
+    // If partner_name is null/empty, try to extract from description as fallback
+    if (!partnerName || partnerName.trim() === '') {
+      if (desc.includes('pushnami')) {
+        partnerName = 'Pushnami'
+      } else if (desc.includes('citadel')) {
+        partnerName = 'Citadel'
+      } else if (desc.includes('employers')) {
+        partnerName = 'Employers.io'
+      } else if (desc.includes('fluent')) {
+        partnerName = 'Fluent'
+      } else if (desc.includes('juiced')) {
+        partnerName = 'Juiced Media'
+      } else if (desc.includes('iexecute') || desc.includes('iexcecute')) {
+        partnerName = 'iExecute'
+      } else if (desc.includes('onpoint')) {
+        partnerName = 'Onpoint Global'
+      } else if (desc.includes('ifficent')) {
+        partnerName = 'Ifficent'
+      } else if (desc.includes('interest media')) {
+        partnerName = 'Interest Media'
+      } else if (desc.includes('moxxi')) {
+        partnerName = 'Moxxi'
+      } else {
+        partnerName = 'Unknown Partner'
+      }
     }
 
     // Determine data source type and campaign name
@@ -201,20 +249,56 @@ function groupRoutingsByPartner(routings: any[]) {
 
 async function generateAPISpecPDF(groupedRoutings: any, title: string, includePrePing: boolean = false): Promise<Buffer> {
   return new Promise((resolve, reject) => {
+    let doc: any
+    
     try {
-      const doc = new PDFDocument({ 
+      console.log('🔧 Creating PDFDocument with minimal config...')
+      
+      // Try creating document with minimal configuration - NO FONT SPECIFIED
+      doc = new PDFDocument({ 
         margin: 50,
-        autoFirstPage: true,
+        autoFirstPage: false,
         bufferPages: true
       })
+      
+      console.log('✅ PDFDocument created successfully')
+      
       const chunks: Buffer[] = []
 
       doc.on('data', (chunk) => chunks.push(chunk))
-      doc.on('end', () => resolve(Buffer.concat(chunks)))
-      doc.on('error', (error) => reject(error))
+      doc.on('end', () => {
+        console.log('✅ PDF generation completed')
+        resolve(Buffer.concat(chunks))
+      })
+      doc.on('error', (error) => {
+        console.error('❌ PDF document error:', error)
+        reject(error)
+      })
 
-      // Set font to a built-in PostScript font that doesn't require external files
-      doc.font('Times-Roman')
+      // Add first page and try setting font
+      console.log('📄 Adding first page...')
+      doc.addPage()
+      
+      console.log('🔤 Setting font using standard PDF fonts...')
+      // Try standard PDF fonts in order of preference
+      const standardFonts = ['Times-Roman', 'Courier', 'Helvetica-Bold', 'Symbol']
+      let fontSet = false
+      
+      for (const fontName of standardFonts) {
+        try {
+          doc.font(fontName)
+          console.log(`✅ Font set successfully to: ${fontName}`)
+          fontSet = true
+          break
+        } catch (fontError) {
+          console.warn(`⚠️ Font ${fontName} failed:`, fontError.message)
+        }
+      }
+      
+      if (!fontSet) {
+        console.warn('⚠️ All standard fonts failed, using PDFKit default')
+        // Continue without setting font - use PDFKit default
+      }
 
       // Title page
       doc.fontSize(24).text(title + ' API Integration Specifications', { align: 'center' })
