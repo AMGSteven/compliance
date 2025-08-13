@@ -902,7 +902,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
         // Use optimized SQL function to get SUBID-specific bid or fallback to list-level bid
         const { data: effectiveBid, error: bidError } = await supabase
           .rpc('get_effective_bid', {
-            p_listId: listId,
+            p_list_id: listId,
             p_subid: extractedSubId
           });
           
@@ -958,7 +958,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
       if (routingData?.weighted_routing_enabled) {
         const supabase = createServerClient();
         const { data: selectedDialer, error: weightErr } = await supabase
-          .rpc('get_weighted_dialer', { p_listId: listId });
+          .rpc('get_weighted_dialer', { p_list_id: listId });
         if (!weightErr && typeof selectedDialer === 'number') {
           dialerType = selectedDialer;
           console.log(`[WEIGHTED_ROUTING] Selected dialer ${dialerType} via get_weighted_dialer for list ${listId}`);
@@ -1125,7 +1125,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
           dob: string;
           homeowner_status: string;
           custom_fields: Record<string, any>;
-          listId: string;
+          list_id: string;
           campaign_id: string;
           cadence_id: string | null;
           compliance_lead_id: string; // Add compliance_lead_id to the interface
@@ -1158,7 +1158,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
           },
           
           // Include the routing IDs directly in the payload
-          listId: listId,
+          list_id: listId,
           campaign_id: effectiveCampaignId,
           cadence_id: effectiveCadenceId,
           
@@ -1183,7 +1183,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
         
         // Construct the URL with required parameters in the query string
         const dialerUrl = new URL('https://dialer.juicedmedia.io/api/webhooks/lead-postback');
-        dialerUrl.searchParams.append('listId', listId);
+        dialerUrl.searchParams.append('list_id', listId);
         dialerUrl.searchParams.append('campaign_id', effectiveCampaignId);
         dialerUrl.searchParams.append('cadence_id', effectiveCadenceId);
         dialerUrl.searchParams.append('token', authToken);
@@ -1831,7 +1831,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
           dob: string;
           homeowner_status: string;
           custom_fields: Record<string, any>;
-          listId: string;
+          list_id: string;
           campaign_id: string;
           cadence_id: string | null;
           compliance_lead_id: string; // Add compliance_lead_id to the interface
@@ -1863,7 +1863,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
           },
           
           // Include the routing IDs directly in the payload
-          listId: listId,
+          list_id: listId,
           campaign_id: effectiveCampaignId,
           cadence_id: effectiveCadenceId,
           
@@ -1888,7 +1888,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
         
         // Construct the URL with required parameters in the query string
         const dialerUrl = new URL('https://dialer.juicedmedia.io/api/webhooks/lead-postback');
-        dialerUrl.searchParams.append('listId', listId);
+        dialerUrl.searchParams.append('list_id', listId);
         dialerUrl.searchParams.append('campaign_id', effectiveCampaignId);
         dialerUrl.searchParams.append('cadence_id', effectiveCadenceId);
         dialerUrl.searchParams.append('token', authToken);
