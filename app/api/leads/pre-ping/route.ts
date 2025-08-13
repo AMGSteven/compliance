@@ -76,6 +76,9 @@ async function performPrePingValidation(body: PrePingRequest, startTime: number)
     // Normalize phone number
     const normalizedPhone = normalizePhoneNumber(body.phone);
     
+    // Extract list_id for vertical-specific duplicate checking
+    const list_id = body.list_id;
+    
     console.log(`[Pre-Ping] Starting validation for phone: ${normalizedPhone}, state: ${body.state}`);
 
     // Initialize results
