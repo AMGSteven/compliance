@@ -486,7 +486,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     const zipCode = body.zipCode || body.zip_code || body.ZipCode;
     const trustedFormCertUrl = body.trustedFormCertUrl || body.trusted_form_cert_url || body.TrustedForm;
     // Use 'let' instead of 'const' to allow correcting the list ID for special cases
-    let listId = body.listId || body.listId;
+    let listId = body.listId || body.list_id;
     let campaignId = body.campaignId || body.campaign_id; // Changed to let
     let cadenceId = body.cadenceId || body.cadence_id;   // Changed to let
 
@@ -688,7 +688,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
           trusted_form_cert_url: trustedFormCertUrl || '',
           transaction_id: body.transactionId || body.transaction_id || '',
           custom_fields: body.customFields || body.custom_fields || null,
-          listId: listId,
+          list_id: listId,
           campaign_id: campaignId,
           traffic_source: trafficSource,
           cadence_id: cadenceId || null,
@@ -1416,7 +1416,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
           email: email,
           phone: phone,
           trusted_form_cert_url: body.TrustedForm || '',
-          listId: body.SubId || 'health-insurance-default',
+          list_id: body.SubId || 'health-insurance-default',
           campaign_id: body.Vertical || 'health-insurance-campaign',
           traffic_source: body.Source || (body.SubId === 'OPG4' ? 'Onpoint' : ''),
           

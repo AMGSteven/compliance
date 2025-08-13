@@ -152,20 +152,13 @@ export async function checkForDuplicateLeadInVertical(
     
     console.log(`[VERTICAL DEDUPE] Checking phone ${cleanedPhone} in vertical "${vertical}" after ${thirtyDaysAgoStr}`);
     
-    // Single optimized query with JOIN
+    // Query leads with the same phone number first, then filter by vertical
     const { data, error } = await supabase
       .from('leads')
-      .select(`
-        created_at,
-        list_id,
-        list_routings!inner(vertical)
-      `)
+      .select('created_at, list_id')
       .eq('phone', cleanedPhone)
-      .eq('list_routings.vertical', vertical)
-      .eq('list_routings.active', true)
       .gte('created_at', thirtyDaysAgoStr)
-      .order('created_at', { ascending: false })
-      .limit(1);
+      .order('created_at', { ascending: false });
     
     if (error) {
       console.error(`[VERTICAL DEDUPE] Database error:`, error);
@@ -180,7 +173,7 @@ export async function checkForDuplicateLeadInVertical(
     }
     
     if (!data || data.length === 0) {
-      console.log(`[VERTICAL DEDUPE] No duplicate found for ${cleanedPhone} in vertical "${vertical}"`);
+      console.log(`[VERTICAL DEDUPE] No leads found for phone ${cleanedPhone} in last 30 days`);
       return { 
         isDuplicate: false,
         details: {
@@ -191,8 +184,33 @@ export async function checkForDuplicateLeadInVertical(
       };
     }
     
-    // Duplicate found
-    const duplicate = data[0];
+    // Filter leads by vertical - check each lead's list_id against list_routings
+    let verticalDuplicate = null;
+    
+    for (const lead of data) {
+      if (lead.list_id) {
+        const leadVertical = await getVerticalForListId(lead.list_id);
+        if (leadVertical === vertical) {
+          verticalDuplicate = lead;
+          break; // Found the most recent duplicate in this vertical
+        }
+      }
+    }
+    
+    if (!verticalDuplicate) {
+      console.log(`[VERTICAL DEDUPE] No duplicate found for ${cleanedPhone} in vertical "${vertical}" (checked ${data.length} leads)`);
+      return { 
+        isDuplicate: false,
+        details: {
+          checkType: 'vertical-specific',
+          vertical,
+          listId
+        }
+      };
+    }
+    
+    // Duplicate found in the same vertical
+    const duplicate = verticalDuplicate;
     const submissionDate = new Date(duplicate.created_at);
     const daysAgo = Math.floor((Date.now() - submissionDate.getTime()) / (1000 * 60 * 60 * 24));
     
