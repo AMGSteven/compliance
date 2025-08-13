@@ -42,6 +42,11 @@ export async function GET(request: NextRequest) {
     let filteredData: any[] = []
     
     if (allRoutingData.length > 0) {
+      // Short-circuit: when list_id or list_ids are provided, bypass partner mapping/filters
+      if (listId || listIds.length > 0) {
+        const ids = new Set<string>([...(listId ? [listId] : []), ...listIds])
+        filteredData = allRoutingData.filter(r => ids.has(r.list_id))
+      } else {
       // Map routing data to partners using same logic as dashboard
       const routingWithPartners = allRoutingData.map((routing: any) => {
         let mappedPartnerName = 'Unknown'
@@ -88,7 +93,7 @@ export async function GET(request: NextRequest) {
         
         return { ...routing, mappedPartnerName }
       })
-
+      
       // Filter by partner name if specified
       filteredData = routingWithPartners
       if (partnerName) {
@@ -104,6 +109,7 @@ export async function GET(request: NextRequest) {
 
       if (listIds.length > 0) {
         filteredData = filteredData.filter(r => listIds.includes(r.list_id))
+      }
       }
     }
 
