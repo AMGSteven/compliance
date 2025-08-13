@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -42,6 +42,7 @@ interface Integration {
   list_id: string
   integration_type: string
   partner_name: string
+  partner_id?: string
   active: boolean
   description?: string
   bid?: number
@@ -76,12 +77,72 @@ export default function RoutingManagementPage() {
   const [updatingApproval, setUpdatingApproval] = useState(false)
   const [generatingPDF, setGeneratingPDF] = useState(false)
 
+  // Safe partner list for mapping in JSX
+  const partnersToShow = useMemo(() => (Array.isArray(partners) ? partners : []), [partners])
+
+  // Helper: fetch with timeout (default 5s)
+  const fetchWithTimeout = async (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+    timeoutMs: number = 5000
+  ): Promise<Response> => {
+    const controller = new AbortController()
+    const id = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const res = await fetch(input, { ...(init || {}), signal: controller.signal })
+      return res
+    } finally {
+      clearTimeout(id)
+    }
+  }
+
   useEffect(() => {
     loadData()
     loadVerticalConfigs()
     loadDialerApprovals()
     loadDialerTypes()
   }, [])
+
+  const normalize = (s: string) => (s || '').toLowerCase().trim()
+
+  const canonicalizePartnerName = (rawPartnerName: string | undefined, rawDescription: string | undefined) => {
+    const pn = normalize(rawPartnerName || '')
+    const desc = normalize(rawDescription || '')
+    const text = pn || desc
+    if (!text) return 'Unknown'
+    if (text.includes('moxxi')) return 'Moxxi'
+    if (text.includes('employers')) return 'Employers.io'
+    if (text.includes('fluent')) return 'Fluent'
+    if (text.includes('citadel')) return 'Citadel'
+    if (text.includes('onpoint') || text.includes('opg')) return 'OPG'
+    if (text.includes('shift44')) return 'Shift44'
+    if (text.includes('top of funnel') || text.includes('topfunnel')) return 'Top of Funnel'
+    if (text.includes('pushnami')) return 'Pushnami'
+    if (text.includes('interest media')) return 'Interest Media'
+    if (text.includes('what if media')) return 'What If Media'
+    if (text.includes('iexcecute') || text.includes('iexecute')) return 'iExecute'
+    if (text.includes('launch')) return 'Launch Potato'
+    if (text.includes('juiced')) return 'Juiced Media'
+    return 'Unknown'
+  }
+
+  const getPartnerSynonyms = (partnerDisplayName: string) => {
+    const name = normalize(partnerDisplayName)
+    if (name === 'opg' || name.includes('onpoint')) return ['opg', 'onpoint', 'onpoint global']
+    if (name === 'employers.io' || name.includes('employers')) return ['employers', 'employers.io']
+    if (name === 'fluent') return ['fluent', 'fluent bpo', 'fluent internal']
+    if (name === 'pushnami') return ['pushnami']
+    if (name === 'moxxi') return ['moxxi']
+    if (name === 'interest media') return ['interest media', 'interest media bpo']
+    if (name === 'citadel') return ['citadel']
+    if (name === 'shift44') return ['shift44']
+    if (name === 'top of funnel') return ['top of funnel', 'topfunnel']
+    if (name === 'what if media') return ['what if media']
+    if (name === 'iexecute' || name === 'iexcecute') return ['iexecute', 'iexcecute']
+    if (name === 'launch potato') return ['launch', 'launch potato']
+    if (name === 'juiced media') return ['juiced', 'juiced media']
+    return [name]
+  }
 
   const loadData = async () => {
     try {
@@ -95,114 +156,26 @@ export default function RoutingManagementPage() {
 
       if (partnersError) throw partnersError
 
-      // Load list routings and map them to partners based on known campaigns
-      const { data: listRoutingsData, error: listRoutingsError } = await supabase
-        .from('list_routings')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-      if (listRoutingsError) throw listRoutingsError
+      // Load normalized/enriched routings from server
+      const enrichedRes = await fetch('/api/list-routings/enriched')
+      const enrichedJson = await enrichedRes.json()
+      if (!enrichedRes.ok || !enrichedJson.success) {
+        throw new Error(enrichedJson.error || 'Failed to load enriched routings')
+      }
+      const listRoutingsData = enrichedJson.data
 
       setPartners(partnersData || [])
       
       console.log('Partners from database:', partnersData)
       
-      // Map list routings to integrations with partner names
+      // Map list routings to integrations with partner names (use enriched fields)
       const integrationsWithNames = (listRoutingsData || []).map((routing: any) => {
-        let partnerName = 'Unknown'
-        let integrationType = 'campaign'
+        let partnerName = routing.partner_name || 'Unknown'
+        let integrationType = routing.data_source_type === 'after_hour' ? 'off_hours' : routing.data_source_type === 'aged' ? 'aged' : 'on_hours'
         
         console.log('Processing routing:', routing.list_id, routing.description, routing.dialer_type, routing.active)
         
-        // Use partner_name from database first, fall back to description parsing if needed
-        if (routing.partner_name && routing.partner_name.trim() !== '' && routing.partner_name !== 'Unknown') {
-          partnerName = routing.partner_name
-          // Determine integration type based on dialer_type when using database partner_name
-          if (routing.dialer_type === 3) {
-            integrationType = 'health_insurance'
-          } else if (routing.dialer_type === 2) {
-            integrationType = 'pitch_bpo'
-          } else if (routing.dialer_type === 1) {
-            integrationType = 'internal_dialer'
-          }
-        } else {
-          // Fallback to description-based mapping when partner_name is not available
-        const desc = routing.description?.toLowerCase() || ''
-        
-        // Specific List ID mappings first
-        if (routing.list_id === 'pitch-bpo-list-1750720674171') {
-          partnerName = 'iExecute'
-          integrationType = 'pitch_bpo'
-        } else if ([
-          'a5e7700e-6525-4401-9ef7-aa1bff188f12',
-          'pitch-bpo-list-1753907657505'
-        ].includes(routing.list_id)) {
-          partnerName = 'OPG'
-          integrationType = 'pitch_bpo'
-        }
-        // Description-based matching for all other campaigns
-        else if (desc.includes('employers')) {
-          partnerName = 'Employers.io'
-          integrationType = routing.dialer_type === 2 ? 'pitch_bpo' : 'internal_dialer'
-        } else if (desc.includes('fluent')) {
-          partnerName = 'Fluent'
-          integrationType = 'internal_dialer'
-        } else if (desc.includes('citadel')) {
-          partnerName = 'Citadel'
-          integrationType = routing.dialer_type === 2 ? 'pitch_bpo' : 'internal_dialer'
-        } else if (desc.includes('onpoint') || desc.includes('opg')) {
-          partnerName = 'Onpoint'
-          integrationType = routing.dialer_type === 2 ? 'pitch_bpo' : 'internal_dialer'
-        } else if (desc.includes('shift44')) {
-          partnerName = 'Shift44'
-          integrationType = routing.dialer_type === 2 ? 'pitch_bpo' : 'internal_dialer'
-        } else if (desc.includes('top of funnel') || desc.includes('topfunnel')) {
-          partnerName = 'Top of Funnel'
-          integrationType = 'internal_dialer'
-        } else if (desc.includes('pushnami')) {
-          partnerName = 'Pushnami'
-          integrationType = routing.dialer_type === 2 ? 'pitch_bpo' : 'internal_dialer'
-        } else if (desc.includes('interest media')) {
-          partnerName = 'Interest Media'
-          integrationType = routing.dialer_type === 2 ? 'pitch_bpo' : 'internal_dialer'
-        } else if (desc.includes('what if media')) {
-          partnerName = 'What If Media'
-          integrationType = 'internal_dialer'
-        } else if (desc.includes('flex mg')) {
-          partnerName = 'Flex MG'
-          integrationType = 'internal_dialer'
-        } else if (desc.includes('iexcecute') || desc.includes('iexecute')) {
-          partnerName = 'iExecute'
-          integrationType = 'pitch_bpo'
-        } else if (desc.includes('launch')) {
-          partnerName = 'Launch Potato'
-          integrationType = 'internal_dialer'
-        } else if (desc.includes('juiced')) {
-          partnerName = 'Juiced Media'
-          integrationType = 'internal_dialer'
-        }
-        // Handle specific List IDs that might not match description patterns
-        else if ([
-          'cd86b81c-1c76-4639-b287-d482bb215dfe',
-          'fd248dab-3ecd-48db-9ac5-212b4b6e0fcc',
-          'pitch-bpo-list-1753911011048',
-          'pitch-bpo-list-1753910993210'
-        ].includes(routing.list_id)) {
-          partnerName = 'Ifficent'
-          integrationType = 'pitch_bpo'
-        }
-        // Fallback to dialer type classification
-        else if (routing.dialer_type === 3) {
-          partnerName = 'Convoso'
-          integrationType = 'health_insurance'
-        } else if (routing.dialer_type === 2) {
-          partnerName = 'Pitch BPO'
-          integrationType = 'pitch_bpo'
-        } else if (routing.dialer_type === 1) {
-          partnerName = 'Internal Dialer'
-          integrationType = 'internal_dialer'
-        }
-        } // Close the else block for fallback logic
+        // Enriched payload already includes canonical partner and data source
         
         return {
           id: routing.id,
@@ -212,13 +185,22 @@ export default function RoutingManagementPage() {
           active: routing.active,
           description: routing.description,
           bid: routing.bid,
-          dialer_type: routing.dialer_type
+          dialer_type: routing.dialer_type,
+          vertical: routing.vertical,
         }
       })
       
+      // Derive visible partner buckets from integrations; do not create synthetic partners
+      const normalize = (s: string) => (s || '').toLowerCase().trim()
+      const integrationPartnerNames = Array.from(new Set(integrationsWithNames.map((i: any) => i.partner_name).filter(Boolean)))
+      // Partners that already exist in the DB
+      const dbPartnersByName = new Map((partnersData || []).map((p:any) => [normalize(p.name), p]))
+      // Keep DB partners list unchanged
+      setPartners(partnersData || [])
+      
       setIntegrations(integrationsWithNames)
       
-      console.log('Final integrations mapped:', integrationsWithNames.map(i => ({ partner: i.partner_name, list_id: i.list_id })))
+      console.log('Final integrations mapped:', integrationsWithNames.map((i: any) => ({ partner: i.partner_name, list_id: i.list_id })))
       console.log('Partners available for matching:', partnersData?.map(p => ({ id: p.id, name: p.name })))
 
     } catch (error: any) {
@@ -241,6 +223,18 @@ export default function RoutingManagementPage() {
     }
     return colors[type as keyof typeof colors] || 'bg-gray-100 text-gray-800'
   }
+
+  // Build unified partner list for API Specs tab from DB partners + integration partner names
+  const unifiedPartnersForSpecs = useMemo(() => {
+    const norm = (s: string) => (s || '').toLowerCase().trim()
+    const byName = new Map<string, { id: string; name: string; active: boolean }>()
+    partners.filter(p => p.active).forEach(p => byName.set(norm(p.name), { id: p.id, name: p.name, active: true }))
+    integrations.forEach((integ: any) => {
+      const n = norm(integ.partner_name)
+      if (n && !byName.has(n)) byName.set(n, { id: `dynamic:${n}`, name: integ.partner_name, active: true })
+    })
+    return Array.from(byName.values()).sort((a,b) => a.name.localeCompare(b.name))
+  }, [partners, integrations])
 
   const loadVerticalConfigs = async () => {
     try {
@@ -283,9 +277,12 @@ export default function RoutingManagementPage() {
   }
 
   const getPartnerIntegrations = (partnerId: string) => {
-    return integrations.filter(integration => 
-      partners.find(p => p.name === integration.partner_name)?.id === partnerId
-    )
+    const normalize = (s: string) => (s || '').toLowerCase().trim()
+    const partner = partners.find(p => p.id === partnerId)
+    if (!partner) return []
+    const targetName = normalize(partner.name)
+    // Match by normalized name derived from integrations' partner_name
+    return integrations.filter(integration => normalize(integration.partner_name) === targetName)
   }
 
   const handleEditDialer = (integration: Integration) => {
@@ -437,7 +434,7 @@ export default function RoutingManagementPage() {
   }
 
   const getIntegrationsGroupedByVertical = () => {
-    const grouped = integrations.reduce((acc, integration) => {
+    const grouped = integrations.reduce((acc, integration: any) => {
       const vertical = integration.vertical || 'ACA'
       if (!acc[vertical]) acc[vertical] = []
       acc[vertical].push(integration)
@@ -462,25 +459,18 @@ export default function RoutingManagementPage() {
   }
 
   const getDataSourceFromDescription = (description: string | undefined) => {
-    if (!description) return 'Unknown'
-    
-    const desc = description.toLowerCase()
-    
-    if (desc.includes('on hour')) return 'On Hour'
-    if (desc.includes('after hour') || desc.includes('off hour')) return 'After Hour'
-    if (desc.includes('aged')) return 'Aged'
-    
     return 'Unknown'
   }
 
   const getIntegrationsGroupedByDataSource = () => {
-    const grouped = integrations.reduce((acc, integration) => {
-      const dataSource = getDataSourceFromDescription(integration.description)
+    const grouped = integrations.reduce((acc, integration: any) => {
+      // Prefer normalized integration_type set from enriched API mapping
+      const t = integration.integration_type
+      const dataSource = t === 'on_hours' ? 'On Hours' : t === 'off_hours' ? 'After Hours' : t === 'aged' ? 'Aged' : 'Unknown'
       if (!acc[dataSource]) acc[dataSource] = []
       acc[dataSource].push(integration)
       return acc
     }, {} as Record<string, Integration[]>)
-    
     return grouped
   }
 
@@ -709,7 +699,7 @@ export default function RoutingManagementPage() {
       
       // Use list_ids instead of partner_name for more precise spec generation
       const listIds = partnerIntegrations.map(integration => integration.list_id).join(',')
-      const response = await fetch(`/api/generate-api-spec?list_ids=${encodeURIComponent(listIds)}`)
+      const response = await fetchWithTimeout(`/api/generate-api-spec?list_ids=${encodeURIComponent(listIds)}`)
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
@@ -750,7 +740,7 @@ export default function RoutingManagementPage() {
       
       // Build query params for specific campaigns
       const listIds = campaigns.map(c => c.list_id).join(',')
-      const response = await fetch(`/api/generate-api-spec?list_ids=${encodeURIComponent(listIds)}&campaign_type=${encodeURIComponent(campaignType)}`)
+      const response = await fetchWithTimeout(`/api/generate-api-spec?list_ids=${encodeURIComponent(listIds)}&campaign_type=${encodeURIComponent(campaignType)}`)
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
@@ -791,7 +781,7 @@ export default function RoutingManagementPage() {
       
       // Use list_ids instead of partner_name for more precise spec generation
       const listIds = partnerIntegrations.map(integration => integration.list_id).join(',')
-      const response = await fetch(`/api/generate-api-spec?list_ids=${encodeURIComponent(listIds)}&include_pre_ping=true`)
+      const response = await fetchWithTimeout(`/api/generate-api-spec?list_ids=${encodeURIComponent(listIds)}&include_pre_ping=true`)
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
@@ -832,7 +822,7 @@ export default function RoutingManagementPage() {
       
       // Build query params for specific campaigns with pre-ping
       const listIds = campaigns.map(c => c.list_id).join(',')
-      const response = await fetch(`/api/generate-api-spec?list_ids=${encodeURIComponent(listIds)}&campaign_type=${encodeURIComponent(campaignType)}&include_pre_ping=true`)
+      const response = await fetchWithTimeout(`/api/generate-api-spec?list_ids=${encodeURIComponent(listIds)}&campaign_type=${encodeURIComponent(campaignType)}&include_pre_ping=true`)
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
@@ -986,7 +976,7 @@ export default function RoutingManagementPage() {
 
         <TabsContent value="partners" className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {partners.map((partner) => {
+            {partnersToShow.map((partner: any) => {
               const partnerIntegrations = getPartnerIntegrations(partner.id)
               return (
                 <Card key={partner.id}>
@@ -1428,11 +1418,9 @@ export default function RoutingManagementPage() {
           </div>
 
           <div className="grid gap-6">
-            {partners.filter(partner => partner.active).map(partner => {
-              const partnerIntegrations = integrations.filter(integration => 
-                integration.partner_name === partner.name
-              )
-              
+            {unifiedPartnersForSpecs.map((partner) => {
+              const norm = (s: string) => (s || '').toLowerCase().trim()
+              const partnerIntegrations = integrations.filter(integration => norm(integration.partner_name) === norm(partner.name))
               if (partnerIntegrations.length === 0) return null
               
               // Group integrations by data source type
