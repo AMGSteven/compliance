@@ -737,7 +737,7 @@ export default function RoutingManagementPage() {
       
       // Build query params for specific campaigns
       const listIds = campaigns.map(c => c.list_id).join(',')
-      const response = await fetch(`/api/generate-api-spec?partner_name=${encodeURIComponent(partnerName)}&list_ids=${encodeURIComponent(listIds)}&campaign_type=${encodeURIComponent(campaignType)}`)
+      const response = await fetch(`/api/generate-api-spec?list_ids=${encodeURIComponent(listIds)}&campaign_type=${encodeURIComponent(campaignType)}`)
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
@@ -819,7 +819,7 @@ export default function RoutingManagementPage() {
       
       // Build query params for specific campaigns with pre-ping
       const listIds = campaigns.map(c => c.list_id).join(',')
-      const response = await fetch(`/api/generate-api-spec?partner_name=${encodeURIComponent(partnerName)}&list_ids=${encodeURIComponent(listIds)}&campaign_type=${encodeURIComponent(campaignType)}&include_pre_ping=true`)
+      const response = await fetch(`/api/generate-api-spec?list_ids=${encodeURIComponent(listIds)}&campaign_type=${encodeURIComponent(campaignType)}&include_pre_ping=true`)
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))

@@ -50,9 +50,9 @@ export async function GET(request: NextRequest) {
     let routingsToUse: any[] = []
     
     if (allRoutings.length > 0) {
-      // Filter by partner name if specified
       routingsToUse = allRoutings
-      if (partnerName) {
+      // Only filter by partner name if we don't have specific list IDs
+      if (partnerName && !listId && !listIds) {
         routingsToUse = allRoutings.filter(r => {
           const desc = r.description?.toLowerCase() || ''
           return desc.includes(partnerName.toLowerCase())
@@ -151,6 +151,8 @@ function groupRoutingsByPartner(routings: any[]) {
       partnerName = 'Onpoint Global'
     } else if (desc.includes('ifficent')) {
       partnerName = 'Ifficent'
+    } else if (desc.includes('interest media')) {
+      partnerName = 'Interest Media'
     }
 
     // Determine data source type and campaign name
