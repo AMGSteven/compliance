@@ -2,6 +2,54 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isDialerApproved, getDialerTypeName } from '@/lib/utils/dialer-approval';
 
+// Helper function to handle partner creation/lookup
+async function handlePartnerCreation(partnerName: string) {
+  try {
+    // Check if partner already exists
+    const { data: existingPartner, error: lookupError } = await supabase
+      .from('partners')
+      .select('id, name')
+      .eq('name', partnerName)
+      .single();
+    
+    if (lookupError && lookupError.code !== 'PGRST116') { // PGRST116 = not found
+      console.error('Error looking up partner:', lookupError);
+      throw lookupError;
+    }
+    
+    if (existingPartner) {
+      console.log(`✅ Partner "${partnerName}" already exists with ID: ${existingPartner.id}`);
+      return existingPartner;
+    }
+    
+    // Partner doesn't exist, create it
+    console.log(`🆕 Creating new partner: "${partnerName}"`);
+    const { data: newPartner, error: createError } = await supabase
+      .from('partners')
+      .insert([{
+        name: partnerName,
+        active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }])
+      .select()
+      .single();
+    
+    if (createError) {
+      console.error('Error creating partner:', createError);
+      throw createError;
+    }
+    
+    console.log(`✅ Successfully created partner "${partnerName}" with ID: ${newPartner.id}`);
+    return newPartner;
+    
+  } catch (error) {
+    console.error('Error in handlePartnerCreation:', error);
+    // Don't throw - we want routing creation to continue even if partner creation fails
+    console.warn('Partner creation failed, but continuing with routing creation');
+  }
+}
+
 // Initialize Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseServiceRoleKey = process.env.DATABASE_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -72,8 +120,13 @@ export async function POST(req: NextRequest) {
   
   try {
     const body = await req.json();
-    const { list_id, campaign_id, cadence_id, description, active, bid, token, dialer_type, auto_claim_trusted_form } = body;
+    const { list_id, campaign_id, cadence_id, description, active, bid, token, dialer_type, auto_claim_trusted_form, partner_name } = body;
     console.log('Received POST with bid:', bid);
+    
+    // Handle partner creation/lookup if partner_name is provided
+    if (partner_name && partner_name.trim()) {
+      await handlePartnerCreation(partner_name.trim());
+    }
     
     // *** DIALER APPROVAL ENFORCEMENT ***
     // Check if the dialer is approved for this list ID before allowing configuration
@@ -152,6 +205,7 @@ export async function POST(req: NextRequest) {
       bid: bid || 0.00,
       dialer_type: dialer_type || 1, // Default to internal dialer (1) if not specified
       auto_claim_trusted_form: auto_claim_trusted_form || false,
+      partner_name: partner_name ? partner_name.trim() : null, // Add partner_name to payload
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
@@ -275,8 +329,13 @@ export async function PUT(req: NextRequest) {
   
   try {
     const body = await req.json();
-    const { id, list_id, campaign_id, cadence_id, token, description, active, bid, auto_claim_trusted_form, dialer_type } = body;
+    const { id, list_id, campaign_id, cadence_id, token, description, active, bid, auto_claim_trusted_form, dialer_type, partner_name } = body;
     console.log('Received PUT with bid:', bid);
+    
+    // Handle partner creation/lookup if partner_name is provided
+    if (partner_name && partner_name.trim()) {
+      await handlePartnerCreation(partner_name.trim());
+    }
     
     // *** DIALER APPROVAL ENFORCEMENT FOR UPDATES ***
     // Check if the dialer is approved for this list ID before allowing configuration updates
@@ -327,6 +386,7 @@ export async function PUT(req: NextRequest) {
     if (active !== undefined) updateFields.active = active;
     if (bid !== undefined) updateFields.bid = typeof bid === 'number' ? bid : (bid ? parseFloat(bid) : 0.00);
     if (auto_claim_trusted_form !== undefined) updateFields.auto_claim_trusted_form = auto_claim_trusted_form;
+    if (partner_name !== undefined) updateFields.partner_name = partner_name ? partner_name.trim() : null;
     
     const { data, error } = await supabase
       .from('list_routings')

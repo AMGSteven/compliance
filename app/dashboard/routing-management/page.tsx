@@ -78,7 +78,49 @@ export default function RoutingManagementPage() {
   const [generatingPDF, setGeneratingPDF] = useState(false)
 
   // Safe partner list for mapping in JSX
-  const partnersToShow = useMemo(() => (Array.isArray(partners) ? partners : []), [partners])
+  const partnersToShow = useMemo(() => {
+    const dbPartners = Array.isArray(partners) ? partners : []
+    const normalize = (s: string) => (s || '').toLowerCase().trim()
+    
+    // Create a map of existing partners by normalized name
+    const existingPartners = new Map()
+    dbPartners.forEach(p => existingPartners.set(normalize(p.name), p))
+    
+    // Add any integration partners that don't exist in DB
+    const additionalPartners: any[] = []
+    const seenNames = new Set(dbPartners.map(p => normalize(p.name)))
+    
+    integrations.forEach(integration => {
+      const integPartnerName = integration.partner_name
+      const normName = normalize(integPartnerName)
+      
+      if (!normName || seenNames.has(normName)) return
+      
+      // Check if this should be aliased to an existing partner
+      let shouldSkip = false
+      for (const existingName of seenNames) {
+        const shouldAlias = (
+          (normName.includes('ifficent') && existingName === 'ifficent') ||
+          ((normName === 'opg' || normName.includes('onpoint')) && (existingName === 'opg' || existingName === 'onpoint'))
+        )
+        if (shouldAlias) {
+          shouldSkip = true
+          break
+        }
+      }
+      
+      if (!shouldSkip) {
+        additionalPartners.push({
+          id: `dynamic:${normName}`,
+          name: integPartnerName,
+          active: true
+        })
+        seenNames.add(normName)
+      }
+    })
+    
+    return [...dbPartners, ...additionalPartners]
+  }, [partners, integrations])
 
   // Helper: fetch with timeout (default 5s)
   const fetchWithTimeout = async (
@@ -171,7 +213,7 @@ export default function RoutingManagementPage() {
       // Map list routings to integrations with partner names (use enriched fields)
       const integrationsWithNames = (listRoutingsData || []).map((routing: any) => {
         let partnerName = routing.partner_name || 'Unknown'
-        let integrationType = routing.data_source_type === 'after_hour' ? 'off_hours' : routing.data_source_type === 'aged' ? 'aged' : 'on_hours'
+        let integrationType = routing.data_source_type // Use the normalized data source type directly
         
         console.log('Processing routing:', routing.list_id, routing.description, routing.dialer_type, routing.active)
         
@@ -227,12 +269,58 @@ export default function RoutingManagementPage() {
   // Build unified partner list for API Specs tab from DB partners + integration partner names
   const unifiedPartnersForSpecs = useMemo(() => {
     const norm = (s: string) => (s || '').toLowerCase().trim()
-    const byName = new Map<string, { id: string; name: string; active: boolean }>()
-    partners.filter(p => p.active).forEach(p => byName.set(norm(p.name), { id: p.id, name: p.name, active: true }))
-    integrations.forEach((integ: any) => {
-      const n = norm(integ.partner_name)
-      if (n && !byName.has(n)) byName.set(n, { id: `dynamic:${n}`, name: integ.partner_name, active: true })
+    const byName = new Map<string, { id: string; name: string; active: boolean; aliases: string[] }>()
+    
+    // Add database partners first
+    partners.filter(p => p.active).forEach(p => {
+      byName.set(norm(p.name), { id: p.id, name: p.name, active: true, aliases: [p.name] })
     })
+    
+    // Process integrations and create canonical partner groupings
+    integrations.forEach((integ: any) => {
+      const integPartnerName = integ.partner_name || ''
+      const n = norm(integPartnerName)
+      if (!n) return
+      
+      // Try to find existing partner by exact match first
+      let found = false
+      for (const [key, partner] of byName.entries()) {
+        if (key === n) {
+          // Exact match found
+          if (!partner.aliases.includes(integPartnerName)) {
+            partner.aliases.push(integPartnerName)
+          }
+          found = true
+          break
+        }
+      }
+      
+      // If no exact match, try fuzzy matching for known aliases
+      if (!found) {
+        for (const [key, partner] of byName.entries()) {
+          const shouldMatch = (
+            // Ifficent variations
+            (n.includes('ifficent') && partner.name.toLowerCase().includes('ifficent')) ||
+            // OPG variations  
+            ((n === 'opg' || n.includes('onpoint')) && (partner.name.toLowerCase() === 'opg' || partner.name.toLowerCase() === 'onpoint'))
+          )
+          
+          if (shouldMatch) {
+            if (!partner.aliases.includes(integPartnerName)) {
+              partner.aliases.push(integPartnerName)
+            }
+            found = true
+            break
+          }
+        }
+      }
+      
+      // If still no match, create new dynamic partner
+      if (!found) {
+        byName.set(n, { id: `dynamic:${n}`, name: integPartnerName, active: true, aliases: [integPartnerName] })
+      }
+    })
+    
     return Array.from(byName.values()).sort((a,b) => a.name.localeCompare(b.name))
   }, [partners, integrations])
 
@@ -278,11 +366,28 @@ export default function RoutingManagementPage() {
 
   const getPartnerIntegrations = (partnerId: string) => {
     const normalize = (s: string) => (s || '').toLowerCase().trim()
-    const partner = partners.find(p => p.id === partnerId)
+    
+    // Find partner in combined list (DB + dynamic)
+    const partner = partnersToShow.find(p => p.id === partnerId)
     if (!partner) return []
     const targetName = normalize(partner.name)
-    // Match by normalized name derived from integrations' partner_name
-    return integrations.filter(integration => normalize(integration.partner_name) === targetName)
+    
+    // Match by normalized name with alias support
+    return integrations.filter(integration => {
+      const integName = normalize(integration.partner_name)
+      
+      // Exact match first
+      if (integName === targetName) return true
+      
+      // Handle known aliases
+      const isIfficentMatch = (targetName === 'ifficent' && integName.includes('ifficent'))
+      const isOPGMatch = (
+        (targetName === 'opg' && (integName === 'opg' || integName.includes('onpoint'))) ||
+        (targetName === 'onpoint' && (integName === 'opg' || integName.includes('onpoint')))
+      )
+      
+      return isIfficentMatch || isOPGMatch
+    })
   }
 
   const handleEditDialer = (integration: Integration) => {
@@ -1420,24 +1525,19 @@ export default function RoutingManagementPage() {
           <div className="grid gap-6">
             {unifiedPartnersForSpecs.map((partner) => {
               const norm = (s: string) => (s || '').toLowerCase().trim()
-              const partnerIntegrations = integrations.filter(integration => norm(integration.partner_name) === norm(partner.name))
+              // Match integrations using all aliases for this partner
+              const partnerIntegrations = integrations.filter(integration => {
+                const integName = norm(integration.partner_name)
+                return partner.aliases.some(alias => norm(alias) === integName)
+              })
               if (partnerIntegrations.length === 0) return null
               
-              // Group integrations by data source type
-              const onHour = partnerIntegrations.filter(i => 
-                i.description?.toLowerCase().includes('on hour') || 
-                i.description?.toLowerCase().includes('on-hour')
-              )
-              const afterHour = partnerIntegrations.filter(i => 
-                i.description?.toLowerCase().includes('after hour') || 
-                i.description?.toLowerCase().includes('off hour') ||
-                i.description?.toLowerCase().includes('after-hour')
-              )
-              const aged = partnerIntegrations.filter(i => 
-                i.description?.toLowerCase().includes('aged')
-              )
+              // Group integrations by data source type using enriched data
+              const onHour = partnerIntegrations.filter(i => i.integration_type === 'on_hour')
+              const afterHour = partnerIntegrations.filter(i => i.integration_type === 'after_hour') 
+              const aged = partnerIntegrations.filter(i => i.integration_type === 'aged')
               const other = partnerIntegrations.filter(i => 
-                !onHour.includes(i) && !afterHour.includes(i) && !aged.includes(i)
+                !['on_hour', 'after_hour', 'aged'].includes(i.integration_type)
               )
               
               return (

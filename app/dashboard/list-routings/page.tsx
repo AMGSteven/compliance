@@ -13,6 +13,7 @@ interface ListRouting {
   cadence_id: string;
   token?: string;
   description?: string;
+  partner_name?: string;
   active: boolean;
   bid?: number;
   dialer_type?: number; // 1 = Internal Dialer, 2 = Pitch BPO, 3 = Convoso
@@ -369,6 +370,7 @@ export default function ListRoutingsPage() {
         dialer_type: values.dialer_type || 1, // Default to 1 if missing
         auto_claim_trusted_form: values.auto_claim_trusted_form || false,
         vertical: values.vertical || 'ACA', // Default to ACA if missing
+        partner_name: values.partner_name || null, // Add partner name to payload
         
         // For Pitch BPO, these values were already set correctly above
         list_id: values.list_id || '', 
@@ -509,6 +511,12 @@ export default function ListRoutingsPage() {
       title: 'Description',
       dataIndex: 'description',
       key: 'description',
+      render: (text: string) => text || '-'
+    },
+    {
+      title: 'Partner',
+      dataIndex: 'partner_name',
+      key: 'partner_name',
       render: (text: string) => text || '-'
     },
     {
@@ -722,6 +730,21 @@ export default function ListRoutingsPage() {
             label="Description"
           >
             <Input placeholder="e.g., Juiced Media Default Routing" />
+          </Form.Item>
+          
+          <Form.Item
+            name="partner_name"
+            label="Partner Name"
+            tooltip="The partner or vendor associated with this routing. If the partner doesn't exist, it will be created automatically."
+          >
+            <Input 
+              placeholder="e.g., Juiced Media, Fluent, Moxxi" 
+              suffix={
+                <Tooltip title="Enter the partner name. If this partner doesn't exist in the system, it will be automatically created.">
+                  <InfoCircleOutlined style={{ color: 'rgba(0,0,0,.45)' }} />
+                </Tooltip>
+              }
+            />
           </Form.Item>
           
           <Form.Item
