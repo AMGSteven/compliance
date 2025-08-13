@@ -51,7 +51,7 @@ async function isDialerApproved(listId: string, dialerType: number): Promise<boo
     const { data, error } = await supabase
       .from('dialer_approvals')
       .select('approved, reason, approved_by')
-      .eq('listId', listId)
+      .eq('list_id', listId)
       .eq('dialer_type', dialerType)
       .single();
 
@@ -765,7 +765,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     const { data: routingResults, error: routingError } = await supabase
       .from('list_routings')
       .select('*')
-      .eq('listId', listId)
+      .eq('list_id', listId)
       .eq('active', true)
       .limit(1)
       .maybeSingle();
@@ -784,7 +784,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
       const { data: fallbackResults, error: fallbackError } = await supabase
         .from('list_routings')
         .select('*')
-        .eq('listId', listId)
+        .eq('list_id', listId)
         .eq('active', true)
         .limit(1)
         .maybeSingle();
@@ -1534,7 +1534,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
     const { data: routingResults, error: routingError } = await supabase
       .from('list_routings')
       .select('*')
-      .eq('listId', listId)
+      .eq('list_id', listId)
       .eq('active', true)
       .limit(1)
       .maybeSingle();
