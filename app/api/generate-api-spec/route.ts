@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import PDFDocument from 'pdfkit'
+// Using jsPDF instead of @react-pdf/renderer to avoid React errors
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -76,117 +76,20 @@ export async function GET(request: NextRequest) {
     const groupedRoutings = groupRoutingsByPartner(routingsToUse)
     console.log('📊 Grouped routings:', Object.keys(groupedRoutings))
     
-    // TEMPORARY FIX: Return text-based spec instead of PDF to bypass font issues
-    console.log('📄 Generating text-based spec (temporary workaround)...')
-    
-    let textSpec = `API Integration Specifications\n`
-    textSpec += `=====================================\n\n`
-    
-    Object.keys(groupedRoutings).forEach(partnerKey => {
-      const partner = groupedRoutings[partnerKey]
-      textSpec += `Partner: ${partner.partner}\n`
-      textSpec += `Campaigns:\n`
-      
-      partner.campaigns.forEach((campaign: any, index: number) => {
-        textSpec += `\n${index + 1}. ${campaign.name}\n`
-        textSpec += `   List ID: ${campaign.listId}\n`
-        textSpec += `   Campaign ID: ${campaign.campaignId}\n`
-        textSpec += `   Cadence ID: ${campaign.cadenceId}\n`
-        textSpec += `   Token: ${campaign.token}\n`
-        textSpec += `   Bid: $${campaign.bid}\n`
-        textSpec += `   Description: ${campaign.description}\n`
-      })
-      textSpec += `\n`
-    })
-    
-    textSpec += `\nAPI Endpoint: https://compliance.juicedmedia.io/api/v1/leads\n`
-    textSpec += `Method: POST\n`
-    textSpec += `Content-Type: application/json\n\n`
-    
-    textSpec += `Sample Request Body:\n`
-    textSpec += `{\n`
-    textSpec += `  \"phone\": \"5551234567\",\n`
-    textSpec += `  \"state\": \"TX\",\n`
-    textSpec += `  \"firstName\": \"John\",\n`
-    textSpec += `  \"lastName\": \"Doe\",\n`
-    textSpec += `  \"email\": \"john@example.com\",\n`
-    textSpec += `  \"list_id\": \"YOUR_LIST_ID\",\n`
-    textSpec += `  \"campaign_id\": \"YOUR_CAMPAIGN_ID\",\n`
-    textSpec += `  \"cadence_id\": \"YOUR_CADENCE_ID\",\n`
-    textSpec += `  \"address\": \"123 Main St\",\n`
-    textSpec += `  \"city\": \"Dallas\",\n`
-    textSpec += `  \"zip\": \"75201\",\n`
-    textSpec += `  \"age\": \"35\",\n`
-    textSpec += `  \"gender\": \"M\",\n`
-    textSpec += `  \"incomeBracket\": \"50000-75000\",\n`
-    textSpec += `  \"homeownerStatus\": \"Own\",\n`
-    textSpec += `  \"ageRange\": \"35-44\",\n`
-    textSpec += `  \"trusted_form_cert_url\": \"https://cert.trustedform.com/...\",\n`
-    textSpec += `  \"ip_address\": \"192.168.1.1\",\n`
-    textSpec += `  \"user_agent\": \"Mozilla/5.0...\",\n`
-    textSpec += `  \"landing_page_url\": \"https://yoursite.com/form\",\n`
-    textSpec += `  \"custom_fields\": { \"subid\": \"12345\" }\n`
-    textSpec += `}\n\n`
+    // Generate PDF
+    console.log('📝 Generating PDF...')
+    const title = partnerName || 'API'
+    const pdfBuffer = await generateAPISpecPDF(groupedRoutings, title, includePrePing)
 
-    textSpec += `Response - SUCCESS:\n`
-    textSpec += `{\n`
-    textSpec += `  \"success\": true,\n`
-    textSpec += `  \"message\": \"Lead submitted successfully\",\n`
-    textSpec += `  \"lead_id\": \"lead_123456789\",\n`
-    textSpec += `  \"bid\": 0.15,\n`
-    textSpec += `  \"status\": \"processed\"\n`
-    textSpec += `}\n\n`
-
-    textSpec += `TEST COMMAND (cURL):\n\n`
-    textSpec += `curl -X POST https://compliance.juicedmedia.io/api/v1/leads \\\n`
-    textSpec += `  -H \"Authorization: Bearer YOUR_API_KEY\" \\\n`
-    textSpec += `  -H \"Content-Type: application/json\" \\\n`
-    textSpec += `  -d '{\n`
-    textSpec += `    \"phone\": \"6507769592\",\n`
-    textSpec += `    \"state\": \"TX\",\n`
-    textSpec += `    \"firstName\": \"John\",\n`
-    textSpec += `    \"lastName\": \"Doe\",\n`
-    textSpec += `    \"email\": \"john@example.com\",\n`
-    textSpec += `    \"list_id\": \"YOUR_LIST_ID\",\n`
-    textSpec += `    \"campaign_id\": \"YOUR_CAMPAIGN_ID\",\n`
-    textSpec += `    \"cadence_id\": \"YOUR_CADENCE_ID\",\n`
-    textSpec += `    \"address\": \"123 Main St\",\n`
-    textSpec += `    \"city\": \"Dallas\",\n`
-    textSpec += `    \"zip\": \"75201\",\n`
-    textSpec += `    \"age\": \"35\",\n`
-    textSpec += `    \"gender\": \"M\",\n`
-    textSpec += `    \"incomeBracket\": \"50000-75000\",\n`
-    textSpec += `    \"homeownerStatus\": \"Own\",\n`
-    textSpec += `    \"ageRange\": \"35-44\"\n`
-    textSpec += `  }'\n\n`
-
-    textSpec += `NOTES:\n`
-    textSpec += `• Phone number 6507769592 bypasses compliance checks for testing\n`
-    textSpec += `• All API responses include processing time for monitoring\n`
-    textSpec += `• TrustedForm certificate claiming is supported\n`
-    textSpec += `• State validation and compliance checks apply to all submissions\n`
-    textSpec += `• Monitor bid values: $0.00 indicates rejected/non-compliant leads\n\n`
-
-    // Return text file
     const headers = new Headers()
-    headers.set('Content-Type', 'text/plain')
-    
-    // Generate appropriate filename
-    let filename = `${partnerName || 'API'}-Integration-Specs`
-    if (campaignType) {
-      filename = `${partnerName || 'API'}-${campaignType}-API-Specs`
-    }
-    if (includePrePing) {
-      filename += '-with-PrePing'
-    }
-    filename += '.txt'
-    
+    headers.set('Content-Type', 'application/pdf')
+    let filename = `${title}-Integration-Specs`
+    if (campaignType) filename = `${title}-${campaignType}-API-Specs`
+    if (includePrePing) filename += '-with-PrePing'
+    filename += '.pdf'
     headers.set('Content-Disposition', `attachment; filename="${filename}"`)
 
-    return new NextResponse(textSpec, {
-      status: 200,
-      headers
-    })
+    return new NextResponse(pdfBuffer, { status: 200, headers })
 
   } catch (error: any) {
     console.error('Unexpected error in generate-api-spec:', error)
@@ -232,22 +135,22 @@ function groupRoutingsByPartner(routings: any[]) {
     
     // If partner_name is null/empty, try to extract from description as fallback
     if (!partnerName || partnerName.trim() === '') {
-      if (desc.includes('pushnami')) {
-        partnerName = 'Pushnami'
-      } else if (desc.includes('citadel')) {
-        partnerName = 'Citadel'
-      } else if (desc.includes('employers')) {
-        partnerName = 'Employers.io'
-      } else if (desc.includes('fluent')) {
-        partnerName = 'Fluent'
-      } else if (desc.includes('juiced')) {
-        partnerName = 'Juiced Media'
-      } else if (desc.includes('iexecute') || desc.includes('iexcecute')) {
-        partnerName = 'iExecute'
-      } else if (desc.includes('onpoint')) {
-        partnerName = 'Onpoint Global'
-      } else if (desc.includes('ifficent')) {
-        partnerName = 'Ifficent'
+    if (desc.includes('pushnami')) {
+      partnerName = 'Pushnami'
+    } else if (desc.includes('citadel')) {
+      partnerName = 'Citadel'
+    } else if (desc.includes('employers')) {
+      partnerName = 'Employers.io'
+    } else if (desc.includes('fluent')) {
+      partnerName = 'Fluent'
+    } else if (desc.includes('juiced')) {
+      partnerName = 'Juiced Media'
+    } else if (desc.includes('iexecute') || desc.includes('iexcecute')) {
+      partnerName = 'iExecute'
+    } else if (desc.includes('onpoint')) {
+      partnerName = 'Onpoint Global'
+    } else if (desc.includes('ifficent')) {
+      partnerName = 'Ifficent'
       } else if (desc.includes('interest media')) {
         partnerName = 'Interest Media'
       } else if (desc.includes('moxxi')) {
@@ -298,337 +201,235 @@ function groupRoutingsByPartner(routings: any[]) {
 }
 
 async function generateAPISpecPDF(groupedRoutings: any, title: string, includePrePing: boolean = false): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    let doc: any
+  // Create minimal PDF without React components
+  const content = buildTextContent(groupedRoutings, title, includePrePing)
+  
+  // Use a simple PDF library approach
+  try {
+    const { jsPDF } = await import('jspdf')
+    const doc = new jsPDF()
     
-    try {
-      console.log('🔧 Creating PDFDocument with minimal config...')
-      
-      // Try creating document with minimal configuration - NO FONT SPECIFIED
-      doc = new PDFDocument({ 
-        margin: 50,
-        autoFirstPage: false,
-        bufferPages: true
-      })
-      
-      console.log('✅ PDFDocument created successfully')
-      
-      const chunks: Buffer[] = []
-
-      doc.on('data', (chunk) => chunks.push(chunk))
-      doc.on('end', () => {
-        console.log('✅ PDF generation completed')
-        resolve(Buffer.concat(chunks))
-      })
-      doc.on('error', (error) => {
-        console.error('❌ PDF document error:', error)
-        reject(error)
-      })
-
-      // Add first page and try setting font
-      console.log('📄 Adding first page...')
-      doc.addPage()
-      
-      console.log('🔤 Setting font using standard PDF fonts...')
-      // Try standard PDF fonts in order of preference
-      const standardFonts = ['Times-Roman', 'Courier', 'Helvetica-Bold', 'Symbol']
-      let fontSet = false
-      
-      for (const fontName of standardFonts) {
-        try {
-          doc.font(fontName)
-          console.log(`✅ Font set successfully to: ${fontName}`)
-          fontSet = true
-          break
-        } catch (fontError) {
-          console.warn(`⚠️ Font ${fontName} failed:`, fontError.message)
-        }
+    // Split content into lines and add to PDF
+    const lines = content.split('\n')
+    let yPosition = 20
+    const lineHeight = 6
+    const pageHeight = 280
+    
+    for (const line of lines) {
+      if (yPosition > pageHeight) {
+        doc.addPage()
+        yPosition = 20
       }
       
-      if (!fontSet) {
-        console.warn('⚠️ All standard fonts failed, using PDFKit default')
-        // Continue without setting font - use PDFKit default
+      if (line.trim()) {
+        doc.setFontSize(line.startsWith('Campaign') || line.endsWith('Integration') ? 14 : 
+                       line.startsWith('STEP') || line.startsWith('Full Lead') ? 12 : 10)
+        doc.text(line, 10, yPosition)
       }
+      yPosition += lineHeight
+    }
+    
+    const pdfBuffer = doc.output('arraybuffer')
+    return Buffer.from(pdfBuffer)
+  } catch (error) {
+    console.error('jsPDF error, falling back to text:', error)
+    // If jsPDF fails, return as text with PDF headers
+    return Buffer.from(content, 'utf-8')
+  }
+}
 
-      // Title page
-      doc.fontSize(24).text(title + ' API Integration Specifications', { align: 'center' })
-      doc.moveDown(2)
-
-      // Generate specs for each partner
-      Object.values(groupedRoutings).forEach((partnerGroup: any, partnerIndex) => {
-        if (partnerIndex > 0) doc.addPage()
+function buildTextContent(groupedRoutings: any, title: string, includePrePing: boolean): string {
+  let content = `${title} API Integration Specifications\n\n`
+  
+  // Authentication section
+  content += `AUTHENTICATION:\n`
+  content += `All API requests require Bearer token authentication.\n`
+  content += `Include the following header in all requests:\n`
+  content += `Authorization: Bearer YOUR_API_TOKEN\n`
+  content += `Content-Type: application/json\n\n`
+  
+  Object.values(groupedRoutings).forEach((pg: any) => {
+    content += `===============================================\n`
+    content += `${pg.partner.toUpperCase()} INTEGRATION\n`
+    content += `===============================================\n\n`
+    
+    pg.campaigns.forEach((c: any, i: number) => {
+      content += `Campaign ${i + 1}: ${c.description}\n`
+      content += `-----------------------------------------------\n`
+      content += `List ID: ${c.listId}\n`
+      content += `Campaign ID: ${c.campaignId}\n`
+      content += `Cadence ID: ${c.cadenceId}\n`
+      content += `API Token: ${c.token || 'N/A'}\n`
+      content += `Bid Amount: $${c.bid}\n\n`
+      
+      if (includePrePing) {
+        // Pre-ping step with full responses
+        content += `STEP 1: PRE-PING VALIDATION\n`
+        content += `Endpoint: POST https://compliance.juicedmedia.io/api/leads/pre-ping\n\n`
         
-        doc.fontSize(20).text(`${partnerGroup.partner} Integration`, { underline: true })
-        doc.moveDown()
+        content += `Request Body:\n`
+        content += `{\n`
+        content += `  "phone": "5551234567",\n`
+        content += `  "state": "TX",\n`
+        content += `  "firstName": "John",\n`
+        content += `  "lastName": "Doe",\n`
+        content += `  "email": "john@example.com",\n`
+        content += `  "list_id": "${c.listId}",\n`
+        content += `  "custom_fields": {\n`
+        content += `    "subid": "12345"\n`
+        content += `  }\n`
+        content += `}\n\n`
 
-        partnerGroup.campaigns.forEach((campaign: any, campaignIndex: number) => {
-          if (campaignIndex > 0) doc.moveDown(2)
-          
-          // Campaign header
-          doc.fontSize(16).text(`Campaign ${campaignIndex + 1}: ${campaign.name}`, { underline: true })
-          doc.moveDown()
-          
-          // Campaign details
-          doc.fontSize(12).text('Campaign Details', { underline: true })
-          doc.fontSize(10)
-          doc.text(`• List ID: ${campaign.listId}`)
-          doc.text(`• Campaign ID: ${campaign.campaignId}`)
-          doc.text(`• Cadence ID: ${campaign.cadenceId}`)
-          doc.text(`• API Token: ${campaign.token || 'N/A'}`)
-          doc.text(`• Bid Amount: $${campaign.bid}`)
-          doc.moveDown()
+        content += `Response - ACCEPTED:\n`
+        content += `{\n`
+        content += `  "success": true,\n`
+        content += `  "accepted": true,\n`
+        content += `  "rejection_reasons": [],\n`
+        content += `  "estimated_bid": ${c.bid},\n`
+        content += `  "checks": {\n`
+        content += `    "duplicate": { "isCompliant": true },\n`
+        content += `    "state": { "isCompliant": true },\n`
+        content += `    "compliance": { "isCompliant": true }\n`
+        content += `  },\n`
+        content += `  "processing_time_ms": 1200\n`
+        content += `}\n\n`
 
-          // API endpoint details - conditional based on includePrePing
-          if (includePrePing) {
-            // Step 1: Pre-Ping API
-            doc.fontSize(12).text('STEP 1: Pre-Ping API (Lead Validation)', { underline: true })
-            doc.fontSize(10)
-            doc.text('Endpoint:')
-            doc.text('POST https://compliance.juicedmedia.io/api/leads/pre-ping')
-            doc.moveDown(0.5)
-            
-            doc.text('Headers:')
-            doc.text(`Authorization: Bearer ${campaign.token || 'YOUR_TOKEN'}`)
-            doc.text('Content-Type: application/json')
-            doc.moveDown(0.5)
+        content += `Response - REJECTED:\n`
+        content += `{\n`
+        content += `  "success": true,\n`
+        content += `  "accepted": false,\n`
+        content += `  "rejection_reasons": ["Internal DNC List: Phone blocked"],\n`
+        content += `  "estimated_bid": 0,\n`
+        content += `  "checks": {\n`
+        content += `    "duplicate": { "isCompliant": true },\n`
+        content += `    "state": { "isCompliant": true },\n`
+        content += `    "compliance": { "isCompliant": false, "reason": "Failed compliance checks" }\n`
+        content += `  },\n`
+        content += `  "processing_time_ms": 1200\n`
+        content += `}\n\n`
 
-            // Pre-ping request body
-            doc.text('Request Body:')
-            doc.fontSize(8)
-            const prePingBody = JSON.stringify({
-              "phone": "5551234567",
-              "state": "TX",
-              "firstName": "John",
-              "lastName": "Doe",
-              "email": "john@example.com",
-              "list_id": campaign.listId,
-              "custom_fields": {
-                "subid": "12345"
-              }
-            }, null, 2)
-            
-            doc.text(prePingBody)
-            doc.fontSize(10)
-            doc.moveDown()
+        content += `STEP 2: FULL LEAD SUBMISSION (Only if Pre-Ping Accepted)\n`
+      } else {
+        content += `FULL LEAD SUBMISSION\n`
+      }
+      
+      content += `Endpoint: POST https://compliance.juicedmedia.io/api/leads\n\n`
+      
+      content += `Request Body:\n`
+      content += `{\n`
+      content += `  "phone": "5551234567",\n`
+      content += `  "state": "TX",\n`
+      content += `  "firstName": "John",\n`
+      content += `  "lastName": "Doe",\n`
+      content += `  "email": "john@example.com",\n`
+      content += `  "list_id": "${c.listId}",\n`
+      content += `  "campaign_id": "${c.campaignId}",\n`
+      content += `  "cadence_id": "${c.cadenceId}",\n`
+      content += `  "address": "123 Main St",\n`
+      content += `  "city": "Dallas",\n`
+      content += `  "zip": "75201",\n`
+      content += `  "age": "35",\n`
+      content += `  "gender": "M",\n`
+      content += `  "incomeBracket": "50000-75000",\n`
+      content += `  "homeownerStatus": "Own",\n`
+      content += `  "ageRange": "35-44",\n`
+      content += `  "trusted_form_cert_url": "https://cert.trustedform.com/...",\n`
+      content += `  "ip_address": "192.168.1.1",\n`
+      content += `  "user_agent": "Mozilla/5.0...",\n`
+      content += `  "landing_page_url": "https://yoursite.com/form",\n`
+      content += `  "custom_fields": {\n`
+      content += `    "subid": "12345"\n`
+      content += `  }\n`
+      content += `}\n\n`
 
-            // Pre-ping responses
-            doc.text('Response - ACCEPTED:')
-            doc.fontSize(8)
-            const acceptedResponse = JSON.stringify({
-              "success": true,
-              "accepted": true,
-              "rejection_reasons": [],
-              "estimated_bid": campaign.bid,
-              "checks": {
-                "duplicate": { "isCompliant": true },
-                "state": { "isCompliant": true },
-                "compliance": { "isCompliant": true }
-              },
-              "processing_time_ms": 1200
-            }, null, 2)
-            
-            doc.text(acceptedResponse)
-            doc.fontSize(10)
-            doc.moveDown()
+      content += `Response - SUCCESS:\n`
+      if (includePrePing) {
+        content += `{\n`
+        content += `  "success": true,\n`
+        content += `  "message": "Lead submitted successfully",\n`
+        content += `  "lead_id": "lead_123456789",\n`
+        content += `  "estimated_bid": ${c.bid},\n`
+        content += `  "routing_info": {\n`
+        content += `    "campaign": "${c.campaignId}"\n`
+        content += `  }\n`
+        content += `}\n\n`
+      } else {
+        content += `{\n`
+        content += `  "success": true,\n`
+        content += `  "message": "Lead submitted successfully",\n`
+        content += `  "lead_id": "lead_123456789",\n`
+        content += `  "bid": ${c.bid},\n`
+        content += `  "status": "processed"\n`
+        content += `}\n\n`
+      }
 
-            doc.text('Response - REJECTED:')
-            doc.fontSize(8)
-            const rejectedResponse = JSON.stringify({
-              "success": true,
-              "accepted": false,
-              "rejection_reasons": ["Internal DNC List: Phone blocked"],
-              "estimated_bid": 0,
-              "checks": {
-                "duplicate": { "isCompliant": true },
-                "state": { "isCompliant": true },
-                "compliance": { "isCompliant": false, "reason": "Failed compliance checks" }
-              },
-              "processing_time_ms": 1200
-            }, null, 2)
-            
-            doc.text(rejectedResponse)
-            doc.fontSize(10)
-            doc.moveDown(2)
+      if (includePrePing) {
+        content += `INTEGRATION WORKFLOW\n`
+        content += `Recommended Process:\n`
+        content += `• Pre-validate every lead using the pre-ping API\n`
+        content += `• Only submit leads where "accepted": true\n`
+        content += `• Ensure all required fields are present in full submission\n`
+        content += `• Monitor responses for issues or errors\n\n`
 
-            // Step 2: Full Lead Submission
-            doc.fontSize(12).text('STEP 2: Full Lead Submission (Only if Pre-Ping Accepted)', { underline: true })
-            doc.fontSize(10)
-            doc.text('Endpoint:')
-            doc.text('POST https://compliance.juicedmedia.io/api/leads')
-            doc.moveDown(0.5)
-          } else {
-            // Original single-step API
-            doc.fontSize(12).text('Full Lead Submission', { underline: true })
-            doc.fontSize(10)
-            doc.text('Endpoint:')
-            doc.text('POST https://compliance.juicedmedia.io/api/leads')
-            doc.moveDown(0.5)
-          }
-          
-          doc.text('Headers:')
-          doc.text(`Authorization: Bearer ${campaign.token || 'YOUR_TOKEN'}`)
-          doc.text('Content-Type: application/json')
-          doc.moveDown(0.5)
+        content += `TEST COMMANDS (cURL):\n\n`
+        content += `# Pre-Ping Test\n`
+        content += `curl -X POST https://compliance.juicedmedia.io/api/leads/pre-ping \\\n`
+        content += `  -H "Authorization: Bearer ${c.token}" \\\n`
+        content += `  -H "Content-Type: application/json" \\\n`
+        content += `  -d '{\n`
+        content += `    "phone": "6507769592",\n`
+        content += `    "state": "TX",\n`
+        content += `    "firstName": "John",\n`
+        content += `    "lastName": "Doe",\n`
+        content += `    "email": "john@example.com",\n`
+        content += `    "list_id": "${c.listId}",\n`
+        content += `    "custom_fields": {\n`
+        content += `      "subid": "12345"\n`
+        content += `    }\n`
+        content += `  }'\n\n`
 
-          // Request body example
-          doc.text('Request Body Example:')
-          doc.fontSize(8)
-          const requestExample = JSON.stringify({
-            "phone": "5551234567",
-            "state": "TX",
-            "firstName": "John",
-            "lastName": "Doe",
-            "email": "john@example.com",
-            "list_id": campaign.listId,
-            "campaign_id": campaign.campaignId,
-            "cadence_id": campaign.cadenceId,
-            "address": "123 Main St",
-            "city": "Dallas",
-            "zip": "75201",
-            "age": "35",
-            "gender": "M",
-            "incomeBracket": "50000-75000",
-            "homeownerStatus": "Own",
-            "ageRange": "35-44",
-            "trusted_form_cert_url": "https://cert.trustedform.com/...",
-            "ip_address": "192.168.1.1",
-            "user_agent": "Mozilla/5.0...",
-            "landing_page_url": "https://yoursite.com/form",
-            "custom_fields": {
-              "subid": "12345"
-            }
-          }, null, 2)
-          
-          doc.text(requestExample)
-          doc.fontSize(10)
-          doc.moveDown()
+        content += `# Full Lead Submission (if pre-ping accepted)\n`
+      } else {
+        content += `TEST COMMAND (cURL):\n\n`
+      }
+      
+      content += `curl -X POST https://compliance.juicedmedia.io/api/leads \\\n`
+      content += `  -H "Authorization: Bearer ${c.token}" \\\n`
+      content += `  -H "Content-Type: application/json" \\\n`
+      content += `  -d '{\n`
+      content += `    "phone": "6507769592",\n`
+      content += `    "state": "TX",\n`
+      content += `    "firstName": "John",\n`
+      content += `    "lastName": "Doe",\n`
+      content += `    "email": "john@example.com",\n`
+      content += `    "list_id": "${c.listId}",\n`
+      content += `    "campaign_id": "${c.campaignId}",\n`
+      content += `    "cadence_id": "${c.cadenceId}",\n`
+      content += `    "address": "123 Main St",\n`
+      content += `    "city": "Dallas",\n`
+      content += `    "zip": "75201",\n`
+      content += `    "age": "35",\n`
+      content += `    "gender": "M",\n`
+      content += `    "incomeBracket": "50000-75000",\n`
+      content += `    "homeownerStatus": "Own",\n`
+      content += `    "ageRange": "35-44",\n`
+      content += `    "custom_fields": {\n`
+      content += `      "subid": "12345"\n`
+      content += `    }\n`
+      content += `  }'\n\n`
 
-          // Response example (different for pre-ping vs standard)
-          doc.text('Response - SUCCESS:')
-          doc.fontSize(8)
-          const responseBody = includePrePing ? JSON.stringify({
-            "success": true,
-            "message": "Lead submitted successfully",
-            "lead_id": "lead_123456789",
-            "estimated_bid": campaign.bid,
-            "routing_info": {
-              "campaign": campaign.campaignId
-            }
-          }, null, 2) : JSON.stringify({
-            "success": true,
-            "message": "Lead submitted successfully",
-            "lead_id": "lead_123456789",
-            "bid": campaign.bid,
-            "status": "processed"
-          }, null, 2)
-          
-          doc.text(responseBody)
-          doc.fontSize(10)
-          doc.moveDown()
-
-          // cURL test command - different for pre-ping vs standard
-          if (includePrePing) {
-            // Add Integration Workflow section first
-            doc.moveDown()
-            doc.fontSize(12).text('Integration Workflow', { underline: true })
-            doc.fontSize(10).text('Recommended Process')
-            doc.text('• Pre-validate every lead using the pre-ping API')
-            doc.text('• Only submit leads where "accepted": true')
-            doc.text('• Ensure all required fields are present in full submission')
-            doc.text('• Monitor responses for issues or errors')
-            doc.moveDown()
-            
-            doc.text('Test Commands (cURL):')
-            doc.fontSize(8)
-            
-            // Pre-ping test command
-            doc.text('# Pre-Ping Test')
-            const prePingCurl = `curl -X POST https://compliance.juicedmedia.io/api/leads/pre-ping \\
-  -H "Authorization: Bearer ${campaign.token || 'YOUR_TOKEN'}" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "phone": "6507769592",
-    "state": "TX",
-    "firstName": "John",
-    "lastName": "Doe",
-    "email": "john@example.com",
-    "list_id": "${campaign.listId}",
-    "custom_fields": {
-      "subid": "12345"
-    }
-  }'`
-            
-            doc.text(prePingCurl)
-            doc.moveDown()
-            
-            // Full submission test command
-            doc.text('# Full Lead Submission (if pre-ping accepted)')
-            const fullCurl = `curl -X POST https://compliance.juicedmedia.io/api/leads \\
-  -H "Authorization: Bearer ${campaign.token || 'YOUR_TOKEN'}" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "phone": "6507769592",
-    "state": "TX",
-    "firstName": "John",
-    "lastName": "Doe",
-    "email": "john@example.com",
-    "list_id": "${campaign.listId}",
-    "campaign_id": "${campaign.campaignId}",
-    "cadence_id": "${campaign.cadenceId}",
-    "address": "123 Main St",
-    "city": "Dallas",
-    "zip": "75201",
-    "age": "35",
-    "gender": "M",
-    "incomeBracket": "50000-75000",
-    "homeownerStatus": "Own",
-    "ageRange": "35-44",
-    "custom_fields": {
-      "subid": "12345"
-    }
-  }'`
-            
-            doc.text(fullCurl)
-          } else {
-            // Standard single-step test command
-            doc.text('Test Command (cURL):')
-            doc.fontSize(8)
-            const curlCommand = `curl -X POST https://compliance.juicedmedia.io/api/leads \\
-  -H "Authorization: Bearer ${campaign.token || 'YOUR_TOKEN'}" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "phone": "6507769592",
-    "state": "TX",
-    "firstName": "John",
-    "lastName": "Doe",
-    "email": "john@example.com",
-    "list_id": "${campaign.listId}",
-    "campaign_id": "${campaign.campaignId}",
-    "cadence_id": "${campaign.cadenceId}",
-    "address": "123 Main St",
-    "city": "Dallas",
-    "zip": "75201",
-    "age": "35",
-    "gender": "M",
-    "incomeBracket": "50000-75000",
-    "homeownerStatus": "Own",
-    "ageRange": "35-44",
-    "custom_fields": {
-      "subid": "12345"
-    }
-  }'`
-            
-            doc.text(curlCommand)
-          }
-          
-          doc.fontSize(10)
-        })
-      })
-
-      doc.end()
-
-    } catch (error) {
-      reject(error)
-    }
+      content += `===============================================\n\n`
+    })
   })
+
+  content += `NOTES:\n`
+  content += `• Phone number 6507769592 bypasses compliance checks for testing\n`
+  content += `• All API responses include processing time for monitoring\n`
+  content += `• TrustedForm certificate claiming is supported\n`
+  content += `• State validation and compliance checks apply to all submissions\n`
+  content += `• Monitor bid values: $0.00 indicates rejected/non-compliant leads\n\n`
+
+  content += `For technical support, contact the integration team.\n`
+  
+  return content
 }
