@@ -99,11 +99,62 @@ async function forwardToPitchBPO(params: {
   bidValue: number,
   routingData?: any
 }) {
-  const { data, listId, phone, firstName, lastName, email, zipCode, state, bidValue } = params;
+  const { data, listId, phone, firstName, lastName, email, zipCode, state, bidValue, routingData } = params;
   const leadId = data[0].id;
   
+  // Initialize Supabase client
+  const supabase = createServerClient();
+  
   console.log('Forwarding lead to Pitch BPO dialer');
-  console.log('Using fixed Pitch BPO token: 70942646-125b-4ddd-96fc-b9a142c698b8');
+  
+  // Get the vertical from routing data to query vertical configs
+  const vertical = routingData?.vertical || 'ACA'; // Default to ACA if no vertical specified
+  console.log(`Lead vertical: ${vertical}`);
+  
+  // Query vertical_configs to get the correct token and settings for this vertical + Pitch BPO (dialer_type=2)
+  let token = PITCH_BPO_UUID; // Fallback ACA token
+  let campaign = PITCH_BPO_CAMPAIGN; // Fallback ACA campaign
+  let subcampaign = PITCH_BPO_SUBCAMPAIGN; // Fallback ACA subcampaign
+  
+  try {
+    const { data: verticalConfig } = await supabase
+      .from('vertical_configs')
+      .select('token, campaign_id, cadence_id')
+      .eq('vertical', vertical)
+      .eq('dialer_type', 2) // Pitch BPO
+      .eq('active', true)
+      .single();
+    
+    if (verticalConfig && verticalConfig.token) {
+      token = verticalConfig.token;
+      console.log(`Using token from vertical config for ${vertical}: ${token}`);
+      
+      // Token-based campaign/subcampaign mapping
+      if (token === '9f62ddd5-384c-42bd-b862-0cdce7b00a73') {
+        // Final Expense Pitch campaign
+        campaign = 'Final Expense Pitch';
+        subcampaign = 'Synergy FE RT';
+        console.log('Using Final Expense Pitch campaign settings');
+      } else if (token === 'b7aa238e-3f2a-488a-b223-a272aa48d252') {
+        // Medicare campaign
+        campaign = 'Medicare Aragon';
+        subcampaign = 'Juiced Medicare RT';
+        console.log('Using Medicare campaign settings');
+      } else if (token === '70942646-125b-4ddd-96fc-b9a142c698b8') {
+        // ACA campaign (keep existing values)
+        campaign = 'Jade ACA';
+        subcampaign = 'Juiced Real Time';
+        console.log('Using ACA campaign settings');
+      } else {
+        console.log(`Using vertical config token ${token} with fallback ACA campaign settings`);
+      }
+    } else {
+      console.log(`No vertical config found for ${vertical} + Pitch BPO, using fallback ACA settings`);
+    }
+  } catch (error) {
+    console.error('Error querying vertical configs for Pitch BPO token:', error);
+    console.log('Falling back to default ACA token and campaign settings');
+  }
   
   // Extract the subID from lead's custom_fields if available
   const leadCustomFields = data[0].custom_fields || {};
@@ -113,6 +164,7 @@ async function forwardToPitchBPO(params: {
   
   console.log(`List ID to use for adv_SubID: ${listId}`);
   console.log(`SubId from custom_fields to use for adv_SubID2: ${leadSubId}`);
+  console.log(`Campaign: ${campaign}, Subcampaign: ${subcampaign}`);
   
   try {
     // Create the URL with query parameters for Pitch BPO according to their documentation
@@ -120,10 +172,10 @@ async function forwardToPitchBPO(params: {
     const pitchBPOUrl = new URL('https://api.chasedatacorp.com/HttpImport/InjectLead.php');
     
     // Add required parameters
-    pitchBPOUrl.searchParams.append('token', PITCH_BPO_UUID); // Required: security token
+    pitchBPOUrl.searchParams.append('token', token); // Required: security token (token-specific)
     pitchBPOUrl.searchParams.append('accid', 'pitchperfect'); // Confirmed correct account ID
-    pitchBPOUrl.searchParams.append('Campaign', PITCH_BPO_CAMPAIGN); // Required: existing campaign
-    pitchBPOUrl.searchParams.append('Subcampaign', PITCH_BPO_SUBCAMPAIGN); // Optional: subcampaign
+    pitchBPOUrl.searchParams.append('Campaign', campaign); // Required: token-specific campaign
+    pitchBPOUrl.searchParams.append('Subcampaign', subcampaign); // Optional: token-specific subcampaign
     
     // Always add list ID as adv_SubID parameter
     pitchBPOUrl.searchParams.append('adv_SubID', listId);

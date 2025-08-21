@@ -41,9 +41,11 @@ export default function ListRoutingsPage() {
   const [selectedDataSourceType, setSelectedDataSourceType] = useState<string>('on_hour');
   const [selectedVertical, setSelectedVertical] = useState<string>('ACA');
   const [approvedDialers, setApprovedDialers] = useState<number[]>([1, 2, 3]); // Default all approved
+  const [verticalConfigs, setVerticalConfigs] = useState<any[]>([]);
+  const [dynamicPitchBpoToken, setDynamicPitchBpoToken] = useState<string>('70942646-125b-4ddd-96fc-b9a142c698b8'); // Default ACA token
   
-  // Pitch BPO fixed values
-  const PITCH_BPO_TOKEN = '70942646-125b-4ddd-96fc-b9a142c698b8';
+  // Pitch BPO fixed values (deprecated - now using dynamic token)
+  const PITCH_BPO_TOKEN = dynamicPitchBpoToken;
   
   // Convoso fixed values (uses environment variables on backend)
   const CONVOSO_TOKEN = 'convoso-env-var'; // Placeholder - actual values come from env vars
@@ -52,9 +54,10 @@ export default function ListRoutingsPage() {
   const [listCampaignCadenceMap, setListCampaignCadenceMap] = useState<Record<ListCampaignKey, string>>({});
   const [listTokenMap, setListTokenMap] = useState<Record<string, string>>({});
 
-  // Fetch list routings on component mount
+  // Fetch list routings and vertical configs on component mount
   useEffect(() => {
     fetchListRoutings();
+    fetchVerticalConfigs();
   }, []);
   
   // Effect to build mappings for cadence IDs and tokens
@@ -79,6 +82,78 @@ export default function ListRoutingsPage() {
     setListCampaignCadenceMap(cadenceMap);
     setListTokenMap(tokenMap);
   }, [routings]);
+
+  // Function to fetch vertical configs from the API
+  const fetchVerticalConfigs = async () => {
+    try {
+      const response = await fetch('/api/vertical-configs', {
+        headers: { 'x-api-key': process.env.NEXT_PUBLIC_API_KEY || 'test_key_123' }
+      });
+      
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        setVerticalConfigs(result.data);
+      } else {
+        console.error('Failed to fetch vertical configs:', result.error);
+      }
+    } catch (error) {
+      console.error('Error fetching vertical configs:', error);
+    }
+  };
+
+  // Function to update Pitch BPO token based on selected vertical
+  const updatePitchBpoTokenForVertical = (vertical: string) => {
+    // ONLY update token for Pitch BPO (dialer_type = 2)
+    if (currentDialerType !== 2) {
+      console.log(`Skipping token update - not Pitch BPO dialer (current: ${currentDialerType})`);
+      return;
+    }
+    
+    console.log(`Updating Pitch BPO token for vertical: ${vertical}`);
+    console.log('Available vertical configs:', verticalConfigs);
+    
+    // Find the Pitch BPO config for this vertical
+    const verticalConfig = verticalConfigs.find(
+      config => config.vertical === vertical && config.dialer_type === 2 && config.active
+    );
+    
+    console.log('Found vertical config:', verticalConfig);
+    
+    if (verticalConfig && verticalConfig.token) {
+      setDynamicPitchBpoToken(verticalConfig.token);
+      console.log(`Updated Pitch BPO token for ${vertical}: ${verticalConfig.token}`);
+      
+      // Update the form field value if form instance is available
+      if (form) {
+        form.setFieldsValue({ token: verticalConfig.token });
+        console.log('Updated form field with token:', verticalConfig.token);
+      } else {
+        console.log('Form instance not available yet');
+      }
+    } else {
+      // Fallback to ACA token for Pitch BPO
+      console.log(`No vertical config found for ${vertical}, using ACA fallback`);
+      setDynamicPitchBpoToken('70942646-125b-4ddd-96fc-b9a142c698b8');
+      if (form) {
+        form.setFieldsValue({ token: '70942646-125b-4ddd-96fc-b9a142c698b8' });
+      }
+    }
+  };
+
+  // Handle vertical assignment changes
+  const handleVerticalChange = (vertical: string) => {
+    setSelectedVertical(vertical);
+    updatePitchBpoTokenForVertical(vertical);
+  };
+
+  // Effect to update token when dialer type changes to Pitch BPO
+  useEffect(() => {
+    if (currentDialerType === 2) { // When Pitch BPO is selected
+      console.log('Dialer type changed to Pitch BPO, updating token for current vertical:', selectedVertical);
+      updatePitchBpoTokenForVertical(selectedVertical);
+    }
+  }, [currentDialerType, selectedVertical, verticalConfigs]);
 
   // Function to fetch list routings from the API
   const fetchListRoutings = async () => {
@@ -773,7 +848,7 @@ export default function ListRoutingsPage() {
           >
             <Select 
               placeholder="Select vertical"
-              onChange={(value) => setSelectedVertical(value)}
+              onChange={handleVerticalChange}
             >
               <Select.Option value="ACA">🏥 ACA - Affordable Care Act Health Insurance</Select.Option>
               <Select.Option value="Final Expense">⚰️ Final Expense - Burial/Funeral Insurance</Select.Option>

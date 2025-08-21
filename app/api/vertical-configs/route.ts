@@ -27,10 +27,10 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('Error fetching vertical configs:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ success: false, error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ configs: data })
+    return NextResponse.json({ success: true, data: data })
   } catch (error: any) {
     console.error('Error in vertical configs API:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
