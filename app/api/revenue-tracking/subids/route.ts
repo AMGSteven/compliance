@@ -35,6 +35,9 @@ export async function GET(request: NextRequest) {
     // NEW: Dialer-specific analytics parameter
     const groupByDialer = url.searchParams.get('group_by_dialer') === 'true';
     
+    // NEW: Vertical filtering parameter
+    const vertical = url.searchParams.get('vertical');
+    
     if (!listId) {
       return NextResponse.json({
         success: false,
@@ -145,9 +148,10 @@ export async function GET(request: NextRequest) {
       p_list_id: listId,
       p_start_date: startDate,
       p_end_date: endDate,
-      p_use_cross_temporal: false,
+      p_cross_temporal: false,
       p_lead_start_date: null,
-      p_lead_end_date: null
+      p_lead_end_date: null,
+      p_vertical: vertical // NEW: Vertical filtering
     });
     if (subidDialerError) {
       console.error('❌ SUBID dialer pivot error:', subidDialerError);
@@ -214,7 +218,7 @@ export async function GET(request: NextRequest) {
     // Get list routing info for cost calculation
     const { data: routingData, error: routingError } = await supabase
       .from('list_routings')
-      .select('bid, description')
+      .select('bid, description, vertical')
       .eq('list_id', listId)
       .eq('active', true)
       .single();
@@ -254,9 +258,9 @@ export async function GET(request: NextRequest) {
         cost_per_lead: costPerLead,
         total_lead_costs: weekdayLeads * costPerLead, // Use computed weekday leads for costs
         synergy_issued_leads: group.policy_count,
-        synergy_payout: group.policy_count * 120, // $120 per issued policy
+        synergy_payout: group.policy_count * (routingData?.vertical === 'Final Expense' ? 200 : 120), // Vertical-specific payout
         ai_costs_allocated: group.total_cost,
-        net_profit: (group.policy_count * 120) - (weekdayLeads * costPerLead) - group.total_cost,
+        net_profit: (group.policy_count * (routingData?.vertical === 'Final Expense' ? 200 : 120)) - (weekdayLeads * costPerLead) - group.total_cost,
         policy_rate: policyRate,
         transfers_count: group.transfer_count,
         is_subid_row: true,

@@ -55,6 +55,9 @@ export async function GET(request: NextRequest) {
     // NEW: Dialer-specific analytics parameter
     const groupByDialer = url.searchParams.get('group_by_dialer') === 'true';
     
+    // NEW: Vertical filtering parameter
+    const vertical = url.searchParams.get('vertical');
+    
     // Cross-temporal filtering parameters
     const leadStartDate = url.searchParams.get('leadStartDate');
     const leadEndDate = url.searchParams.get('leadEndDate'); 
@@ -69,7 +72,8 @@ export async function GET(request: NextRequest) {
       leadEndDate, 
       useProcessingDate, 
       isDualDateFiltering,
-      groupByDialer
+      groupByDialer,
+      vertical
     });
     
     // Handle date defaults
@@ -93,7 +97,8 @@ export async function GET(request: NextRequest) {
         p_end_date: endDate,
         p_lead_start_date: leadStartDate, // Lead generation date range (cohort)
         p_lead_end_date: leadEndDate,
-        p_use_cross_temporal: true
+        p_cross_temporal: true,
+        p_vertical: vertical // NEW: Vertical filtering
       });
       
       if (crossTemporalError) {
@@ -269,7 +274,7 @@ export async function GET(request: NextRequest) {
       console.log('📋 Fetching active list routings...');
       const { data: listRoutings, error: routingsError } = await supabase
         .from('list_routings')
-        .select('list_id, description, bid, campaign_id, active')
+        .select('list_id, description, bid, campaign_id, active, vertical')
         .eq('active', true)
         .gt('bid', 0); // Only include lists with bids > 0
       
@@ -298,14 +303,15 @@ export async function GET(request: NextRequest) {
             p_list_id: routing.list_id,
             p_start_date: startDate,
             p_end_date: endDate,
-            p_use_postback_date: false, // Normal mode: use created_at for lead counting
+            p_use_policy_date: false, // Normal mode: use created_at for lead counting
             p_policy_status: null, // Get all policies
             p_transfer_status: null, // Get all transfers
             p_status: null, // Use default status filtering (new/success)
             p_search: null,
             p_weekend_only: false,
             p_page: 1,
-            p_page_size: 1 // We only need the count, not the data
+            p_page_size: 1, // We only need the count, not the data
+            p_vertical: vertical // NEW: Vertical filtering
           });
           
           if (unifiedError) {
@@ -334,14 +340,15 @@ export async function GET(request: NextRequest) {
             p_list_id: routing.list_id,
             p_start_date: startDate,
             p_end_date: endDate,
-            p_use_postback_date: true, // ✅ Use policy_postback_date to get policies issued in date range
+            p_use_policy_date: true, // ✅ Use policy_date to get policies issued in date range
             p_policy_status: 'issued',
             p_transfer_status: null,
             p_status: null,
             p_search: null,
             p_weekend_only: false,
             p_page: 1,
-            p_page_size: 1
+            p_page_size: 1,
+            p_vertical: vertical // NEW: Vertical filtering
           });
           
           if (!policyError && policyResults && policyResults.length > 0) {
@@ -380,27 +387,44 @@ export async function GET(request: NextRequest) {
 
           // STEP 4: Build dialer breakdown via unified SQL pivot (consistent windows)
           const { data: dialerPivot, error: dialerPivotError } = await supabase.rpc('get_unified_dialer_pivot', {
-            p_list_id: routing.list_id,
             p_start_date: startDate,
             p_end_date: endDate,
-            p_use_cross_temporal: isDualDateFiltering,
-            p_lead_start_date: leadStartDate,
-            p_lead_end_date: leadEndDate
+            p_vertical: vertical // NEW: Vertical filtering
           });
 
+          const dialerGroups: Record<number, { lead_count: number; transfer_count: number; policy_count: number }> = {};
+          
           if (dialerPivotError) {
             console.error(`❌ Dialer pivot error for ${routing.list_id}:`, dialerPivotError);
-            continue;
-          }
-
-          const dialerGroups: Record<number, { lead_count: number; transfer_count: number; policy_count: number }> = {};
-          for (const row of (dialerPivot || [])) {
-            const d = row.assigned_dialer_type ?? 0;
-            dialerGroups[d] = {
-              lead_count: Number(row.leads_count) || 0,
-              transfer_count: Number(row.transfer_count) || 0,
-              policy_count: Number(row.policy_count) || 0,
+            // Fallback: Create a default group with the unified totals
+            dialerGroups[0] = {
+              lead_count: totalLeads,
+              transfer_count: transferCount,
+              policy_count: policyCount
             };
+          } else {
+            // Filter results for this specific list_id and build dialer groups
+            let foundDialerData = false;
+            for (const row of (dialerPivot || [])) {
+              if (row.list_id === routing.list_id) {
+                const d = row.dialer_type ?? 0;
+                dialerGroups[d] = {
+                  lead_count: Number(row.total_leads) || 0,
+                  transfer_count: Number(row.transfer_count) || 0,
+                  policy_count: Number(row.policy_count) || 0,
+                };
+                foundDialerData = true;
+              }
+            }
+            
+            // If no dialer data found, create default group
+            if (!foundDialerData) {
+              dialerGroups[0] = {
+                lead_count: totalLeads,
+                transfer_count: transferCount,
+                policy_count: policyCount
+              };
+            }
           }
 
           // CONSISTENCY check against unified totals
@@ -451,6 +475,7 @@ export async function GET(request: NextRequest) {
                 transfer_count: dialerData.transfer_count,
                 policy_rate: dialerPolicyRate,
                 bid: routing.bid,
+                vertical: routing.vertical, // NEW: Include vertical for payout calculation
                 // Dialer-specific fields
                 assigned_dialer_type: dialerTypeInt,
                 dialer_name: dialerName,
@@ -493,6 +518,7 @@ export async function GET(request: NextRequest) {
               transfer_count: transferCount,
               policy_rate: policyRate,
               bid: routing.bid,
+              vertical: routing.vertical, // NEW: Include vertical for payout calculation
               mathematical_consistency: true,
               timezone_used: 'America/New_York (EST)',
               query_performance: 'Identical logic as dialer mode',
@@ -609,6 +635,7 @@ export async function GET(request: NextRequest) {
         transfer_count: result.transfer_count,
         cost_per_acquisition: cpa,
         policy_rate: result.policy_rate,
+        vertical: result.vertical, // NEW: Include vertical for payout calculation
         mathematical_consistency: result.mathematical_consistency,
         timezone_used: result.timezone_used,
         query_performance: result.query_performance,

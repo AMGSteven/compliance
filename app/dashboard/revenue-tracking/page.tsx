@@ -212,6 +212,41 @@ export default function RevenueTrackingPage() {
   // NEW: Dialer-specific analytics state (default OFF per product decision)
   const [groupByDialer, setGroupByDialer] = useState<boolean>(false);
   
+  // NEW: Vertical filtering state
+  const [selectedVertical, setSelectedVertical] = useState<string | null>(null);
+  const [availableVerticals, setAvailableVerticals] = useState<string[]>([]);
+
+  // NEW: Fetch available verticals on component mount
+  const fetchAvailableVerticals = async () => {
+    try {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      
+      if (!supabaseUrl || !supabaseKey) {
+        console.error('Missing Supabase configuration');
+        return;
+      }
+      
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      const { data, error } = await supabase
+        .from('list_routings')
+        .select('vertical')
+        .eq('active', true)
+        .order('vertical');
+      
+      if (error) {
+        console.error('Error fetching verticals:', error);
+        return;
+      }
+      
+      const uniqueVerticals = [...new Set(data?.map(item => item.vertical).filter(Boolean))];
+      setAvailableVerticals(uniqueVerticals);
+      console.log('📊 Available verticals:', uniqueVerticals);
+    } catch (error) {
+      console.error('Error fetching verticals:', error);
+    }
+  };
+  
   // NEW: Column customization state
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set([
     'description', 'leads_count', 'weekday_leads', 'weekend_leads', 
@@ -338,18 +373,21 @@ export default function RevenueTrackingPage() {
 
   useEffect(() => {
     refreshData();
-  }, [temporalViewMode, generationDateRange, processingDateRange, timeFrame, enableLeadDateFilter, leadGenerationDateRange]);
+  }, [temporalViewMode, generationDateRange, processingDateRange, timeFrame, enableLeadDateFilter, leadGenerationDateRange, selectedVertical]);
 
   // ✅ FORCE fetchPitchPerfectCosts to run on mount and data changes
   useEffect(() => {
     console.log('🔥 FORCING fetchPitchPerfectCosts to run...');
     fetchPitchPerfectCosts();
-  }, [timeFrame, generationDateRange, processingDateRange]);
+  }, [timeFrame, generationDateRange, processingDateRange, selectedVertical]);
 
   // ✅ SIMPLE MOUNT EFFECT - This MUST run
   useEffect(() => {
     console.log('🚨 COMPONENT MOUNTED - Calling fetchPitchPerfectCosts NOW');
     fetchPitchPerfectCosts().catch(err => console.error('Mount fetchPitchPerfectCosts error:', err));
+    
+    // NEW: Fetch available verticals on mount
+    fetchAvailableVerticals().catch(err => console.error('Mount fetchAvailableVerticals error:', err));
   }, []); // Empty dependency array = runs once on mount
 
   // RESTORED: Original working fetchRevenueData using proper revenue tracking API
@@ -386,6 +424,12 @@ export default function RevenueTrackingPage() {
         apiParams.append('useProcessingDate', 'true');
         console.log(`🎯 Cross-temporal filter: Processing ${startDate}-${endDate}, Leads ${leadGenerationDateRange[0].format('YYYY-MM-DD')}-${leadGenerationDateRange[1].format('YYYY-MM-DD')}`);
           }
+          
+      // NEW: Add vertical filtering parameter
+      if (selectedVertical) {
+        apiParams.append('vertical', selectedVertical);
+        console.log(`🎯 Vertical filter: ${selectedVertical}`);
+      }
           
       // NEW: Add dialer grouping parameter
       if (groupByDialer) {
@@ -428,7 +472,7 @@ export default function RevenueTrackingPage() {
             synergy_issued_leads: listData.policy_count || 0,
             policy_rate: listData.policy_rate || 0,
             transfers_count: listData.transfer_count || 0, // FIXED: Use actual transfer count from API
-            synergy_payout: (listData.policy_count || 0) * 120,
+            synergy_payout: (listData.policy_count || 0) * (listData.vertical === 'Final Expense' ? 200 : 120),
             // Include per-dialer metrics map for pivot rendering
             dialer_metrics: listData.dialer_metrics || undefined,
             mathematical_consistency: true,
@@ -470,7 +514,7 @@ export default function RevenueTrackingPage() {
       setTotalLeads(totalLeadsCount);
       setTotalTransfers(totalTransfersSum);
       setTotalSynergyIssuedLeads(totalPoliciesSum);
-      setTotalSynergyPayout(totalPoliciesSum * 120);
+      setTotalSynergyPayout(revenueArray.reduce((sum, item) => sum + (item.synergy_payout || 0), 0));
 
       // Update debug info
       setDebugInfo(prev => ({
@@ -544,7 +588,8 @@ export default function RevenueTrackingPage() {
       // ✅ EFFICIENT: Use SQL function via RPC instead of API call
       const { data, error } = await supabase.rpc('get_bland_ai_costs', {
         p_start_date: startDateStr,
-        p_end_date: endDateStr
+        p_end_date: endDateStr,
+        p_vertical: selectedVertical // NEW: Vertical filtering
       });
 
       if (error) {
@@ -667,7 +712,8 @@ export default function RevenueTrackingPage() {
       // ✅ EFFICIENT: Use SQL function via RPC instead of fetching all records
       const { data, error } = await supabase.rpc('get_pitch_perfect_costs', {
         p_start_date: startDateStr,
-        p_end_date: endDateStr
+        p_end_date: endDateStr,
+        p_vertical: selectedVertical // NEW: Vertical filtering
       });
 
       if (error) {
@@ -751,6 +797,11 @@ export default function RevenueTrackingPage() {
       // NEW: Add dialer grouping parameter for SUBID breakdown
       if (groupByDialer) {
         subidParams.append('group_by_dialer', 'true');
+      }
+      
+      // NEW: Add vertical filtering parameter
+      if (selectedVertical) {
+        subidParams.append('vertical', selectedVertical);
       }
       
       const apiUrl = `/api/revenue-tracking/subids?${subidParams.toString()}`;
@@ -991,14 +1042,14 @@ export default function RevenueTrackingPage() {
     fetchPitchPerfectCosts();
     fetchBlandAICosts();
     fetchTrackdriveCosts();
-  }, [timeFrame, generationDateRange, processingDateRange]);
+  }, [timeFrame, generationDateRange, processingDateRange, selectedVertical]);
 
   // ✅ CLEAR SUBID CACHE when dates change to ensure fresh data with correct date ranges
   useEffect(() => {
     console.log('🗑️ Clearing SUBID cache due to date/temporal mode change...');
     setSubidData({});
     setExpandedRowKeys([]);
-  }, [temporalViewMode, generationDateRange, processingDateRange, timeFrame, enableLeadDateFilter, leadGenerationDateRange]);
+  }, [temporalViewMode, generationDateRange, processingDateRange, timeFrame, enableLeadDateFilter, leadGenerationDateRange, selectedVertical]);
 
   // NEW: Refresh data when dialer grouping changes
   useEffect(() => {
@@ -1489,7 +1540,28 @@ export default function RevenueTrackingPage() {
             </Col>
           )}
           
-          <Col span={temporalViewMode === 'processing' ? 4 : 6}>
+          {/* NEW: Vertical Filter */}
+          <Col span={temporalViewMode === 'processing' ? 3 : 4}>
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Text strong>🎯 Vertical Filter</Text>
+              <Select 
+                value={selectedVertical} 
+                onChange={(value) => setSelectedVertical(value)}
+                style={{ width: '100%' }}
+                placeholder="All Verticals"
+                allowClear
+              >
+                {availableVerticals.map(vertical => (
+                  <Option key={vertical} value={vertical}>{vertical}</Option>
+                ))}
+              </Select>
+              <Text type="secondary" style={{ fontSize: '11px' }}>
+                Filter by vertical
+              </Text>
+            </Space>
+          </Col>
+          
+          <Col span={temporalViewMode === 'processing' ? 3 : 4}>
             <Space direction="vertical">
               <Text strong>API Endpoint</Text>
               <Text code style={{ fontSize: '11px' }}>
