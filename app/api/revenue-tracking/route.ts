@@ -329,11 +329,6 @@ export async function GET(request: NextRequest) {
           const weekendLeads = parseInt(unifiedResult.weekend_count) || 0;
           const weekdayLeads = parseInt(unifiedResult.weekday_count) || 0;
           
-          // Skip lists with no leads
-          if (totalLeads === 0) {
-            continue;
-          }
-          
           // STEP 2: Get policy counts for policies ISSUED in date range (IDENTICAL LOGIC)
           let policyCount = 0;
           const { data: policyResults, error: policyError } = await supabase.rpc('get_lead_counts_unified', {
@@ -380,6 +375,11 @@ export async function GET(request: NextRequest) {
             console.log(`✅ Found ${transferCount} transfers for ${routing.list_id} between ${startDate}-${endDate}`);
           } else {
             console.error(`❌ Transfer count error for ${routing.list_id}:`, transferError);
+          }
+          
+          // Skip lists with no leads AND no policies AND no transfers
+          if (totalLeads === 0 && policyCount === 0 && transferCount === 0) {
+            continue;
           }
           
           const totalRevenue = totalLeads * routing.bid;
