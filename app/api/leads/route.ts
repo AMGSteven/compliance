@@ -12,7 +12,7 @@ import { normalizeSubIdKey } from '@/lib/utils/subid';
 export const dynamic = 'force-dynamic';
 
 // Define allowed states per dialer type
-const INTERNAL_DIALER_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'IN', 'KS', 'LA', 'MO', 'MS', 'OH', 'SC', 'TN', 'TX'];
+const INTERNAL_DIALER_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'GA', 'IN', 'KY', 'LA', 'ME', 'MI', 'MO', 'MS', 'NC', 'NM', 'OH', 'PA', 'SC', 'TN', 'VA', 'WV'];
 const PITCH_BPO_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'FL', 'IN', 'KS', 'LA', 'MI', 'MO', 'MS', 'OH', 'OK', 'SC', 'TN', 'TX'];
 const CONVOSO_ALLOWED_STATES = ['TX', 'FL', 'CA', 'PA', 'NY', 'IL', 'OH', 'GA', 'MI', 'NC', 'NJ', 'VA', 'WA', 'AZ', 'TN', 'MA', 'IN', 'MD', 'MO', 'WI', 'MN', 'CO', 'AL', 'SC', 'LA', 'OR', 'OK', 'CT', 'IA', 'AR', 'UT', 'NV', 'KS', 'NM', 'NE', 'WV', 'ID', 'HI', 'NH', 'ME', 'RI', 'MT', 'DE', 'SD', 'AK', 'ND', 'VT', 'WY'];
 
