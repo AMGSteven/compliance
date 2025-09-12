@@ -18,6 +18,7 @@ import {
   Shield,
   DollarSign,
   RotateCcw,
+  RefreshCw,
 } from "lucide-react"
 
 import {
@@ -114,6 +115,11 @@ const navigationItems = [
         title: "Bulk Claim TF Certs",
         href: "/data-management/bulk-claim-tf",
         icon: Shield,
+      },
+      {
+        title: "Lead Re-posting Tool",
+        href: "/repost-leads",
+        icon: RefreshCw,
       },
     ],
   },
