@@ -535,7 +535,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     const lastName = body.lastName || body.last_name || body.LastName;
     const email = body.email || body.Email || body.EmailAddress;
     const phone = body.phone || body.Phone || body.PhoneNumber;
-    const zipCode = body.zipCode || body.zip_code || body.ZipCode;
+    const zipCode = body.zipCode || body.zip_code || body.ZipCode || body.zip;
     const trustedFormCertUrl = body.trustedFormCertUrl || body.trusted_form_cert_url || body.TrustedForm;
     // Use 'let' instead of 'const' to allow correcting the list ID for special cases
     let listId = body.listId || body.list_id;
@@ -1476,7 +1476,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
           address: contactData.Address || '',
           city: contactData.City || '',
           state: state,
-          zip_code: contactData.ZipCode || '',
+          zip_code: contactData.ZipCode || contactData.zip_code || contactData.zip || '',
           
           // Compliance fields
           income_bracket: incomeBracket,
@@ -1840,7 +1840,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
             firstName,
             lastName,
             email,
-            zipCode: contactData.ZipCode || '',
+            zipCode: contactData.ZipCode || contactData.zip_code || contactData.zip || '',
             state,
             bidValue: bid,
             routingData
@@ -1854,7 +1854,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
             firstName,
             lastName,
             email,
-            zipCode: contactData.ZipCode || '',
+            zipCode: contactData.ZipCode || contactData.zip_code || contactData.zip || '',
             state,
             bidValue: bid,
             routingData
@@ -1899,7 +1899,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
           address: contactData.Address || '',
           city: contactData.City || '',
           state: state || '',
-          zip_code: contactData.ZipCode || '',
+          zip_code: contactData.ZipCode || contactData.zip_code || contactData.zip || '',
           source: 'Health Insurance API',
           trusted_form_cert_url: body.TrustedForm || '',
           transaction_id: '',
