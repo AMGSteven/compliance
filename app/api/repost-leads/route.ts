@@ -327,11 +327,10 @@ export async function GET(request: NextRequest) {
     // Get detailed mismatch breakdown using efficient query
     const { data: mismatchDetails, error: detailError } = await supabase
       .from('leads')
-      .select('campaign_id, id.count()')
+      .select('campaign_id')
       .eq('list_id', list_id)
-      .eq('assigned_dialer_type', 1)
-      .neq('campaign_id', routing.campaign_id)
-      .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
+      .or('assigned_dialer_type.eq.1,assigned_dialer_type.is.null')
+      .neq('campaign_id', routing.campaign_id);
 
     if (detailError) {
       console.error('❌ Error getting mismatch details:', detailError);
@@ -348,12 +347,23 @@ export async function GET(request: NextRequest) {
       console.error('❌ Error counting total leads:', totalError);
     }
 
-    const needsRepostCount = mismatchDetails?.reduce((sum, item) => sum + ((item as any).count || 0), 0) || 0;
+    // Use RPC function result for accurate count
+    const { data: rpcMismatchData, error: rpcMismatchError } = await supabase.rpc('get_campaign_mismatches');
+    const listMismatchData = rpcMismatchData?.find((item: any) => item.list_id === list_id);
+    
+    const needsRepostCount = listMismatchData?.affected_leads || 0;
+    const totalCountFromRPC = listMismatchData?.total_internal_leads || totalCount || 0;
 
-    const mismatchBreakdown = mismatchDetails?.map(item => ({
-      incorrect_campaign_id: item.campaign_id,
-      affected_leads: (item as any).count || 0
-    })) || [];
+    // Calculate breakdown from the detailed results
+    const campaignIdCounts = mismatchDetails?.reduce((acc: any, lead: any) => {
+      acc[lead.campaign_id] = (acc[lead.campaign_id] || 0) + 1;
+      return acc;
+    }, {}) || {};
+
+    const mismatchBreakdown = Object.entries(campaignIdCounts).map(([campaignId, count]) => ({
+      incorrect_campaign_id: campaignId,
+      affected_leads: count as number
+    }));
 
     console.log(`✅ [ENTERPRISE] Analysis complete: ${needsRepostCount}/${totalCount || 0} leads need re-posting`);
 
@@ -366,11 +376,11 @@ export async function GET(request: NextRequest) {
         correct_campaign_id: routing.campaign_id,
         correct_cadence_id: routing.cadence_id,
         token: routing.token,
-        total_internal_leads: totalCount || 0,
+        total_internal_leads: totalCountFromRPC,
         needs_repost_count: needsRepostCount,
         ready_for_repost: needsRepostCount > 0,
         mismatch_breakdown: mismatchBreakdown,
-        mismatch_percentage: totalCount ? Math.round((needsRepostCount / totalCount) * 100) : 0
+        mismatch_percentage: totalCountFromRPC ? Math.round((needsRepostCount / totalCountFromRPC) * 100) : 0
       }
     });
 
