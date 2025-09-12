@@ -6,6 +6,23 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, InfoCircleOutlined } from '
 
 const { Title, Text } = Typography;
 
+// UUID validation function
+const isValidUUID = (value: string): boolean => {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(value);
+};
+
+// Custom UUID validator for form rules
+const uuidValidator = (_: any, value: string) => {
+  if (!value) {
+    return Promise.resolve(); // Let required validation handle empty values
+  }
+  if (!isValidUUID(value)) {
+    return Promise.reject(new Error('Please enter a valid UUID format (e.g., 12345678-1234-1234-1234-123456789abc)'));
+  }
+  return Promise.resolve();
+};
+
 interface ListRouting {
   id: string;
   list_id: string;
@@ -706,7 +723,10 @@ export default function ListRoutingsPage() {
           <Form.Item
             name="list_id"
             label="List ID"
-            rules={[{ required: currentDialerType !== 2, message: 'Please enter the list ID' }]}
+            rules={[
+              { required: currentDialerType !== 2, message: 'Please enter the list ID' },
+              { validator: uuidValidator }
+            ]}
           >
             <Input 
               placeholder="e.g., a38881ab-93b2-4750-9f9c-92ae6cd10b7e" 
@@ -722,7 +742,10 @@ export default function ListRoutingsPage() {
           <Form.Item
             name="campaign_id"
             label="Campaign ID"
-            rules={[{ required: true, message: 'Please enter a campaign ID' }]}
+            rules={[
+              { required: true, message: 'Please enter a campaign ID' },
+              { validator: uuidValidator }
+            ]}
             extra={currentDialerType === 2 ? 'Campaign ID is now editable for Pitch BPO campaigns' : null}
           >
             <Input 
@@ -734,7 +757,10 @@ export default function ListRoutingsPage() {
           <Form.Item
             name="cadence_id"
             label="Cadence ID"
-            rules={[{ required: true, message: 'Please enter a cadence ID' }]}
+            rules={[
+              { required: true, message: 'Please enter a cadence ID' },
+              { validator: uuidValidator }
+            ]}
             extra={currentDialerType === 2 ? 
               'Cadence ID is now editable for Pitch BPO campaigns' : 
               (currentListId && currentCampaignId && listCampaignCadenceMap[`${currentListId}:${currentCampaignId}`] && !editMode ? 
