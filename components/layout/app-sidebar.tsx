@@ -19,6 +19,8 @@ import {
   DollarSign,
   RotateCcw,
   RefreshCw,
+  Download,
+  MapPin,
 } from "lucide-react"
 
 import {
@@ -75,9 +77,19 @@ const navigationItems = [
         icon: Route,
       },
       {
+        title: "Vertical States",
+        href: "/dashboard/vertical-states",
+        icon: MapPin,
+      },
+      {
         title: "Returns",
         href: "/dashboard/monthly-dnc-export",
         icon: RotateCcw,
+      },
+      {
+        title: "Lead Export",
+        href: "/leads/export",
+        icon: Download,
       },
     ],
   },
