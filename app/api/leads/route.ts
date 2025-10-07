@@ -6,6 +6,7 @@ import { validatePhoneDirectly } from '@/app/lib/phone-validation-hook';
 import { checkForDuplicateLead, checkForDuplicateLeadInVertical } from '@/app/lib/duplicate-lead-check';
 import { TrustedFormService } from '@/lib/services/trusted-form';
 import { normalizeSubIdKey } from '@/lib/utils/subid';
+import { getAllowedStatesForVertical, isStateAllowedForVertical } from '@/lib/vertical-state-validator';
 
 // Main POST handler for all lead formats
 // Force dynamic routing for Vercel deployment
@@ -723,7 +724,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     const supabase = createServerClient();
 
     // Insert lead into the database
-    const { data, error } = await supabase
+    const { data: leadData, error } = await supabase
       .from('leads')
       .insert([
         {
@@ -736,7 +737,6 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
           state: state,
           zip_code: zipCode || '',
           source: body.source || '',
-          // Removed bid field as it's not in the database schema
           trusted_form_cert_url: trustedFormCertUrl || '',
           transaction_id: body.transactionId || body.transaction_id || '',
           custom_fields: body.customFields || body.custom_fields || null,
@@ -749,6 +749,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
           age_range: ageRange || '',
           birth_date: dob ? new Date(dob).toISOString().split('T')[0] : null,
           homeowner_status: homeownerStatus,
+          bid_amount: bidValue, // Store historical bid amount at time of submission
           created_at: new Date().toISOString()
         }
       ])
@@ -762,7 +763,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
       );
     }
 
-    console.log('Lead inserted successfully:', data);
+    console.log('Lead inserted successfully:', leadData);
     
     // Look up campaign and cadence IDs from the routings table
     console.log('Looking up routing data for list ID:', listId);
@@ -1023,13 +1024,13 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     }
     console.log(`Using dialer type: ${dialerType === DIALER_TYPE_INTERNAL ? 'Internal Dialer' : dialerType === DIALER_TYPE_PITCH_BPO ? 'Pitch BPO' : dialerType === DIALER_TYPE_CONVOSO ? 'Convoso (IBP BPO)' : 'Unknown'}`);
 
-    // Validate state based on dialer type
+    // STEP 1: Validate state based on dialer type (existing validation)
     const normalizedState = state.toUpperCase();
     const allowedStates = dialerType === DIALER_TYPE_PITCH_BPO ? PITCH_BPO_ALLOWED_STATES : dialerType === DIALER_TYPE_CONVOSO ? CONVOSO_ALLOWED_STATES : INTERNAL_DIALER_ALLOWED_STATES;
     const dialerName = dialerType === DIALER_TYPE_PITCH_BPO ? 'Pitch BPO' : dialerType === DIALER_TYPE_CONVOSO ? 'Convoso (IBP BPO)' : 'Internal Dialer';
     
     if (!allowedStates.includes(normalizedState)) {
-      console.log(`[STATE VALIDATION] Rejecting lead with non-allowed state: ${state} for ${dialerName}`);
+      console.log(`[STATE VALIDATION - DIALER] Rejecting lead with non-allowed state: ${state} for ${dialerName}`);
       return NextResponse.json(
         {
           success: false,
@@ -1045,7 +1046,35 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
       );
     }
     
-    console.log(`[STATE VALIDATION] State ${state} is allowed for ${dialerName}`);
+    console.log(`[STATE VALIDATION - DIALER] State ${state} is allowed for ${dialerName}`);
+
+    // STEP 2: Validate state based on vertical configuration (additional check)
+    const vertical = routingData?.vertical || 'ACA';
+    console.log(`[STATE VALIDATION - VERTICAL] Checking state ${normalizedState} for vertical: ${vertical}`);
+    
+    const isVerticalStateAllowed = await isStateAllowedForVertical(vertical, normalizedState);
+    
+    if (!isVerticalStateAllowed) {
+      const verticalAllowedStates = await getAllowedStatesForVertical(vertical);
+      console.log(`[STATE VALIDATION - VERTICAL] Rejecting lead: state ${state} not approved for ${vertical} vertical`);
+      return NextResponse.json(
+        {
+          success: false,
+          bid: 0.00,
+          error: `State ${state} not approved for ${vertical} vertical`,
+          details: {
+            state: state,
+            vertical: vertical,
+            dialerType: dialerName,
+            verticalAllowedStates: verticalAllowedStates,
+            reason: 'State not approved in vertical configuration'
+          }
+        },
+        { status: 400 }
+      );
+    }
+    
+    console.log(`[STATE VALIDATION - VERTICAL] State ${state} is approved for ${vertical} vertical`);
 
     // Check if this lead should be forwarded to the appropriate dialer API
     // Any list ID in the routing settings will have routingData and be eligible for forwarding
@@ -1087,13 +1116,13 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
                 assigned_dialer_type: DIALER_TYPE_PITCH_BPO,
                 dialer_selection_method: routingData?.weighted_routing_enabled ? 'weighted' : 'single'
               })
-              .eq('id', data[0].id);
+              .eq('id', leadData[0].id);
           } catch (attrErr) {
             console.warn('Non-fatal: failed to attribute dialer at write-time (Pitch BPO):', attrErr);
           }
           console.log('✅ Pitch BPO dialer approved - routing lead to Pitch BPO (dialer_type=2)');
           return await forwardToPitchBPO({
-            data,
+            data: leadData,
             listId, // We'll still pass this to the function but won't include it in the API payload
             phone,
             firstName,
@@ -1117,13 +1146,13 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
                 assigned_dialer_type: DIALER_TYPE_CONVOSO,
                 dialer_selection_method: routingData?.weighted_routing_enabled ? 'weighted' : 'single'
               })
-              .eq('id', data[0].id);
+              .eq('id', leadData[0].id);
           } catch (attrErr) {
             console.warn('Non-fatal: failed to attribute dialer at write-time (Convoso):', attrErr);
           }
           console.log('✅ Convoso dialer approved - routing lead to Convoso (IBP BPO) (dialer_type=3)');
           return await forwardToConvoso({
-            data,
+            data: leadData,
             listId,
             phone,
             firstName,
@@ -1148,7 +1177,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
                 assigned_dialer_type: DIALER_TYPE_INTERNAL,
                 dialer_selection_method: routingData?.weighted_routing_enabled ? 'weighted' : 'single'
               })
-              .eq('id', data[0].id);
+              .eq('id', leadData[0].id);
           } catch (attrErr) {
             console.warn('Non-fatal: failed to attribute dialer at write-time (Internal):', attrErr);
           }
@@ -1206,7 +1235,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
           // Custom fields passed through as a nested object
           custom_fields: {
             ...(body.customFields || body.custom_fields || {}),
-            compliance_lead_id: data[0].id // Add compliance_lead_id to custom fields
+            compliance_lead_id: leadData[0].id // Add compliance_lead_id to custom fields
           },
           
           // Include the routing IDs directly in the payload
@@ -1215,7 +1244,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
           cadence_id: effectiveCadenceId,
           
           // Include the lead ID to enable policy postback tracking
-          compliance_lead_id: data[0].id
+          compliance_lead_id: leadData[0].id
         };
         
         // The dialer API expects listId and token as URL parameters, not just in the JSON payload
@@ -1269,7 +1298,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
                 dialer_compliance_id: dialerResult.compliance_lead_id,
                 updated_at: new Date().toISOString()
               })
-              .eq('id', data[0].id);
+              .eq('id', leadData[0].id);
             
             console.log('Successfully associated dialer compliance_lead_id with lead record');
           } catch (updateError) {
@@ -1280,8 +1309,8 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
         // Include the dialer response in our API response
         const responseObj: any = {
           success: true,
-          lead_id: data[0].id,
-          data: data[0],
+          lead_id: leadData[0].id,
+          data: leadData[0],
           bid: routingData?.bid || 0.00,
           dialer: {
             type: 'internal',
@@ -1298,8 +1327,8 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
         // Include bid information for successful lead submission even when dialer fails
         return NextResponse.json({ 
           success: true, 
-          lead_id: data[0].id, // Explicitly return the lead ID
-          data: data[0],
+          lead_id: leadData[0].id, // Explicitly return the lead ID
+          data: leadData[0],
           bid: routingData?.bid || 0.00,
           dialer: {
             forwarded: false,
@@ -1312,8 +1341,8 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     // Include bid in the response for successful submissions
     return NextResponse.json({
       success: true, 
-      lead_id: data[0].id, // Explicitly return the lead ID
-      data: data[0],
+      lead_id: leadData[0].id, // Explicitly return the lead ID
+      data: leadData[0],
       bid: routingData?.bid || 0.00
     });
   } catch (error: any) {
@@ -1457,93 +1486,6 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
       console.error('Failed to check schema:', err);
     }
     
-    // Insert health insurance lead into the database
-    const { data, error } = await supabase
-      .from('leads')
-      .insert([
-        {
-          // Basic lead info
-          first_name: firstName,
-          last_name: lastName,
-          email: email,
-          phone: phone,
-          trusted_form_cert_url: body.TrustedForm || '',
-          list_id: body.SubId || 'health-insurance-default',
-          campaign_id: body.Vertical || 'health-insurance-campaign',
-          traffic_source: body.Source || (body.SubId === 'OPG4' ? 'Onpoint' : ''),
-          
-          // Address details
-          address: contactData.Address || '',
-          city: contactData.City || '',
-          state: state,
-          zip_code: contactData.ZipCode || contactData.zip_code || contactData.zip || '',
-          
-          // Compliance fields
-          income_bracket: incomeBracket,
-          age_range: ageRange || '',
-          homeowner_status: homeownerStatus,
-          
-          // API details
-          api_token: body.ApiToken || '',
-          vertical: body.Vertical || '',
-          sub_id: body.SubId || '',
-          user_agent: body.UserAgent || '',
-          original_url: body.OriginalUrl || '',
-          jornaya_lead_id: body.JornayaLeadId || '',
-          session_length: body.SessionLength || '',
-          tcpa_text: body.TcpaText || '',
-          verify_address: body.VerifyAddress === 'true',
-          original_creation_date: body.OriginalCreationDate ? new Date(body.OriginalCreationDate).toISOString() : null,
-          site_license_number: body.SiteLicenseNumber || '',
-          ip_address: contactData.IpAddress || '',
-          
-          // Contact details
-          day_phone_number: contactData.DayPhoneNumber || '',
-
-          years_at_residence: contactData.YearsAtResidence || '',
-          months_at_residence: contactData.MonthsAtResidence || '',
-          
-          // Person details
-          birth_date: dob ? new Date(dob).toISOString().split('T')[0] : null,
-          gender: person.Gender || '',
-          marital_status: person.MaritalStatus || '',
-          relationship_to_applicant: person.RelationshipToApplicant || '',
-          denied_insurance: person.DeniedInsurance || '',
-          us_residence: person.USResidence === 'True',
-          height_ft: person.Height_FT || '',
-          height_inch: person.Height_Inch || '',
-          weight: person.Weight || '',
-          student: person.Student === 'true',
-          occupation: person.Occupation || '',
-          education: person.Education || '',
-          house_hold_size: person.HouseHoldSize || '',
-          
-          // Medical information (as JSON)
-          conditions: conditions,
-          medical_history: medicalHistory,
-          
-          // Insurance information
-          coverage_type: requestedInsurance.CoverageType || '',
-          insurance_company: currentInsurance.InsuranceCompany || '',
-          
-          cadence_id: cadenceId,
-          token: token,
-          
-          created_at: new Date().toISOString(),
-          source: body.Source || ''
-        }
-      ])
-      .select();
-      
-    if (error) {
-      console.error('Failed to insert health insurance lead:', error);
-      return NextResponse.json(
-        { success: false, error: 'Failed to insert health insurance lead' },
-        { status: 500 }
-      );
-    }
-
-    // Look up campaign and cadence IDs from the routings table
     let listId = body.SubId || 'health-insurance-default';
     console.log('Looking up routing data for list ID:', listId);
     
@@ -1574,7 +1516,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
     // Create mutable copies of the campaign and cadence IDs
     let effectiveCampaignId = body.Vertical || '';
     let effectiveCadenceId = body.CadenceID || body.cadenceId || body.cadence_id || null;
-    let bid = 0.00;
+    let bid = 0.00; // Default bid value - will be updated from routing data
     
     console.log('Initial values:', { campaignId: effectiveCampaignId, cadenceId: effectiveCadenceId });
     
@@ -1595,23 +1537,24 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
       console.error('Error looking up list routing:', routingError);
     }
     
-    console.log('Routing results:', routingResults);
+    console.log('Health insurance lead passed all compliance checks');
     
     // Get the dialer type from routing data (default to internal dialer if not specified)
     const dialerType = routingResults?.dialer_type || DIALER_TYPE_INTERNAL;
       
     if (routingResults) {
       routingData = routingResults;
+      bid = routingResults.bid || 0.00; // Set bid from routing data
       console.log(`Found list routing for ${listId}:`, routingData);
       console.log(`Health insurance lead using dialer type: ${dialerType === DIALER_TYPE_INTERNAL ? 'Internal Dialer' : dialerType === DIALER_TYPE_PITCH_BPO ? 'Pitch BPO' : dialerType === DIALER_TYPE_CONVOSO ? 'Convoso (IBP BPO)' : 'Unknown'}`);
       
-      // Validate state based on dialer type
+      // STEP 1: Validate state based on dialer type (existing validation)
       const normalizedState = state.toUpperCase();
       const allowedStates = dialerType === DIALER_TYPE_PITCH_BPO ? PITCH_BPO_ALLOWED_STATES : dialerType === DIALER_TYPE_CONVOSO ? CONVOSO_ALLOWED_STATES : INTERNAL_DIALER_ALLOWED_STATES;
       const dialerName = dialerType === DIALER_TYPE_PITCH_BPO ? 'Pitch BPO' : dialerType === DIALER_TYPE_CONVOSO ? 'Convoso (IBP BPO)' : 'Internal Dialer';
       
       if (!allowedStates.includes(normalizedState)) {
-        console.log(`[STATE VALIDATION] Rejecting health insurance lead with non-allowed state: ${state} for ${dialerName}`);
+        console.log(`[STATE VALIDATION - DIALER] Rejecting health insurance lead with non-allowed state: ${state} for ${dialerName}`);
         return NextResponse.json(
           {
             success: false,
@@ -1627,7 +1570,35 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
         );
       }
       
-      console.log(`[STATE VALIDATION] State ${state} is allowed for health insurance lead (${dialerName})`);
+      console.log(`[STATE VALIDATION - DIALER] State ${state} is allowed for health insurance lead (${dialerName})`);
+      
+      // STEP 2: Validate state based on vertical configuration (additional check)
+      const vertical = routingData?.vertical || 'ACA';
+      console.log(`[STATE VALIDATION - VERTICAL] Checking state ${normalizedState} for vertical: ${vertical} (health insurance)`);
+      
+      const isVerticalStateAllowed = await isStateAllowedForVertical(vertical, normalizedState);
+      
+      if (!isVerticalStateAllowed) {
+        const verticalAllowedStates = await getAllowedStatesForVertical(vertical);
+        console.log(`[STATE VALIDATION - VERTICAL] Rejecting health insurance lead: state ${state} not approved for ${vertical} vertical`);
+        return NextResponse.json(
+          {
+            success: false,
+            bid: 0.00,
+            error: `State ${state} not approved for ${vertical} vertical`,
+            details: {
+              state: state,
+              vertical: vertical,
+              dialerType: dialerName,
+              verticalAllowedStates: verticalAllowedStates,
+              reason: 'State not approved in vertical configuration'
+            }
+          },
+          { status: 400 }
+        );
+      }
+      
+      console.log(`[STATE VALIDATION - VERTICAL] State ${state} is approved for ${vertical} vertical (health insurance)`);
       
       // STEP 1: TrustedForm Certificate Claiming (BEFORE compliance checks)
       // This must happen first - if claiming fails, reject the lead
@@ -1711,6 +1682,94 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
           { status: 400 }
         );
       }
+      
+      // Now insert the health insurance lead into the database with the calculated bid
+      const { data, error } = await supabase
+        .from('leads')
+        .insert([
+          {
+            // Basic lead info
+            first_name: firstName,
+            last_name: lastName,
+            email: email,
+            phone: phone,
+            trusted_form_cert_url: body.TrustedForm || '',
+            list_id: listId,
+            campaign_id: body.Vertical || 'health-insurance-campaign',
+            traffic_source: body.Source || (body.SubId === 'OPG4' ? 'Onpoint' : ''),
+            
+            // Address details
+            address: contactData.Address || '',
+            city: contactData.City || '',
+            state: state,
+            zip_code: contactData.ZipCode || contactData.zip_code || contactData.zip || '',
+            
+            // Compliance fields
+            income_bracket: incomeBracket,
+            age_range: ageRange || '',
+            homeowner_status: homeownerStatus,
+            
+            // API details
+            api_token: body.ApiToken || '',
+            vertical: body.Vertical || '',
+            sub_id: body.SubId || '',
+            user_agent: body.UserAgent || '',
+            original_url: body.OriginalUrl || '',
+            jornaya_lead_id: body.JornayaLeadId || '',
+            session_length: body.SessionLength || '',
+            tcpa_text: body.TcpaText || '',
+            verify_address: body.VerifyAddress === 'true',
+            original_creation_date: body.OriginalCreationDate ? new Date(body.OriginalCreationDate).toISOString() : null,
+            site_license_number: body.SiteLicenseNumber || '',
+            ip_address: contactData.IpAddress || '',
+            
+            // Contact details
+            day_phone_number: contactData.DayPhoneNumber || '',
+            years_at_residence: contactData.YearsAtResidence || '',
+            months_at_residence: contactData.MonthsAtResidence || '',
+            
+            // Person details
+            birth_date: dob ? new Date(dob).toISOString().split('T')[0] : null,
+            gender: person.Gender || '',
+            marital_status: person.MaritalStatus || '',
+            relationship_to_applicant: person.RelationshipToApplicant || '',
+            denied_insurance: person.DeniedInsurance || '',
+            us_residence: person.USResidence === 'True',
+            height_ft: person.Height_FT || '',
+            height_inch: person.Height_Inch || '',
+            weight: person.Weight || '',
+            student: person.Student === 'true',
+            occupation: person.Occupation || '',
+            education: person.Education || '',
+            house_hold_size: person.HouseHoldSize || '',
+            
+            // Medical information (as JSON)
+            conditions: conditions,
+            medical_history: medicalHistory,
+            
+            // Insurance information
+            coverage_type: requestedInsurance.CoverageType || '',
+            insurance_company: currentInsurance.InsuranceCompany || '',
+            
+            cadence_id: cadenceId,
+            token: token,
+            bid_amount: bid, // Store historical bid amount at time of submission
+            
+            created_at: new Date().toISOString(),
+            source: body.Source || ''
+          }
+        ])
+        .select();
+        
+      if (error) {
+        console.error('Failed to insert health insurance lead:', error);
+        return NextResponse.json(
+          { success: false, error: 'Failed to insert health insurance lead' },
+          { status: 500 }
+        );
+      }
+
+      console.log('Health insurance lead inserted successfully:', data);
       
       // Override campaign_id and cadence_id if provided in the routing
       if (routingData.campaign_id) {
@@ -1808,8 +1867,102 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
         effectiveCadenceId = selectedCadence;
       }
       
+      let healthInsuranceLeadData: any = null;
+      
       try {
         console.log('Forwarding health insurance lead to dialer for list:', listId);
+        
+        // Now insert the health insurance lead into the database with the calculated bid
+        const { data: insertedData, error } = await supabase
+          .from('leads')
+          .insert([
+            {
+              // Basic lead info
+              first_name: firstName,
+              last_name: lastName,
+              email: email,
+              phone: phone,
+              trusted_form_cert_url: body.TrustedForm || '',
+              list_id: listId,
+              campaign_id: body.Vertical || 'health-insurance-campaign',
+              traffic_source: body.Source || (body.SubId === 'OPG4' ? 'Onpoint' : ''),
+              
+              // Address details
+              address: contactData.Address || '',
+              city: contactData.City || '',
+              state: state,
+              zip_code: contactData.ZipCode || contactData.zip_code || contactData.zip || '',
+              
+              // Compliance fields
+              income_bracket: incomeBracket,
+              age_range: ageRange || '',
+              homeowner_status: homeownerStatus,
+              
+              // API details
+              api_token: body.ApiToken || '',
+              vertical: body.Vertical || '',
+              sub_id: body.SubId || '',
+              user_agent: body.UserAgent || '',
+              original_url: body.OriginalUrl || '',
+              jornaya_lead_id: body.JornayaLeadId || '',
+              session_length: body.SessionLength || '',
+              tcpa_text: body.TcpaText || '',
+              verify_address: body.VerifyAddress === 'true',
+              original_creation_date: body.OriginalCreationDate ? new Date(body.OriginalCreationDate).toISOString() : null,
+              site_license_number: body.SiteLicenseNumber || '',
+              ip_address: contactData.IpAddress || '',
+              
+              // Contact details
+              day_phone_number: contactData.DayPhoneNumber || '',
+              years_at_residence: contactData.YearsAtResidence || '',
+              months_at_residence: contactData.MonthsAtResidence || '',
+              
+              // Person details
+              birth_date: dob ? new Date(dob).toISOString().split('T')[0] : null,
+              gender: person.Gender || '',
+              marital_status: person.MaritalStatus || '',
+              relationship_to_applicant: person.RelationshipToApplicant || '',
+              denied_insurance: person.DeniedInsurance || '',
+              us_residence: person.USResidence === 'True',
+              height_ft: person.Height_FT || '',
+              height_inch: person.Height_Inch || '',
+              weight: person.Weight || '',
+              student: person.Student === 'true',
+              occupation: person.Occupation || '',
+              education: person.Education || '',
+              house_hold_size: person.HouseHoldSize || '',
+              
+              // Medical information (as JSON)
+              conditions: conditions,
+              medical_history: medicalHistory,
+              
+              // Insurance information
+              coverage_type: requestedInsurance.CoverageType || '',
+              insurance_company: currentInsurance.InsuranceCompany || '',
+              
+              cadence_id: cadenceId,
+              token: token,
+              bid_amount: bid, // Store historical bid amount at time of submission
+              
+              created_at: new Date().toISOString(),
+              source: body.Source || ''
+            }
+          ])
+          .select();
+          
+        if (error) {
+          console.error('Failed to insert health insurance lead:', error);
+          return NextResponse.json(
+            { success: false, error: 'Failed to insert health insurance lead' },
+            { status: 500 }
+          );
+        }
+
+        healthInsuranceLeadData = insertedData;
+        console.log('Health insurance lead inserted successfully:', healthInsuranceLeadData);
+        
+        // Format phone number with +1 prefix if it doesn't have it already
+        const formattedPhone = phone.startsWith('+1') ? phone : `+1${phone.replace(/\D/g, '')}`;        
         
         // *** DIALER APPROVAL ENFORCEMENT FOR HEALTH INSURANCE ***
         // Check if the target dialer is approved for this list ID
@@ -1834,7 +1987,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
         if (dialerType === DIALER_TYPE_PITCH_BPO) {
           console.log('✅ Pitch BPO dialer approved - routing health insurance lead to Pitch BPO dialer');
           return await forwardToPitchBPO({
-            data: [],
+            data: healthInsuranceLeadData,
             listId,
             phone,
             firstName,
@@ -1848,7 +2001,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
         } else if (dialerType === DIALER_TYPE_CONVOSO) {
           console.log('✅ Convoso dialer approved - routing health insurance lead to Convoso (IBP BPO) dialer');
           return await forwardToConvoso({
-            data: [],
+            data: healthInsuranceLeadData,
             listId,
             phone,
             firstName,
@@ -1860,11 +2013,6 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
             routingData
           });
         }
-        
-        console.log('Forwarding health insurance lead to internal dialer API for list:', listId);
-        
-        // Format phone number with +1 prefix if it doesn't have it already
-        const formattedPhone = phone.startsWith('+1') ? phone : `+1${phone.replace(/\D/g, '')}`;        
         
         // Define the type for dialer payload to avoid TypeScript errors
         interface DialerPayload {
@@ -1887,7 +2035,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
           campaign_id: string;
           cadence_id: string | null;
           compliance_lead_id: string; // Add compliance_lead_id to the interface
-        };
+        }
         
         // Create the dialer payload with all required fields
         const dialerPayload: DialerPayload = {
@@ -1911,7 +2059,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
           
           // Custom fields passed through as a nested object
           custom_fields: {
-            compliance_lead_id: data[0].id // Add compliance_lead_id to custom fields
+            compliance_lead_id: healthInsuranceLeadData[0].id // Add compliance_lead_id to custom fields
           },
           
           // Include the routing IDs directly in the payload
@@ -1920,7 +2068,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
           cadence_id: effectiveCadenceId,
           
           // Include the lead ID to enable policy postback tracking
-          compliance_lead_id: data[0].id
+          compliance_lead_id: healthInsuranceLeadData[0].id
         };
         
         // The dialer API expects listId and token as URL parameters, not just in the JSON payload
@@ -1990,13 +2138,13 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
       // No routing data found, but still validate state and route based on dialer type
       console.log(`No routing data found for list ${listId}, using default dialer: ${dialerType === DIALER_TYPE_INTERNAL ? 'Internal Dialer' : dialerType === DIALER_TYPE_PITCH_BPO ? 'Pitch BPO' : dialerType === DIALER_TYPE_CONVOSO ? 'Convoso (IBP BPO)' : 'Unknown'}`);
       
-      // Validate state based on dialer type
+      // STEP 1: Validate state based on dialer type
       const normalizedState = state.toUpperCase();
       const allowedStates = dialerType === DIALER_TYPE_PITCH_BPO ? PITCH_BPO_ALLOWED_STATES : dialerType === DIALER_TYPE_CONVOSO ? CONVOSO_ALLOWED_STATES : INTERNAL_DIALER_ALLOWED_STATES;
       const dialerName = dialerType === DIALER_TYPE_PITCH_BPO ? 'Pitch BPO' : dialerType === DIALER_TYPE_CONVOSO ? 'Convoso (IBP BPO)' : 'Internal Dialer';
       
       if (!allowedStates.includes(normalizedState)) {
-        console.log(`[STATE VALIDATION] Rejecting health insurance lead with non-allowed state: ${state} for ${dialerName}`);
+        console.log(`[STATE VALIDATION - DIALER] Rejecting health insurance lead with non-allowed state: ${state} for ${dialerName}`);
         return NextResponse.json(
           {
             success: false,
@@ -2012,14 +2160,42 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
         );
       }
       
-      console.log(`[STATE VALIDATION] State ${state} is allowed for health insurance lead (${dialerName})`);
+      console.log(`[STATE VALIDATION - DIALER] State ${state} is allowed for health insurance lead (${dialerName})`);
+      
+      // STEP 2: Validate state based on vertical configuration (defaults to ACA)
+      const vertical = 'ACA'; // Default vertical when no routing data
+      console.log(`[STATE VALIDATION - VERTICAL] Checking state ${normalizedState} for vertical: ${vertical} (health insurance, no routing)`);
+      
+      const isVerticalStateAllowed = await isStateAllowedForVertical(vertical, normalizedState);
+      
+      if (!isVerticalStateAllowed) {
+        const verticalAllowedStates = await getAllowedStatesForVertical(vertical);
+        console.log(`[STATE VALIDATION - VERTICAL] Rejecting health insurance lead: state ${state} not approved for ${vertical} vertical`);
+        return NextResponse.json(
+          {
+            success: false,
+            bid: 0.00,
+            error: `State ${state} not approved for ${vertical} vertical`,
+            details: {
+              state: state,
+              vertical: vertical,
+              dialerType: dialerName,
+              verticalAllowedStates: verticalAllowedStates,
+              reason: 'State not approved in vertical configuration'
+            }
+          },
+          { status: 400 }
+        );
+      }
+      
+      console.log(`[STATE VALIDATION - VERTICAL] State ${state} is approved for ${vertical} vertical (health insurance, no routing)`);
     }
 
     // Include bid, lead_id, and dialer response in the API response
     const responseObj: any = {
       success: true, 
-      lead_id: data[0].id, // Explicitly return the lead ID
-      data: data[0],
+      lead_id: healthInsuranceLeadData[0].id, // Explicitly return the lead ID
+      data: healthInsuranceLeadData[0],
       bid: bid
     };
     
