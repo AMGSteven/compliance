@@ -135,10 +135,10 @@ async function forwardToPitchBPO(params: {
         campaign = 'Final Expense Pitch';
         subcampaign = 'Synergy FE RT';
         console.log('Using Final Expense Pitch campaign settings');
-      } else if (token === 'b7aa238e-3f2a-488a-b223-a272aa48d252') {
+      } else if (token === 'ced256a7-d6e9-499d-9fbe-d3124c0e9ec0') {
         // Medicare campaign
         campaign = 'Medicare Aragon';
-        subcampaign = 'Juiced Medicare RT';
+        subcampaign = 'Synergy Med RT';
         console.log('Using Medicare campaign settings');
       } else if (token === '70942646-125b-4ddd-96fc-b9a142c698b8') {
         // ACA campaign (keep existing values)
