@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { validateApiKey } from '@/lib/auth';
 import { ComplianceEngine } from '@/lib/compliance/engine';
 import { checkForDuplicateLead, checkForDuplicateLeadInVertical } from '@/app/lib/duplicate-lead-check';
+import { logRejection } from '@/app/lib/rejection-logger';
 
 // Allowed states for leads
 const INTERNAL_DIALER_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'GA', 'IN', 'KY', 'LA', 'ME', 'MI', 'MO', 'MS', 'NC', 'NM', 'OH', 'PA', 'SC', 'TN', 'VA', 'WV'];
@@ -123,6 +124,22 @@ async function performPrePingValidation(body: PrePingRequest, startTime: number)
         const checkType = duplicateResult.details?.checkType || 'unknown';
         rejectionReasons.push(`Duplicate lead (last seen ${daysAgo} days ago, vertical: ${vertical}, check: ${checkType})`);
         console.log(`[Pre-Ping] Duplicate check failed: ${daysAgo} days since last lead in vertical: ${vertical} (${checkType})`);
+        
+        // Log rejection for ping analysis (non-blocking)
+        logRejection({
+          phone: normalizedPhone,
+          incomingListId: list_id || 'unknown',
+          matchedLeadId: duplicateResult.details?.matchedLeadId,
+          matchedListId: duplicateResult.details?.listId,
+          rejectionReason: 'duplicate',
+          rejectionType: checkType,
+          incomingVertical: vertical,
+          matchedVertical: vertical,
+          daysSinceOriginal: daysAgo,
+          endpoint: '/api/leads/pre-ping',
+          rejectionDetails: duplicateResult.details,
+          requestPayload: body
+        }).catch((err: Error) => console.error('[REJECTION LOG] Logging failed:', err));
       }
     } catch (error) {
       console.error('[Pre-Ping] Duplicate check failed:', error);

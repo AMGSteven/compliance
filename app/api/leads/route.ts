@@ -7,6 +7,7 @@ import { checkForDuplicateLead, checkForDuplicateLeadInVertical } from '@/app/li
 import { TrustedFormService } from '@/lib/services/trusted-form';
 import { normalizeSubIdKey } from '@/lib/utils/subid';
 import { getAllowedStatesForVertical, isStateAllowedForVertical } from '@/lib/vertical-state-validator';
+import { logRejection } from '@/app/lib/rejection-logger';
 
 // Main POST handler for all lead formats
 // Force dynamic routing for Vercel deployment
@@ -136,10 +137,10 @@ async function forwardToPitchBPO(params: {
         campaign = 'Final Expense Pitch';
         subcampaign = 'Synergy FE RT';
         console.log('Using Final Expense Pitch campaign settings');
-      } else if (token === 'ced256a7-d6e9-499d-9fbe-d3124c0e9ec0') {
+      } else if (token === 'b7aa238e-3f2a-488a-b223-a272aa48d252') {
         // Medicare campaign
         campaign = 'Medicare Aragon';
-        subcampaign = 'Synergy Med RT';
+        subcampaign = 'Juiced Medicare RT';
         console.log('Using Medicare campaign settings');
       } else if (token === '70942646-125b-4ddd-96fc-b9a142c698b8') {
         // ACA campaign (keep existing values)
@@ -610,6 +611,23 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
         const vertical = duplicateCheck.details?.vertical || 'unknown';
         const checkType = duplicateCheck.details?.checkType || 'unknown';
         console.log(`[DUPLICATE CHECK] BLOCKING LEAD: Phone ${normalizedPhoneForComplianceCheck} was submitted ${duplicateCheck.details?.daysAgo} days ago in vertical: ${vertical} (${checkType})`);
+        
+        // Log rejection for ping analysis (non-blocking)
+        logRejection({
+          phone: normalizedPhoneForComplianceCheck,
+          incomingListId: listId || 'unknown',
+          matchedLeadId: duplicateCheck.details?.matchedLeadId,
+          matchedListId: duplicateCheck.details?.listId,
+          rejectionReason: 'duplicate',
+          rejectionType: checkType,
+          incomingVertical: vertical,
+          matchedVertical: vertical,
+          daysSinceOriginal: duplicateCheck.details?.daysAgo,
+          endpoint: '/api/leads',
+          rejectionDetails: duplicateCheck.details,
+          requestPayload: body
+        }).catch((err: Error) => console.error('[REJECTION LOG] Logging failed:', err));
+        
         return NextResponse.json(
           {
             success: false,
@@ -1390,6 +1408,9 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
     const dob = person.DOB || '';
     const homeownerStatus = contactData.ResidenceType || 'Not Provided';
     
+    // Declare lead data variable at function scope so it's accessible throughout
+    let healthInsuranceLeadData: any = null;
+    
     // Validate required fields for health insurance lead
     if (!firstName || !lastName || !email || !phone || !state) {
       console.error('Missing required fields for health insurance lead:', {
@@ -1821,6 +1842,22 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
           details: duplicateCheck.details
         });
         
+        // Log rejection for ping analysis (non-blocking)
+        logRejection({
+          phone: normalizedPhoneForComplianceCheck,
+          incomingListId: listId || 'unknown',
+          matchedLeadId: duplicateCheck.details?.matchedLeadId,
+          matchedListId: duplicateCheck.details?.listId,
+          rejectionReason: 'duplicate',
+          rejectionType: checkType,
+          incomingVertical: vertical,
+          matchedVertical: vertical,
+          daysSinceOriginal: duplicateCheck.details?.daysAgo,
+          endpoint: '/api/leads',
+          rejectionDetails: duplicateCheck.details,
+          requestPayload: body
+        }).catch((err: Error) => console.error('[REJECTION LOG] Logging failed:', err));
+        
         return NextResponse.json(
           {
             success: false,
@@ -1866,8 +1903,6 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
         // Override the cadence ID for Onpoint leads
         effectiveCadenceId = selectedCadence;
       }
-      
-      let healthInsuranceLeadData: any = null;
       
       try {
         console.log('Forwarding health insurance lead to dialer for list:', listId);
@@ -2122,7 +2157,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
                 dialer_compliance_id: dialerResponse.compliance_lead_id,
                 updated_at: new Date().toISOString()
               })
-              .eq('id', data[0].id);
+              .eq('id', healthInsuranceLeadData[0].id);
             
             console.log('Successfully associated dialer compliance_lead_id with lead record');
           } catch (updateError) {

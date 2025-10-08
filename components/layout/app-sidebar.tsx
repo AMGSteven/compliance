@@ -133,6 +133,11 @@ const navigationItems = [
         href: "/repost-leads",
         icon: RefreshCw,
       },
+      {
+        title: "Ping Analysis",
+        href: "/dashboard/ping-analysis",
+        icon: BarChart3,
+      },
     ],
   },
   {

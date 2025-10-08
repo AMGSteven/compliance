@@ -22,6 +22,7 @@ export interface DuplicateCheckResult {
     foundInTable?: 'leads' | 'contacts';
     vertical?: string;
     listId?: string;
+    matchedLeadId?: string;  // Added for rejection logging
     checkType?: 'vertical-specific' | 'global' | 'fallback';
   };
 }
@@ -155,7 +156,7 @@ export async function checkForDuplicateLeadInVertical(
     // Query leads with the same phone number first, then filter by vertical
     const { data, error } = await supabase
       .from('leads')
-      .select('created_at, list_id')
+      .select('created_at, list_id, id')
       .eq('phone', cleanedPhone)
       .gte('created_at', thirtyDaysAgoStr)
       .order('created_at', { ascending: false });
@@ -224,6 +225,7 @@ export async function checkForDuplicateLeadInVertical(
         foundInTable: 'leads',
         vertical,
         listId: duplicate.list_id,
+        matchedLeadId: duplicate.id,  // Added for rejection logging
         checkType: 'vertical-specific'
       }
     };
