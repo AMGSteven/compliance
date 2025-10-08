@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Card, Table, Typography, DatePicker, Button, Select, Space, Statistic, Row, Col, Spin, Tabs, Badge, Tooltip, message } from 'antd';
+import { Card, Table, Typography, DatePicker, Button, Select, Space, Statistic, Row, Col, Spin, Tabs, Badge, Tooltip, message, Alert } from 'antd';
 import { BarChartOutlined, DownloadOutlined, ReloadOutlined, HeatMapOutlined, TableOutlined, InfoCircleOutlined, WarningOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
@@ -50,11 +50,16 @@ export default function PingAnalysisPage() {
   // State
   const [loading, setLoading] = useState(false);
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>([
-    dayjs().subtract(30, 'days'),
+    dayjs().subtract(7, 'days'),  // Default to 1 week
     dayjs()
   ]);
-  const [selectedVertical, setSelectedVertical] = useState<string>('all');
+  const [selectedVertical, setSelectedVertical] = useState<string>('ACA');  // Default to ACA for heat map
   const [minDuplicateRate, setMinDuplicateRate] = useState<number>(0);
+  const [minPings, setMinPings] = useState<number>(50);  // Filter out low-volume lists
+  
+  // Heat map specific state
+  const [heatmapData, setHeatmapData] = useState<any[]>([]);
+  const [heatmapLists, setHeatmapLists] = useState<any[]>([]);
   
   // Data state
   const [sameVerticalStats, setSameVerticalStats] = useState<ListStats[]>([]);
@@ -68,7 +73,7 @@ export default function PingAnalysisPage() {
   const [overallDuplicateRate, setOverallDuplicateRate] = useState(0);
   
   // Active tab
-  const [activeTab, setActiveTab] = useState('same-vertical');
+  const [activeTab, setActiveTab] = useState('heatmap');  // Default to heat map
   
   // Fetch data
   const fetchData = async () => {
@@ -81,7 +86,8 @@ export default function PingAnalysisPage() {
       const statsParams = new URLSearchParams({
         start_date: startDate,
         end_date: endDate,
-        min_rate: minDuplicateRate.toString()
+        min_rate: minDuplicateRate.toString(),
+        min_pings: minPings.toString()
       });
       
       if (selectedVertical !== 'all') {
@@ -94,14 +100,17 @@ export default function PingAnalysisPage() {
       if (statsData.success) {
         setSameVerticalStats(statsData.data || []);
         
-        // Use metadata from API (SQL-aggregated totals, not JavaScript aggregation)
+        // Use metadata from API (SQL-aggregated totals, respects ALL filters including date range)
         const metadata = statsData.metadata || {};
         setTotalPings(metadata.total_pings || 0);
         setTotalRejections(metadata.total_rejections || 0);
         setTotalAccepted(metadata.total_accepted || 0);
         setOverallDuplicateRate(parseFloat(metadata.overall_duplicate_rate || '0'));
         
-        console.log('[PING ANALYSIS] Summary stats:', {
+        console.log('[PING ANALYSIS] Summary stats (respects date filter):', {
+          dateRange: `${startDate} to ${endDate}`,
+          vertical: selectedVertical,
+          minPings: minPings,
           pings: metadata.total_pings,
           accepted: metadata.total_accepted,
           rejected: metadata.total_rejections,
@@ -122,6 +131,26 @@ export default function PingAnalysisPage() {
       if (crossData.success) {
         setCrossVerticalData(crossData.data?.matrix || []);
         setCrossVerticalLists(crossData.data?.lists || []);
+      }
+      
+      // Fetch heat map data (same-vertical duplicate matrix)
+      const heatmapParams = new URLSearchParams({
+        start_date: startDate,
+        end_date: endDate,
+        min_threshold: '0',
+        min_pings: minPings.toString()
+      });
+      
+      if (selectedVertical !== 'all') {
+        heatmapParams.append('vertical', selectedVertical);
+      }
+      
+      const heatmapResponse = await fetch(`/api/ping-analysis/heatmap?${heatmapParams}`);
+      const heatmapDataResult = await heatmapResponse.json();
+      
+      if (heatmapDataResult.success) {
+        setHeatmapData(heatmapDataResult.data?.matrix || []);
+        setHeatmapLists(heatmapDataResult.data?.lists || []);
       }
       
     } catch (error) {
@@ -175,15 +204,35 @@ export default function PingAnalysisPage() {
     return 'error';
   };
   
-  // Get background color for heat map cells
-  const getHeatmapColor = (count: number, maxCount: number): string => {
-    if (count === 0) return '#ffffff';
-    const intensity = count / maxCount;
-    if (intensity < 0.2) return '#fef3c7';   // Light yellow
-    if (intensity < 0.4) return '#fcd34d';   // Yellow
-    if (intensity < 0.6) return '#f59e0b';   // Orange
-    if (intensity < 0.8) return '#f97316';   // Dark orange
-    return '#dc2626';  // Red
+  // Get background color for heat map cells based on PERCENTAGE of overlap
+  // Formula: (duplicates between A and B) / (total duplicates for A + total duplicates for B) * 100
+  const getHeatmapColorByPercentage = (percentage: number): string => {
+    if (percentage === 0 || !percentage) return '#ffffff';  // White - 0%
+    if (percentage < 5) return '#fef3c7';    // Light yellow - <5%
+    if (percentage < 10) return '#fde68a';   // Yellow - 5-10%
+    if (percentage < 20) return '#fcd34d';   // Medium yellow - 10-20%
+    if (percentage < 30) return '#fbbf24';   // Dark yellow - 20-30%
+    if (percentage < 40) return '#f59e0b';   // Orange - 30-40%
+    if (percentage < 50) return '#f97316';   // Dark orange - 40-50%
+    if (percentage < 70) return '#ef4444';   // Red - 50-70%
+    return '#dc2626';  // Dark red - 70%+
+  };
+  
+  // Build heat map matrix for visualization
+  const buildHeatMapMatrix = () => {
+    if (!heatmapLists || heatmapLists.length === 0) return null;
+    
+    // Create a lookup map for quick cell access
+    const cellMap = new Map<string, number>();
+    heatmapData.forEach((cell: any) => {
+      const key = `${cell.incoming_list_id}__${cell.matched_list_id}`;
+      cellMap.set(key, cell.duplicate_count || 0);
+    });
+    
+    // Find max count for relative scaling (optional)
+    const maxCount = Math.max(...heatmapData.map((c: any) => c.duplicate_count || 0), 1);
+    
+    return { cellMap, maxCount, lists: heatmapLists };
   };
   
   // Same-vertical rejection table columns
@@ -250,11 +299,14 @@ export default function PingAnalysisPage() {
       key: 'duplicate_rate',
       sorter: (a: ListStats, b: ListStats) => a.duplicate_rate - b.duplicate_rate,
       width: 100,
-      render: (rate: number) => (
-        <Text type={getDuplicateRateColor(rate)}>
-          <strong>{rate.toFixed(2)}%</strong>
-        </Text>
-      ),
+      render: (rate: number) => {
+        const color = rate < 5 ? '#52c41a' : rate < 20 ? '#faad14' : '#ff4d4f';
+        return (
+          <Text style={{ color, fontWeight: 'bold' }}>
+            {rate.toFixed(2)}%
+          </Text>
+        );
+      },
     },
     {
       title: 'Unique Phones',
@@ -368,13 +420,16 @@ export default function PingAnalysisPage() {
             <Text strong>Vertical:</Text>
             <Select
               value={selectedVertical}
-              onChange={setSelectedVertical}
+              onChange={(value) => {
+                setSelectedVertical(value);
+                console.log('Vertical changed to:', value);
+              }}
               style={{ width: 150, marginLeft: 8 }}
             >
-              <Option value="all">All Verticals</Option>
               <Option value="ACA">ACA</Option>
               <Option value="Medicare">Medicare</Option>
               <Option value="Final Expense">Final Expense</Option>
+              <Option value="all">All Verticals</Option>
             </Select>
           </div>
           
@@ -390,6 +445,22 @@ export default function PingAnalysisPage() {
               <Option value={10}>10%</Option>
               <Option value={20}>20%</Option>
               <Option value={30}>30%</Option>
+            </Select>
+          </div>
+          
+          <div>
+            <Text strong>Min Pings:</Text>
+            <Select
+              value={minPings}
+              onChange={setMinPings}
+              style={{ width: 120, marginLeft: 8 }}
+            >
+              <Option value={0}>No Min</Option>
+              <Option value={50}>50+</Option>
+              <Option value={100}>100+</Option>
+              <Option value={500}>500+</Option>
+              <Option value={1000}>1,000+</Option>
+              <Option value={5000}>5,000+</Option>
             </Select>
           </div>
           
@@ -409,7 +480,7 @@ export default function PingAnalysisPage() {
         <Col span={6}>
           <Card>
             <Statistic
-              title="Total Pings (30d)"
+              title={`Total Pings (${dateRange[0].format('MMM D')} - ${dateRange[1].format('MMM D')})`}
               value={totalPings}
               valueStyle={{ color: '#1890ff' }}
             />
@@ -422,6 +493,10 @@ export default function PingAnalysisPage() {
               value={totalAccepted}
               valueStyle={{ color: '#52c41a' }}
             />
+            <div className="text-xs text-gray-500 mt-1">
+              {selectedVertical !== 'all' && `${selectedVertical} vertical`}
+              {minPings > 0 && ` • ${minPings}+ pings`}
+            </div>
           </Card>
         </Col>
         <Col span={6}>
@@ -431,6 +506,9 @@ export default function PingAnalysisPage() {
               value={totalRejections}
               valueStyle={{ color: '#ff4d4f' }}
             />
+            <div className="text-xs text-gray-500 mt-1">
+              Same-vertical duplicates
+            </div>
           </Card>
         </Col>
         <Col span={6}>
@@ -443,6 +521,9 @@ export default function PingAnalysisPage() {
                 color: overallDuplicateRate < 5 ? '#52c41a' : overallDuplicateRate < 20 ? '#faad14' : '#ff4d4f' 
               }}
             />
+            <div className="text-xs text-gray-500 mt-1">
+              {totalPings > 0 ? `${totalRejections.toLocaleString()} of ${totalPings.toLocaleString()} pings` : 'No data'}
+            </div>
           </Card>
         </Col>
       </Row>
@@ -454,10 +535,211 @@ export default function PingAnalysisPage() {
           onChange={setActiveTab}
           items={[
             {
+              key: 'heatmap',
+              label: (
+                <span>
+                  <HeatMapOutlined /> Duplicate Heat Map
+                  {heatmapData.length > 0 && <Badge count={heatmapData.length} style={{ marginLeft: 8 }} />}
+                </span>
+              ),
+              children: (
+                <>
+                  <div className="mb-4">
+                    <Space direction="vertical" style={{ width: '100%' }}>
+                      <Alert
+                        message="Same-Vertical Duplicate Heat Map"
+                        description={`Shows duplicate overlap between lists in the ${selectedVertical} vertical. Each cell represents how many duplicates one list shares with another. Diagonal cells (same list) are empty.`}
+                        type="info"
+                        showIcon
+                        icon={<InfoCircleOutlined />}
+                      />
+                      
+                      <div className="flex items-center justify-between">
+                        <Text strong>Heat Map for: {selectedVertical} vertical</Text>
+                        <Text type="secondary">
+                          {heatmapLists.length} lists • {heatmapData.length} list pairs with overlaps
+                        </Text>
+                      </div>
+                    </Space>
+                  </div>
+                  
+                  <Spin spinning={loading}>
+                    {heatmapLists.length === 0 ? (
+                      <Card className="text-center p-8">
+                        <InfoCircleOutlined style={{ fontSize: 48, color: '#1890ff', marginBottom: 16 }} />
+                        <Title level={4}>No Data Available Yet</Title>
+                        <Text>
+                          Heat map data will appear once rejection tracking accumulates.
+                          Check back in 24-48 hours, or view Cross-Vertical Duplicates for immediate insights.
+                        </Text>
+                      </Card>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <div className="inline-block min-w-full">
+                          <table className="border-collapse" style={{ fontSize: '11px' }}>
+                            <thead>
+                              <tr>
+                                <th className="sticky left-0 bg-white z-10 p-2 border border-gray-300 min-w-[120px]"></th>
+                                {heatmapLists.map((list: any, idx: number) => (
+                                  <th 
+                                    key={idx} 
+                                    className="p-1 border border-gray-300 min-w-[100px] max-w-[100px]"
+                                    style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', height: '200px' }}
+                                  >
+                                    <div className="text-xs truncate" title={list.description}>
+                                      {list.description || 'Unknown'}
+                                    </div>
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {heatmapLists.map((rowList: any, rowIdx: number) => (
+                                <tr key={rowIdx}>
+                                  <td className="sticky left-0 bg-white z-10 p-2 border border-gray-300 text-xs">
+                                    <div className="truncate max-w-[180px]" title={rowList.description}>
+                                      {rowList.description || 'Unknown'}
+                                    </div>
+                                  </td>
+                                  {heatmapLists.map((colList: any, colIdx: number) => {
+                                    // Same list - keep empty/white
+                                    if (rowList.list_id === colList.list_id) {
+                                      return (
+                                        <td 
+                                          key={colIdx} 
+                                          className="border border-gray-300 min-w-[100px] max-w-[100px] h-[100px]"
+                                          style={{ backgroundColor: '#f5f5f5' }}
+                                        >
+                                          <div className="flex items-center justify-center h-full text-gray-400 text-xs">
+                                            —
+                                          </div>
+                                        </td>
+                                      );
+                                    }
+                                    
+                                    // Different lists - show duplicate count and calculate overlap percentage
+                                    const cellData = heatmapData.find(
+                                      (d: any) => d.incoming_list_id === rowList.list_id && d.matched_list_id === colList.list_id
+                                    );
+                                    
+                                    // Also check reverse direction for bidirectional data
+                                    const reverseCellData = heatmapData.find(
+                                      (d: any) => d.incoming_list_id === colList.list_id && d.matched_list_id === rowList.list_id
+                                    );
+                                    
+                                    const duplicateCount = cellData?.duplicate_count || 0;
+                                    const reverseDuplicateCount = reverseCellData?.duplicate_count || 0;
+                                    
+                                    // Get total duplicates for both lists
+                                    const rowListTotalDupes = sameVerticalStats.find(s => s.list_id === rowList.list_id)?.duplicates || 0;
+                                    const colListTotalDupes = sameVerticalStats.find(s => s.list_id === colList.list_id)?.duplicates || 0;
+                                    const totalDupesBothLists = rowListTotalDupes + colListTotalDupes;
+                                    
+                                    // Calculate overlap percentage: (duplicates between A and B) / (total duplicates for A + B) * 100
+                                    const overlapPercentage = totalDupesBothLists > 0 
+                                      ? ((duplicateCount + reverseDuplicateCount) / totalDupesBothLists) * 100 
+                                      : 0;
+                                    
+                                    const bgColor = getHeatmapColorByPercentage(overlapPercentage);
+                                    const textColor = overlapPercentage > 40 ? '#ffffff' : '#000000';
+                                    
+                                    return (
+                                      <Tooltip 
+                                        key={colIdx}
+                                        title={
+                                          <div>
+                                            <div><strong>From:</strong> {rowList.description}</div>
+                                            <div><strong>To:</strong> {colList.description}</div>
+                                            <div><strong>Duplicates:</strong> {duplicateCount}</div>
+                                            {reverseDuplicateCount > 0 && <div><strong>Reverse:</strong> {reverseDuplicateCount}</div>}
+                                            <div><strong>Overlap %:</strong> {overlapPercentage.toFixed(1)}%</div>
+                                            <div className="text-xs mt-1 opacity-75">
+                                              ({duplicateCount + reverseDuplicateCount} of {totalDupesBothLists} total dupes)
+                                            </div>
+                                          </div>
+                                        }
+                                      >
+                                        <td 
+                                          className="border border-gray-300 cursor-pointer hover:opacity-80 transition-opacity min-w-[100px] max-w-[100px] h-[100px]"
+                                          style={{ 
+                                            backgroundColor: bgColor,
+                                            color: textColor
+                                          }}
+                                        >
+                                          <div className="flex flex-col items-center justify-center h-full">
+                                            {(duplicateCount > 0 || reverseDuplicateCount > 0) && (
+                                              <>
+                                                <div className="font-bold text-base">{duplicateCount || reverseDuplicateCount}</div>
+                                                <div className="text-xs mt-0.5">{overlapPercentage.toFixed(0)}%</div>
+                                              </>
+                                            )}
+                                          </div>
+                                        </td>
+                                      </Tooltip>
+                                    );
+                                  })}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        
+                        {/* Legend */}
+                        <div className="mt-4 p-4 bg-gray-50 rounded">
+                          <Text strong className="block mb-2">Color Scale (Overlap Percentage):</Text>
+                          <Text className="text-xs text-gray-600 block mb-3">
+                            Percentage = (Duplicates between lists A & B) / (Total duplicates for A + Total duplicates for B) × 100
+                          </Text>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex items-center gap-1">
+                              <div className="w-10 h-8 border border-gray-300" style={{ backgroundColor: '#ffffff' }}></div>
+                              <Text className="text-xs">0%</Text>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className="w-10 h-8 border border-gray-300" style={{ backgroundColor: '#fef3c7' }}></div>
+                              <Text className="text-xs">&lt;5%</Text>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className="w-10 h-8 border border-gray-300" style={{ backgroundColor: '#fde68a' }}></div>
+                              <Text className="text-xs">5-10%</Text>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className="w-10 h-8 border border-gray-300" style={{ backgroundColor: '#fcd34d' }}></div>
+                              <Text className="text-xs">10-20%</Text>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className="w-10 h-8 border border-gray-300" style={{ backgroundColor: '#fbbf24' }}></div>
+                              <Text className="text-xs">20-30%</Text>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className="w-10 h-8 border border-gray-300" style={{ backgroundColor: '#f59e0b' }}></div>
+                              <Text className="text-xs">30-40%</Text>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className="w-10 h-8 border border-gray-300" style={{ backgroundColor: '#f97316' }}></div>
+                              <Text className="text-xs">40-50%</Text>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className="w-10 h-8 border border-gray-300" style={{ backgroundColor: '#ef4444' }}></div>
+                              <Text className="text-xs">50-70%</Text>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <div className="w-10 h-8 border border-gray-300" style={{ backgroundColor: '#dc2626' }}></div>
+                              <Text className="text-xs">70%+</Text>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </Spin>
+                </>
+              ),
+            },
+            {
               key: 'same-vertical',
               label: (
                 <span>
-                  <TableOutlined /> Same-Vertical Rejections
+                  <TableOutlined /> List Stats Table
                   {totalRejections > 0 && <Badge count={totalRejections} style={{ marginLeft: 8 }} />}
                 </span>
               ),
