@@ -79,8 +79,9 @@ export default function PingAnalysisPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const startDate = dateRange[0].toISOString();
-      const endDate = dateRange[1].toISOString();
+      // Use start of day for start date, start of NEXT day for end date (inclusive)
+      const startDate = dateRange[0].startOf('day').toISOString();
+      const endDate = dateRange[1].add(1, 'day').startOf('day').toISOString();
       
       // Fetch same-vertical rejection stats
       const statsParams = new URLSearchParams({
