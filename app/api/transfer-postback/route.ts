@@ -92,8 +92,32 @@ export async function POST(request: Request) {
     
     console.log(`Processing raw transfer postback for lead ${leadId} at ${transferDate}`);
     
-    // REMOVED: Dedupe logic that prevented multiple transfers within 24 hours
-    // Now we process every transfer postback as a raw event
+    // Check if this lead already has a transfer postback today (prevent duplicate counting)
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayStartISO = todayStart.toISOString();
+    
+    const { data: existingTransfers, error: checkError } = await supabase
+      .from('transfer_postbacks')
+      .select('id, created_at')
+      .eq('lead_id', leadId)
+      .gte('created_at', todayStartISO)
+      .limit(1);
+    
+    if (checkError) {
+      console.warn('Error checking for existing transfer today (continuing anyway):', checkError);
+    } else if (existingTransfers && existingTransfers.length > 0) {
+      console.log(`⚠️  Lead ${leadId} already has a transfer postback today at ${existingTransfers[0].created_at} - skipping duplicate`);
+      return NextResponse.json({
+        success: true,
+        message: 'Transfer already recorded today',
+        lead_id: leadId,
+        transferred_at: existingTransfers[0].created_at,
+        duplicate_prevented: true
+      });
+    }
+    
+    console.log(`✅ No existing transfer today for lead ${leadId} - processing postback`);
     
     // Update the lead record (always update to capture the latest transfer timestamp)
     const { data: updateData, error: updateError } = await supabase
