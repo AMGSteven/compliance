@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic';
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useInView } from 'react-intersection-observer';
+import StateLeadMap from '@/components/maps/StateLeadMap';
 
 interface Lead {
   id: string;
@@ -320,6 +321,11 @@ export default function Home() {
           <span className="relative z-10">View API Docs</span>
           <span className="absolute w-full h-full top-0 left-0 bg-gradient-to-r from-purple-500 to-blue-500 opacity-0 group-hover:opacity-100 transition-all duration-500 transform scale-x-0 group-hover:scale-x-100 origin-left"></span>
         </Link>
+      </div>
+
+      {/* State Lead Distribution Map */}
+      <div className="mb-8">
+        <StateLeadMap defaultVertical="all" defaultDays={30} />
       </div>
 
       <div 
