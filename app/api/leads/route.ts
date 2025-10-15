@@ -118,10 +118,12 @@ async function forwardToPitchBPO(params: {
   let campaign = PITCH_BPO_CAMPAIGN; // Fallback ACA campaign
   let subcampaign = PITCH_BPO_SUBCAMPAIGN; // Fallback ACA subcampaign
   
+  let importOnlyValue = '0'; // Default: hot inject (insert into queue)
+  
   try {
     const { data: verticalConfig } = await supabase
       .from('vertical_configs')
-      .select('token, campaign_id, cadence_id')
+      .select('token, campaign_id, cadence_id, hot_inject_enabled')
       .eq('vertical', vertical)
       .eq('dialer_type', 2) // Pitch BPO
       .eq('active', true)
@@ -129,7 +131,10 @@ async function forwardToPitchBPO(params: {
     
     if (verticalConfig && verticalConfig.token) {
       token = verticalConfig.token;
+      // Set ImportOnly based on hot_inject_enabled setting
+      importOnlyValue = verticalConfig.hot_inject_enabled === false ? '1' : '0';
       console.log(`Using token from vertical config for ${vertical}: ${token}`);
+      console.log(`Hot Inject ${verticalConfig.hot_inject_enabled ? 'ENABLED' : 'DISABLED'} for ${vertical} - ImportOnly=${importOnlyValue}`);
       
       // Token-based campaign/subcampaign mapping
       if (token === '9f62ddd5-384c-42bd-b862-0cdce7b00a73') {
@@ -198,7 +203,7 @@ async function forwardToPitchBPO(params: {
     pitchBPOUrl.searchParams.append('Notes', 'Lead from Compliance Engine');
     
     // Optional insertion behavior parameters
-    pitchBPOUrl.searchParams.append('ImportOnly', '0'); // Always ImportOnly=0 per requirements
+    pitchBPOUrl.searchParams.append('ImportOnly', importOnlyValue); // Per-vertical setting: 0=hot inject, 1=import only
     pitchBPOUrl.searchParams.append('DuplicatesCheck', '1'); // Always DuplicatesCheck=1 per requirements
     pitchBPOUrl.searchParams.append('AllowDialingDups', '1'); // Always AllowDialingDups=1 per requirements
     
