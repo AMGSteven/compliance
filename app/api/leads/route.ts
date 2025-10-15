@@ -951,7 +951,7 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
             { status: 500 }
           );
         }
-      } else if (routingData?.auto_claim_trusted_form && !trustedFormCertUrl) {
+      } else if (routingData?.auto_claim_trusted_form && !trustedFormCertUrl && normalizedPhone !== TEST_PHONE_NUMBER) {
         console.log('[TrustedForm Pre-Claim] BLOCKING LEAD: Auto-claim enabled but no TrustedForm certificate URL found in lead data');
         
         return NextResponse.json(
@@ -1030,25 +1030,55 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     
     // Determine dialer type: use weighted selection when enabled, else routing default
     let dialerType = routingData?.dialer_type || DIALER_TYPE_INTERNAL;
-    try {
-      if (routingData?.weighted_routing_enabled) {
-        const supabase = createServerClient();
-        const { data: selectedDialer, error: weightErr } = await supabase
-          .rpc('get_weighted_dialer', { p_list_id: listId });
-        if (!weightErr && typeof selectedDialer === 'number') {
-          dialerType = selectedDialer;
-          console.log(`[WEIGHTED_ROUTING] Selected dialer ${dialerType} via get_weighted_dialer for list ${listId}`);
-        } else if (weightErr) {
-          console.warn('[WEIGHTED_ROUTING] Fallback to routing dialer due to RPC error:', weightErr);
+    
+    // CRITICAL ROUTING RULE: FL, MI, OK leads MUST always go to Pitch BPO
+    const normalizedState = state.toUpperCase();
+    const pitchBpoExclusiveStates = ['FL', 'MI', 'OK'];
+    
+    if (pitchBpoExclusiveStates.includes(normalizedState)) {
+      console.log(`[STATE ROUTING OVERRIDE] State ${normalizedState} is Pitch BPO exclusive - forcing dialer_type to Pitch BPO (2)`);
+      dialerType = DIALER_TYPE_PITCH_BPO;
+    } else {
+      // Only use weighted/normal routing for non-exclusive states
+      try {
+        if (routingData?.weighted_routing_enabled) {
+          const supabase = createServerClient();
+          
+          // Get weights for this list ID
+          const { data: weights, error: weightErr } = await supabase
+            .from('routing_weights')
+            .select('dialer_type, weight_percentage')
+            .eq('list_id', listId)
+            .eq('active', true)
+            .order('dialer_type', { ascending: true });
+          
+          if (!weightErr && weights && weights.length > 0) {
+            // Implement weighted random selection
+            const random = Math.random() * 100; // 0-100
+            let runningTotal = 0;
+            
+            for (const weight of weights) {
+              runningTotal += weight.weight_percentage;
+              if (random <= runningTotal) {
+                dialerType = weight.dialer_type;
+                console.log(`[WEIGHTED_ROUTING] Selected dialer ${dialerType} (${weight.weight_percentage}%) via weighted selection for list ${listId}. Random: ${random.toFixed(2)}, Running total: ${runningTotal}`);
+                break;
+              }
+            }
+          } else if (weightErr) {
+            console.warn('[WEIGHTED_ROUTING] Fallback to routing dialer due to weight query error:', weightErr);
+          } else {
+            console.warn('[WEIGHTED_ROUTING] No weights found for list_id:', listId);
+          }
         }
+      } catch (weightedSelectionErr) {
+        console.warn('[WEIGHTED_ROUTING] Exception selecting weighted dialer; using routing default:', weightedSelectionErr);
       }
-    } catch (weightedSelectionErr) {
-      console.warn('[WEIGHTED_ROUTING] Exception selecting weighted dialer; using routing default:', weightedSelectionErr);
     }
     console.log(`Using dialer type: ${dialerType === DIALER_TYPE_INTERNAL ? 'Internal Dialer' : dialerType === DIALER_TYPE_PITCH_BPO ? 'Pitch BPO' : dialerType === DIALER_TYPE_CONVOSO ? 'Convoso (IBP BPO)' : 'Unknown'}`);
 
     // STEP 1: Validate state based on dialer type (existing validation)
-    const normalizedState = state.toUpperCase();
+    // normalizedState already declared above, reuse it
     const allowedStates = dialerType === DIALER_TYPE_PITCH_BPO ? PITCH_BPO_ALLOWED_STATES : dialerType === DIALER_TYPE_CONVOSO ? CONVOSO_ALLOWED_STATES : INTERNAL_DIALER_ALLOWED_STATES;
     const dialerName = dialerType === DIALER_TYPE_PITCH_BPO ? 'Pitch BPO' : dialerType === DIALER_TYPE_CONVOSO ? 'Convoso (IBP BPO)' : 'Internal Dialer';
     
@@ -1566,7 +1596,16 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
     console.log('Health insurance lead passed all compliance checks');
     
     // Get the dialer type from routing data (default to internal dialer if not specified)
-    const dialerType = routingResults?.dialer_type || DIALER_TYPE_INTERNAL;
+    let dialerType = routingResults?.dialer_type || DIALER_TYPE_INTERNAL;
+    
+    // CRITICAL ROUTING RULE: FL, MI, OK leads MUST always go to Pitch BPO (same as standard leads)
+    const normalizedState = state.toUpperCase();
+    const pitchBpoExclusiveStates = ['FL', 'MI', 'OK'];
+    
+    if (pitchBpoExclusiveStates.includes(normalizedState)) {
+      console.log(`[STATE ROUTING OVERRIDE - HEALTH] State ${normalizedState} is Pitch BPO exclusive - forcing dialer_type to Pitch BPO (2)`);
+      dialerType = DIALER_TYPE_PITCH_BPO;
+    }
       
     if (routingResults) {
       routingData = routingResults;
@@ -1575,7 +1614,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
       console.log(`Health insurance lead using dialer type: ${dialerType === DIALER_TYPE_INTERNAL ? 'Internal Dialer' : dialerType === DIALER_TYPE_PITCH_BPO ? 'Pitch BPO' : dialerType === DIALER_TYPE_CONVOSO ? 'Convoso (IBP BPO)' : 'Unknown'}`);
       
       // STEP 1: Validate state based on dialer type (existing validation)
-      const normalizedState = state.toUpperCase();
+      // normalizedState already declared above, reuse it
       const allowedStates = dialerType === DIALER_TYPE_PITCH_BPO ? PITCH_BPO_ALLOWED_STATES : dialerType === DIALER_TYPE_CONVOSO ? CONVOSO_ALLOWED_STATES : INTERNAL_DIALER_ALLOWED_STATES;
       const dialerName = dialerType === DIALER_TYPE_PITCH_BPO ? 'Pitch BPO' : dialerType === DIALER_TYPE_CONVOSO ? 'Convoso (IBP BPO)' : 'Internal Dialer';
       
@@ -1693,7 +1732,7 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
             { status: 500 }
           );
         }
-      } else if (routingData?.auto_claim_trusted_form && !trustedFormUrl) {
+      } else if (routingData?.auto_claim_trusted_form && !trustedFormUrl && phone.replace(/\D/g, '') !== TEST_PHONE_NUMBER) {
         console.log('[TrustedForm Pre-Claim] BLOCKING HEALTH LEAD: Auto-claim enabled but no TrustedForm certificate URL found in lead data');
         
         return NextResponse.json(
