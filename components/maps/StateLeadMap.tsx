@@ -1,7 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import USAMap from 'react-usa-map';
+import dynamic from 'next/dynamic';
+
+// Dynamically import USAMap to avoid SSR issues
+const USAMap = dynamic(() => import('react-usa-map'), {
+  ssr: false,
+  loading: () => <div className="flex justify-center items-center h-96">Loading map...</div>
+});
 import { Card, Select, DatePicker, Spin, Statistic, Row, Col, Tooltip as AntTooltip, message } from 'antd';
 import { MapPin, TrendingUp } from 'lucide-react';
 import dayjs from 'dayjs';
@@ -209,12 +215,14 @@ export default function StateLeadMap({ defaultVertical = 'all', defaultDays = 30
         <div className="relative">
           {/* US Map */}
           <div className="flex justify-center" onMouseMove={mapHandler}>
-            <USAMap
-              customize={statesCustomConfig()}
-              width="100%"
-              height="500px"
-              defaultFill="#e5e7eb"
-            />
+            <div style={{ width: '100%', height: '500px' }}>
+              <USAMap
+                customize={statesCustomConfig()}
+                width="100%"
+                height="500px"
+                defaultFill="#e5e7eb"
+              />
+            </div>
           </div>
           
           {/* Hovered State Details */}

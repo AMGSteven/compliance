@@ -1,4 +1,4 @@
-import { ComplianceChecker, ComplianceResult } from '../types';
+import { ComplianceChecker, ComplianceResult, LeadContext } from '../types';
 
 export class SynergyDNCChecker implements ComplianceChecker {
   name = 'Synergy DNC';
@@ -19,7 +19,7 @@ export class SynergyDNCChecker implements ComplianceChecker {
    * @param phoneNumber Phone number to check
    * @returns ComplianceResult indicating if the number is compliant
    */
-  async checkNumber(phoneNumber: string): Promise<ComplianceResult> {
+  async checkNumber(phoneNumber: string, context?: LeadContext): Promise<ComplianceResult> {
     const maxRetries = 3;
     const retryDelayMs = 1000; // 1 second between retries
     

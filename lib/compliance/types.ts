@@ -15,8 +15,14 @@ export interface ComplianceReport {
   timestamp: string;
 }
 
+export interface LeadContext {
+  state?: string;
+  vertical?: string;
+  allowedStates?: string[];
+}
+
 export interface ComplianceChecker {
-  checkNumber(phoneNumber: string): Promise<ComplianceResult>;
+  checkNumber(phoneNumber: string, context?: LeadContext): Promise<ComplianceResult>;
   name: string;
 }
 

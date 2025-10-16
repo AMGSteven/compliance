@@ -674,10 +674,11 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
       };
       isCompliant = true;
     } else {
-      console.log('Performing comprehensive compliance check for phone:', phone);
+      console.log('Performing comprehensive compliance check for phone:', phone, 'state:', state);
       
       const complianceEngine = new ComplianceEngine();
-      complianceReport = await complianceEngine.checkPhoneNumber(phone);
+      const leadContext = { state: state?.toUpperCase() };
+      complianceReport = await complianceEngine.checkPhoneNumber(phone, leadContext);
       
       // Phone validation disabled per user request
       // console.log('Performing phone validation check for:', phone);
@@ -1468,11 +1469,12 @@ async function handleHealthInsuranceLead(body: any, request: Request, isTestMode
     // State validation will be performed after routing data is loaded to support dynamic dialer types
     
     // Perform comprehensive compliance check for health insurance lead phone
-    console.log('Performing compliance check for health insurance lead phone:', phone);
+    console.log('Performing compliance check for health insurance lead phone:', phone, 'state:', state);
     
     // 1. Check using the five DNC sources (TCPA, Blacklist, WebRecon, Internal DNC, Synergy DNC)
     const engine = new ComplianceEngine();
-    const complianceReport = await engine.checkPhoneNumber(phone);
+    const leadContext = { state: state?.toUpperCase() };
+    const complianceReport = await engine.checkPhoneNumber(phone, leadContext);
     
     // 2. Phone validation disabled per user request
     // console.log('Performing phone validation check for:', phone);

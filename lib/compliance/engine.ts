@@ -1,4 +1,4 @@
-import { ComplianceChecker, ComplianceReport } from './types';
+import { ComplianceChecker, ComplianceReport, LeadContext } from './types';
 import { TCPAChecker } from './checkers/tcpa-checker';
 import { BlacklistChecker } from './checkers/blacklist-checker';
 import { WebreconChecker } from './checkers/webrecon-checker';
@@ -18,7 +18,7 @@ export class ComplianceEngine {
     ];
   }
 
-  async checkPhoneNumber(phoneNumber: string): Promise<ComplianceReport> {
+  async checkPhoneNumber(phoneNumber: string, context?: LeadContext): Promise<ComplianceReport> {
     try {
       console.log('Running compliance checks for:', phoneNumber);
       // Run all checks in parallel
@@ -26,7 +26,7 @@ export class ComplianceEngine {
         this.checkers.map(async checker => {
           try {
             console.log(`Running checker: ${checker.name}`);
-            const result = await checker.checkNumber(phoneNumber);
+            const result = await checker.checkNumber(phoneNumber, context);
             console.log(`Checker ${checker.name} result:`, result);
             return result;
           } catch (error) {

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { InternalDNCChecker } from '@/lib/compliance/checkers/internal-dnc-checker';
 import { SynergyDNCChecker } from '@/lib/compliance/checkers/synergy-dnc-checker';
+import { TCPAChecker } from '@/lib/compliance/checkers/tcpa-checker';
+import { LeadContext } from '@/lib/compliance/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +13,8 @@ interface ComplianceResult {
   checks: {
     internalDNC?: boolean;
     synergyDNC?: boolean;
+    tcpaLitigator?: boolean;
+    stateDNC?: boolean;
   };
 }
 
@@ -71,14 +75,25 @@ async function checkRecordCompliance(record: any): Promise<ComplianceResult> {
       return result;
     }
 
+    // Extract state information from various possible field names
+    const state = record.state || record.State || record.state_code || record.StateCode || record.st || record.ST || '';
+    
+    // Create lead context for state-specific checks
+    const leadContext: LeadContext = {
+      state: state.toUpperCase(), // Normalize to uppercase
+      // Note: We don't have vertical info in batch processing, so we'll allow all states
+      // This means State DNC will only check if the state is in the required list
+    };
+
     // Initialize checkers
     const internalDNCChecker = new InternalDNCChecker();
     const synergyDNCChecker = new SynergyDNCChecker();
+    const tcpaChecker = new TCPAChecker();
 
     // Check Internal DNC
     try {
       console.log(`Checking Internal DNC for: ${phone}`);
-      const internalDNCResult = await internalDNCChecker.checkNumber(phone);
+      const internalDNCResult = await internalDNCChecker.checkNumber(phone, leadContext);
       result.checks.internalDNC = internalDNCResult.isCompliant;
       
       if (!internalDNCResult.isCompliant) {
@@ -96,7 +111,7 @@ async function checkRecordCompliance(record: any): Promise<ComplianceResult> {
     // Check Synergy DNC
     try {
       console.log(`Checking Synergy DNC for: ${phone}`);
-      const synergyDNCResult = await synergyDNCChecker.checkNumber(phone);
+      const synergyDNCResult = await synergyDNCChecker.checkNumber(phone, leadContext);
       result.checks.synergyDNC = synergyDNCResult.isCompliant;
       
       if (!synergyDNCResult.isCompliant) {
@@ -109,6 +124,30 @@ async function checkRecordCompliance(record: any): Promise<ComplianceResult> {
       result.checks.synergyDNC = false; // FAIL CLOSED on error
       result.isCompliant = false;
       result.failureReasons.push('Synergy DNC check failed - blocked for safety');
+    }
+
+    // Check TCPA Litigator List (includes State DNC for specific states)
+    try {
+      console.log(`Checking TCPA Litigator List for: ${phone}${state ? ` (state: ${state})` : ''}`);
+      const tcpaResult = await tcpaChecker.checkNumber(phone, leadContext);
+      
+      // Determine if this was a TCPA check or State DNC check based on the source
+      if (tcpaResult.source?.includes('State DNC')) {
+        result.checks.stateDNC = tcpaResult.isCompliant;
+      } else {
+        result.checks.tcpaLitigator = tcpaResult.isCompliant;
+      }
+      
+      if (!tcpaResult.isCompliant) {
+        result.isCompliant = false;
+        const reasons = tcpaResult.reasons || ['Found in TCPA/State DNC list'];
+        result.failureReasons.push(...reasons);
+      }
+    } catch (tcpaError) {
+      console.error('TCPA check error - FAILING CLOSED:', tcpaError);
+      result.checks.tcpaLitigator = false; // FAIL CLOSED on error
+      result.isCompliant = false;
+      result.failureReasons.push('TCPA check failed - blocked for safety');
     }
 
   } catch (error) {

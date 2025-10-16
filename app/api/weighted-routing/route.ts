@@ -95,16 +95,16 @@ export async function POST(request: NextRequest) {
     
     console.log(`✅ All dialers approved for weighted routing on list_id: ${list_id} - allowing configuration`)
 
-    // Start transaction: deactivate existing weights and insert new ones
-    const { error: deactivateError } = await supabase
+    // More robust approach: Delete existing weights and insert new ones
+    // First, delete all existing weights for this list_id to avoid constraint violations
+    const { error: deleteError } = await supabase
       .from('routing_weights')
-      .update({ active: false })
+      .delete()
       .eq('list_id', list_id)
-      .eq('active', true)
 
-    if (deactivateError) {
-      console.error('Error deactivating existing weights:', deactivateError)
-      return NextResponse.json({ error: deactivateError.message }, { status: 500 })
+    if (deleteError) {
+      console.error('Error deleting existing weights:', deleteError)
+      return NextResponse.json({ error: deleteError.message }, { status: 500 })
     }
 
     // Insert new weights
@@ -157,12 +157,11 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'List ID is required' }, { status: 400 })
     }
 
-    // Deactivate all weights for this list ID
+    // Delete all weights for this list ID
     const { error } = await supabase
       .from('routing_weights')
-      .update({ active: false })
+      .delete()
       .eq('list_id', listId)
-      .eq('active', true)
 
     if (error) {
       console.error('Error deactivating weights:', error)

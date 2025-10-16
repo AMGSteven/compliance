@@ -82,6 +82,7 @@ interface RevenueData {
   key: string;
   list_id: string;
   description: string;
+  vertical?: string;
   leads_count: number;
   weekday_leads?: number;
   weekend_leads?: number;
@@ -249,7 +250,7 @@ export default function RevenueTrackingPage() {
   
   // NEW: Column customization state
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set([
-    'description', 'leads_count', 'weekday_leads', 'weekend_leads', 
+    'description', 'vertical', 'leads_count', 'weekday_leads', 'weekend_leads', 
     'cost_per_lead', 'total_lead_costs', 'transfers_count', 'transfer_rate',
     'synergy_issued_leads', 'policy_rate', 'synergy_payout', 'net_profit'
   ]));
@@ -466,6 +467,7 @@ export default function RevenueTrackingPage() {
             key: listData.list_id,
             list_id: listData.list_id,
             description: listData.description || source.display_name,
+            vertical: listData.vertical,
             leads_count: listData.leads_count,
             cost_per_lead: listData.total_revenue / listData.leads_count, // Calculate from total revenue
             total_lead_costs: listData.total_revenue,
@@ -1112,6 +1114,34 @@ export default function RevenueTrackingPage() {
         </Space>
       ),
       sorter: (a: RevenueData, b: RevenueData) => a.description.localeCompare(b.description),
+    },
+    {
+      key: 'vertical',
+      title: 'Vertical',
+      dataIndex: 'vertical',
+      category: 'core',
+      description: 'Business vertical/product line',
+      minWidth: 120,
+      render: (value: string | undefined) => (
+        <span style={{
+          padding: '4px 8px',
+          borderRadius: '4px',
+          fontSize: '12px',
+          fontWeight: 'bold',
+          backgroundColor: value === 'Final Expense' ? '#f6ffed' : 
+                          value === 'ACA' ? '#e6f7ff' : 
+                          value === 'Medicare' ? '#fff2e6' : '#f5f5f5',
+          color: value === 'Final Expense' ? '#52c41a' : 
+                 value === 'ACA' ? '#1890ff' : 
+                 value === 'Medicare' ? '#fa8c16' : '#666',
+          border: `1px solid ${value === 'Final Expense' ? '#b7eb8f' : 
+                               value === 'ACA' ? '#91d5ff' : 
+                               value === 'Medicare' ? '#ffd591' : '#d9d9d9'}`
+        }}>
+          {value || 'Unknown'}
+        </span>
+      ),
+      sorter: (a: RevenueData, b: RevenueData) => (a.vertical || '').localeCompare(b.vertical || ''),
     },
     {
       key: 'leads_count',
@@ -1935,19 +1965,20 @@ export default function RevenueTrackingPage() {
               <Table.Summary.Row>
                 <Table.Summary.Cell index={0}><strong>TOTAL</strong></Table.Summary.Cell>
                 <Table.Summary.Cell index={1}><strong>All Lists</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={2}><strong>{totalLeads}</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={3}><strong>{totalWeekdayLeads || '-'}</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={4}><strong>{totalWeekendLeads || '-'}</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={5}><strong>-</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={6}><strong>${totalLeadCosts.toFixed(2)}</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={7}><strong>{totalTransfers}</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={8}><strong>{totalSynergyIssuedLeads}</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={9}><strong>{totalLeads > 0 ? ((totalSynergyIssuedLeads / totalLeads) * 100).toFixed(2) : '0.00'}%</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={10}><strong>{totalLeads > 0 ? ((totalTransfers / totalLeads) * 100).toFixed(2) : '0.00'}%</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={11}><strong>${totalSynergyPayout.toFixed(2)}</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={12}><strong>${(blandAICosts + pitchPerfectCosts + trackdriveCosts).toFixed(2)}</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={13}><strong>N/A</strong></Table.Summary.Cell>
-                <Table.Summary.Cell index={14}><strong>${(totalSynergyPayout - totalLeadCosts - blandAICosts - pitchPerfectCosts - trackdriveCosts).toFixed(2)}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={2}><strong>All Verticals</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={3}><strong>{totalLeads}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={4}><strong>{totalWeekdayLeads || '-'}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={5}><strong>{totalWeekendLeads || '-'}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={6}><strong>-</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={7}><strong>${totalLeadCosts.toFixed(2)}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={8}><strong>{totalTransfers}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={9}><strong>{totalSynergyIssuedLeads}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={10}><strong>{totalLeads > 0 ? ((totalSynergyIssuedLeads / totalLeads) * 100).toFixed(2) : '0.00'}%</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={11}><strong>{totalLeads > 0 ? ((totalTransfers / totalLeads) * 100).toFixed(2) : '0.00'}%</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={12}><strong>${totalSynergyPayout.toFixed(2)}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={13}><strong>${(blandAICosts + pitchPerfectCosts + trackdriveCosts).toFixed(2)}</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={14}><strong>N/A</strong></Table.Summary.Cell>
+                <Table.Summary.Cell index={15}><strong>${(totalSynergyPayout - totalLeadCosts - blandAICosts - pitchPerfectCosts - trackdriveCosts).toFixed(2)}</strong></Table.Summary.Cell>
               </Table.Summary.Row>
             )}
           />
@@ -2053,7 +2084,7 @@ export default function RevenueTrackingPage() {
           <Button key="reset" onClick={() => {
             // Reset to default columns
             setVisibleColumns(new Set([
-              'description', 'leads_count', 'weekday_leads', 'weekend_leads', 
+              'description', 'vertical', 'leads_count', 'weekday_leads', 'weekend_leads', 
               'cost_per_lead', 'total_lead_costs', 'transfers_count', 'transfer_rate',
               'synergy_issued_leads', 'policy_rate', 'synergy_payout', 'net_profit'
             ]));

@@ -46,6 +46,7 @@ model leads {
   age_range             String?  @map("age_range")
   birth_date            DateTime? @map("birth_date")
   homeowner_status      String?  @map("homeowner_status")
+  bid_amount            Decimal? @map("bid_amount") @db.Decimal(10,2)
   created_at            DateTime @default(now()) @map("created_at") @db.Timestamptz
   updated_at            DateTime @updatedAt @map("updated_at") @db.Timestamptz
 

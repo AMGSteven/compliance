@@ -1,4 +1,4 @@
-import { ComplianceChecker, ComplianceResult } from '../types';
+import { ComplianceChecker, ComplianceResult, LeadContext } from '../types';
 import { createServerClient } from '../../supabase/server';
 
 type ErrorWithMessage = { message: string };
@@ -164,7 +164,7 @@ export class InternalDNCChecker implements ComplianceChecker {
     }
   }
   
-  async checkNumber(phoneNumber: string): Promise<ComplianceResult> {
+  async checkNumber(phoneNumber: string, context?: LeadContext): Promise<ComplianceResult> {
     await this.initialized;
     const normalizedNumber = this.normalizePhoneNumber(phoneNumber);
     const maxRetries = 3;
@@ -376,17 +376,98 @@ export class InternalDNCChecker implements ComplianceChecker {
       errors: [] as Array<{ phone_number: string; error: string }>
     };
 
-    for (const entry of entries) {
-      try {
-        await this.addToDNC(entry);
-        results.successful++;
-      } catch (error) {
-        results.failed++;
-        results.errors.push({
-          phone_number: entry.phone_number!,
-          error: (error as Error).message
-        });
+    if (entries.length === 0) {
+      return results;
+    }
+
+    console.log(`Starting bulk DNC insert for ${entries.length} entries`);
+
+    try {
+      // Prepare all entries for batch insert
+      const now = new Date().toISOString();
+      const processedEntries = entries.map(entry => {
+        if (!entry.phone_number) {
+          results.failed++;
+          results.errors.push({
+            phone_number: 'UNKNOWN',
+            error: 'Phone number is required'
+          });
+          return null;
+        }
+
+        const normalizedNumber = this.normalizePhoneNumber(entry.phone_number);
+        return {
+          phone_number: normalizedNumber,
+          reason: entry.reason || 'CSV Upload',
+          source: entry.source || 'csv_upload',
+          added_by: entry.added_by || 'csv_import',
+          metadata: entry.metadata || {},
+          date_added: now,
+          status: 'active'
+        };
+      }).filter(entry => entry !== null);
+
+      console.log(`Prepared ${processedEntries.length} valid entries for batch insert`);
+
+      // Deduplicate entries by phone_number (keep the last occurrence)
+      const uniqueEntries = new Map();
+      processedEntries.forEach(entry => {
+        uniqueEntries.set(entry.phone_number, entry);
+      });
+      const deduplicatedEntries = Array.from(uniqueEntries.values());
+      
+      console.log(`Deduplicated to ${deduplicatedEntries.length} unique phone numbers (removed ${processedEntries.length - deduplicatedEntries.length} duplicates)`);
+
+      // Batch insert with upsert (handles duplicates automatically)
+      const supabase = createServerClient();
+      
+      // Process in chunks to avoid payload limits (Supabase recommends max 1000 per batch)
+      const chunkSize = 1000;
+      let totalInserted = 0;
+
+      for (let i = 0; i < deduplicatedEntries.length; i += chunkSize) {
+        const chunk = deduplicatedEntries.slice(i, i + chunkSize);
+        console.log(`Processing chunk ${Math.floor(i/chunkSize) + 1}/${Math.ceil(deduplicatedEntries.length/chunkSize)} (${chunk.length} entries)`);
+
+        const { data, error } = await supabase
+          .from('dnc_entries')
+          .upsert(chunk, { onConflict: 'phone_number' })
+          .select('phone_number');
+
+        if (error) {
+          console.error(`Batch insert chunk ${Math.floor(i/chunkSize) + 1} failed:`, error);
+          
+          // Add errors for this chunk
+          chunk.forEach(entry => {
+            results.failed++;
+            results.errors.push({
+              phone_number: entry.phone_number,
+              error: `Batch insert failed: ${error.message}`
+            });
+          });
+        } else {
+          const inserted = data?.length || chunk.length;
+          totalInserted += inserted;
+          console.log(`Chunk ${Math.floor(i/chunkSize) + 1} completed: ${inserted} entries processed`);
+        }
       }
+
+      results.successful = totalInserted;
+      console.log(`Bulk DNC insert completed: ${results.successful} successful, ${results.failed} failed`);
+
+    } catch (error) {
+      console.error('Bulk DNC insert failed:', error);
+      
+      // Mark all remaining as failed
+      entries.forEach(entry => {
+        if (entry.phone_number) {
+          results.failed++;
+          results.errors.push({
+            phone_number: entry.phone_number,
+            error: `Bulk operation failed: ${(error as Error).message}`
+          });
+        }
+      });
     }
 
     return results;
