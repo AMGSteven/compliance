@@ -40,14 +40,15 @@ interface Partner {
 interface Integration {
   id: string
   list_id: string
-  integration_type: string
   partner_name: string
-  partner_id?: string
+  integration_type: string
   active: boolean
   description?: string
   bid?: number
   dialer_type?: number
   vertical?: string
+  campaign_id?: string
+  token?: string
 }
 
 export default function RoutingManagementPage() {
@@ -616,19 +617,28 @@ export default function RoutingManagementPage() {
   const handleConfigureWeights = async (integration: Integration) => {
     setEditingWeights(integration)
     
-    // Load existing weights for this list ID
-    await loadRoutingWeights(integration.list_id)
-    
-    // Initialize weight config with existing weights or defaults
-    const existingWeights = routingWeights.filter(w => w.list_id === integration.list_id)
-    
-    if (existingWeights.length > 0) {
-      setWeightConfig(existingWeights.map(w => ({
-        dialer_type: w.dialer_type,
-        weight_percentage: w.weight_percentage
-      })))
-    } else {
-      // Default: 100% to current dialer type
+    // Load existing weights for this list ID directly
+    try {
+      const url = `/api/weighted-routing?list_id=${integration.list_id}`
+      const response = await fetch(url)
+      const data = await response.json()
+      
+      if (response.ok && data.weights && data.weights.length > 0) {
+        // Use existing weights from API
+        setWeightConfig(data.weights.map((w: any) => ({
+          dialer_type: w.dialer_type,
+          weight_percentage: w.weight_percentage
+        })))
+      } else {
+        // Default: 100% to current dialer type
+        setWeightConfig([{
+          dialer_type: integration.dialer_type || 1,
+          weight_percentage: 100
+        }])
+      }
+    } catch (error) {
+      console.error('Error loading weights for modal:', error)
+      // Fallback to default
       setWeightConfig([{
         dialer_type: integration.dialer_type || 1,
         weight_percentage: 100
@@ -996,10 +1006,11 @@ export default function RoutingManagementPage() {
       <Tabs defaultValue="overview" className="space-y-6">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="dialer-management">Dialer Management</TabsTrigger>
           <TabsTrigger value="partners">Partners</TabsTrigger>
           <TabsTrigger value="integrations">Integrations</TabsTrigger>
-          <TabsTrigger value="data-sources">Data Sources</TabsTrigger>
-          <TabsTrigger value="verticals">Verticals</TabsTrigger>
+          <TabsTrigger value="vertical-configs">Vertical Configs</TabsTrigger>
+          <TabsTrigger value="weighted-routing">Weighted Routing</TabsTrigger>
           <TabsTrigger value="dialer-approvals">Dialer Approval</TabsTrigger>
             <TabsTrigger value="dialers">Dialers</TabsTrigger>
           <TabsTrigger value="api-specs">API Specs</TabsTrigger>
@@ -1152,6 +1163,84 @@ export default function RoutingManagementPage() {
               )
             })}
           </div>
+        </TabsContent>
+
+        <TabsContent value="dialer-management" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Dialer Type Management</CardTitle>
+              <CardDescription>
+                View and modify dialer assignments for all list IDs. Changes take effect immediately.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse border border-gray-300">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="border border-gray-300 px-4 py-2 text-left font-medium">List ID</th>
+                      <th className="border border-gray-300 px-4 py-2 text-left font-medium">Partner</th>
+                      <th className="border border-gray-300 px-4 py-2 text-left font-medium">Description</th>
+                      <th className="border border-gray-300 px-4 py-2 text-left font-medium">Vertical</th>
+                      <th className="border border-gray-300 px-4 py-2 text-left font-medium">Current Dialer</th>
+                      <th className="border border-gray-300 px-4 py-2 text-left font-medium">Campaign Info</th>
+                      <th className="border border-gray-300 px-4 py-2 text-left font-medium">Status</th>
+                      <th className="border border-gray-300 px-4 py-2 text-left font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {integrations.map((integration) => (
+                      <tr key={integration.id} className="hover:bg-gray-50">
+                        <td className="border border-gray-300 px-4 py-2">
+                          <div className="font-mono text-sm">{integration.list_id}</div>
+                        </td>
+                        <td className="border border-gray-300 px-4 py-2">
+                          <div className="font-medium">{integration.partner_name}</div>
+                        </td>
+                        <td className="border border-gray-300 px-4 py-2">
+                          <div className="text-sm">{integration.description || 'No description'}</div>
+                        </td>
+                        <td className="border border-gray-300 px-4 py-2">
+                          <Badge className={getVerticalColor(integration.vertical || 'ACA')}>
+                            {integration.vertical || 'Not Set'}
+                          </Badge>
+                        </td>
+                        <td className="border border-gray-300 px-4 py-2">
+                          <Badge className={getDialerTypeColor(integration.dialer_type || 1)}>
+                            {getDialerTypeLabel(integration.dialer_type || 1)}
+                          </Badge>
+                        </td>
+                        <td className="border border-gray-300 px-4 py-2">
+                          <div className="text-xs space-y-1">
+                            <div><span className="font-medium">Campaign:</span> {integration.campaign_id || 'Default'}</div>
+                            <div><span className="font-medium">Token:</span> {integration.token ? `${integration.token.substring(0, 8)}...` : 'None'}</div>
+                            <div><span className="font-medium">Bid:</span> ${integration.bid || '0.00'}</div>
+                          </div>
+                        </td>
+                        <td className="border border-gray-300 px-4 py-2">
+                          <Badge variant={integration.active ? 'default' : 'secondary'}>
+                            {integration.active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </td>
+                        <td className="border border-gray-300 px-4 py-2">
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEditDialer(integration)}
+                              className="text-xs"
+                            >
+                              Change Dialer
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="integrations" className="space-y-6">
@@ -1755,18 +1844,40 @@ export default function RoutingManagementPage() {
 
       {/* Edit Dialer Modal */}
       <Dialog open={!!editingIntegration} onOpenChange={() => setEditingIntegration(null)}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
-            <DialogTitle>Edit Dialer Type</DialogTitle>
+            <DialogTitle>🎯 Edit Dialer Type - Detailed Configuration</DialogTitle>
             <DialogDescription>
               Change the dialer routing for List ID: {editingIntegration?.list_id}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="current-dialer" className="text-right">
-                Current
-              </Label>
+              <Label className="text-right font-medium">List ID</Label>
+              <div className="col-span-3">
+                <div className="font-mono text-sm p-2 bg-gray-100 rounded">
+                  {editingIntegration?.list_id}
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label className="text-right font-medium">Partner</Label>
+              <div className="col-span-3">
+                <div className="text-sm p-2 bg-gray-100 rounded font-medium">
+                  {editingIntegration?.partner_name}
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label className="text-right font-medium">Vertical</Label>
+              <div className="col-span-3">
+                <Badge className={getVerticalColor(editingIntegration?.vertical || 'ACA')}>
+                  {editingIntegration?.vertical || 'Not Set'}
+                </Badge>
+              </div>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label className="text-right font-medium">Current Dialer</Label>
               <div className="col-span-3">
                 <Badge className={editingIntegration?.dialer_type ? getDialerTypeColor(editingIntegration.dialer_type) : 'bg-gray-100 text-gray-800'}>
                   {editingIntegration?.dialer_type ? getDialerTypeLabel(editingIntegration.dialer_type) : 'Unknown'}
@@ -1774,9 +1885,7 @@ export default function RoutingManagementPage() {
               </div>
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="new-dialer" className="text-right">
-                New Dialer
-              </Label>
+              <Label className="text-right font-medium">New Dialer</Label>
               <div className="col-span-3">
                 <Select value={newDialerType} onValueChange={setNewDialerType}>
                   <SelectTrigger>
@@ -1790,10 +1899,28 @@ export default function RoutingManagementPage() {
                 </Select>
               </div>
             </div>
+            {newDialerType === '2' && editingIntegration?.vertical && (
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label className="text-right font-medium text-green-600">Campaign Preview</Label>
+                <div className="col-span-3">
+                  <div className="text-sm p-3 bg-green-50 border border-green-200 rounded">
+                    <div className="font-medium text-green-800 mb-1">
+                      🎯 {editingIntegration.vertical === 'Medicare' ? 'Medicare Aragon Campaign' : 
+                         editingIntegration.vertical === 'ACA' ? 'Jade ACA Campaign' :
+                         editingIntegration.vertical === 'Final Expense' ? 'Final Expense Pitch Campaign' : 
+                         'Default Campaign'}
+                    </div>
+                    <div className="text-green-600 text-xs">
+                      ✅ Will route to Pitch BPO {editingIntegration.vertical} campaign automatically
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
             {editingIntegration?.description && (
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right">Description</Label>
-                <div className="col-span-3 text-sm text-muted-foreground">
+                <Label className="text-right font-medium">Description</Label>
+                <div className="col-span-3 text-sm p-2 bg-gray-100 rounded">
                   {editingIntegration.description}
                 </div>
               </div>
