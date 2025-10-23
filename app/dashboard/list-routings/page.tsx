@@ -60,6 +60,7 @@ export default function ListRoutingsPage() {
   const [approvedDialers, setApprovedDialers] = useState<number[]>([1, 2, 3]); // Default all approved
   const [verticalConfigs, setVerticalConfigs] = useState<any[]>([]);
   const [dynamicPitchBpoToken, setDynamicPitchBpoToken] = useState<string>('70942646-125b-4ddd-96fc-b9a142c698b8'); // Default ACA token
+  const [searchTerm, setSearchTerm] = useState<string>(''); // Search filter
   
   // Pitch BPO fixed values (deprecated - now using dynamic token)
   const PITCH_BPO_TOKEN = dynamicPitchBpoToken;
@@ -669,6 +670,21 @@ export default function ListRoutingsPage() {
     },
   ];
 
+  // Filter routings based on search term
+  const filteredRoutings = routings.filter(routing => {
+    if (!searchTerm) return true;
+    
+    const search = searchTerm.toLowerCase();
+    return (
+      routing.description?.toLowerCase().includes(search) ||
+      routing.partner_name?.toLowerCase().includes(search) ||
+      routing.list_id?.toLowerCase().includes(search) ||
+      routing.campaign_id?.toLowerCase().includes(search) ||
+      routing.cadence_id?.toLowerCase().includes(search) ||
+      routing.vertical?.toLowerCase().includes(search)
+    );
+  });
+
   return (
     <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
@@ -680,6 +696,24 @@ export default function ListRoutingsPage() {
         >
           Add New Routing
         </Button>
+      </div>
+      
+      {/* Search Bar */}
+      <div style={{ marginBottom: '16px' }}>
+        <Input
+          placeholder="Search by description, partner, list ID, campaign ID, vertical..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          allowClear
+          size="large"
+          style={{ maxWidth: '600px' }}
+          prefix={<span className="text-gray-400">🔍</span>}
+        />
+        {searchTerm && (
+          <Text type="secondary" style={{ marginLeft: '12px' }}>
+            Found {filteredRoutings.length} of {routings.length} routings
+          </Text>
+        )}
       </div>
       
       <Alert
@@ -701,7 +735,7 @@ export default function ListRoutingsPage() {
       </Text>
       
       <Table 
-        dataSource={routings}
+        dataSource={filteredRoutings}
         columns={columns}
         rowKey="id"
         loading={loading}
