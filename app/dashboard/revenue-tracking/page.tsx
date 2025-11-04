@@ -217,7 +217,7 @@ export default function RevenueTrackingPage() {
   const [selectedVertical, setSelectedVertical] = useState<string | null>(null);
   const [availableVerticals, setAvailableVerticals] = useState<string[]>([]);
 
-  // NEW: Fetch available verticals on component mount
+  // NEW: Fetch available verticals on component mount (includes inactive lists)
   const fetchAvailableVerticals = async () => {
     try {
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -232,7 +232,7 @@ export default function RevenueTrackingPage() {
       const { data, error } = await supabase
         .from('list_routings')
         .select('vertical')
-        .eq('active', true)
+        // Removed .eq('active', true) to include inactive verticals
         .order('vertical');
       
       if (error) {
@@ -242,7 +242,7 @@ export default function RevenueTrackingPage() {
       
       const uniqueVerticals = [...new Set(data?.map(item => item.vertical).filter(Boolean))];
       setAvailableVerticals(uniqueVerticals);
-      console.log('📊 Available verticals:', uniqueVerticals);
+      console.log('📊 Available verticals (including inactive):', uniqueVerticals);
     } catch (error) {
       console.error('Error fetching verticals:', error);
     }
