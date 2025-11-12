@@ -5,7 +5,7 @@ import { checkForDuplicateLead, checkForDuplicateLeadInVertical } from '@/app/li
 import { logRejection } from '@/app/lib/rejection-logger';
 
 // Allowed states for leads (ACA vertical configuration)
-const INTERNAL_DIALER_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'FL', 'IA', 'IN', 'KS', 'LA', 'MO', 'MS', 'NE', 'NH', 'OH', 'OK', 'TN', 'UT', 'WI'];
+const INTERNAL_DIALER_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'FL', 'IA', 'IN', 'KS', 'LA', 'MO', 'MS', 'NE', 'NH', 'OH', 'TN', 'UT', 'WI'];
 const PITCH_BPO_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'FL', 'IA', 'IN', 'KS', 'LA', 'MO', 'MS', 'NE', 'NH', 'OH', 'OK', 'TN', 'TX', 'UT', 'WI'];
 
 interface PrePingRequest {

@@ -14,7 +14,7 @@ import { logRejection } from '@/app/lib/rejection-logger';
 export const dynamic = 'force-dynamic';
 
 // Define allowed states per dialer type (ACA vertical configuration)
-const INTERNAL_DIALER_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'FL', 'IA', 'IN', 'KS', 'LA', 'MO', 'MS', 'NE', 'NH', 'OH', 'OK', 'TN', 'UT', 'WI'];
+const INTERNAL_DIALER_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'FL', 'IA', 'IN', 'KS', 'LA', 'MO', 'MS', 'NE', 'NH', 'OH', 'TN', 'UT', 'WI'];
 const PITCH_BPO_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'FL', 'IA', 'IN', 'KS', 'LA', 'MO', 'MS', 'NE', 'NH', 'OH', 'OK', 'TN', 'TX', 'UT', 'WI'];
 const CONVOSO_ALLOWED_STATES = ['TX', 'FL', 'CA', 'PA', 'NY', 'IL', 'OH', 'GA', 'MI', 'NC', 'NJ', 'VA', 'WA', 'AZ', 'TN', 'MA', 'IN', 'MD', 'MO', 'WI', 'MN', 'CO', 'AL', 'SC', 'LA', 'OR', 'OK', 'CT', 'IA', 'AR', 'UT', 'NV', 'KS', 'NM', 'NE', 'WV', 'ID', 'HI', 'NH', 'ME', 'RI', 'MT', 'DE', 'SD', 'AK', 'ND', 'VT', 'WY'];
 
