@@ -13,9 +13,9 @@ import { logRejection } from '@/app/lib/rejection-logger';
 // Force dynamic routing for Vercel deployment
 export const dynamic = 'force-dynamic';
 
-// Define allowed states per dialer type
-const INTERNAL_DIALER_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'FL', 'GA', 'IN', 'KY', 'LA', 'ME', 'MI', 'MO', 'MS', 'NC', 'NM', 'OH', 'OK', 'PA', 'SC', 'TN', 'VA', 'WV'];
-const PITCH_BPO_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'FL', 'IN', 'KS', 'LA', 'MI', 'MO', 'MS', 'OH', 'OK', 'SC', 'TN', 'TX'];
+// Define allowed states per dialer type (ACA vertical configuration)
+const INTERNAL_DIALER_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'FL', 'IA', 'IN', 'KS', 'LA', 'MO', 'MS', 'NE', 'NH', 'OH', 'OK', 'TN', 'UT', 'WI'];
+const PITCH_BPO_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'FL', 'IA', 'IN', 'KS', 'LA', 'MO', 'MS', 'NE', 'NH', 'OH', 'OK', 'TN', 'TX', 'UT', 'WI'];
 const CONVOSO_ALLOWED_STATES = ['TX', 'FL', 'CA', 'PA', 'NY', 'IL', 'OH', 'GA', 'MI', 'NC', 'NJ', 'VA', 'WA', 'AZ', 'TN', 'MA', 'IN', 'MD', 'MO', 'WI', 'MN', 'CO', 'AL', 'SC', 'LA', 'OR', 'OK', 'CT', 'IA', 'AR', 'UT', 'NV', 'KS', 'NM', 'NE', 'WV', 'ID', 'HI', 'NH', 'ME', 'RI', 'MT', 'DE', 'SD', 'AK', 'ND', 'VT', 'WY'];
 
 // Test constants for bypassing compliance and forcing routing
