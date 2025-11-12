@@ -5,7 +5,7 @@ import { checkForDuplicateLead, checkForDuplicateLeadInVertical } from '@/app/li
 import { logRejection } from '@/app/lib/rejection-logger';
 
 // Allowed states for leads
-const INTERNAL_DIALER_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'GA', 'IN', 'KY', 'LA', 'ME', 'MI', 'MO', 'MS', 'NC', 'NM', 'OH', 'PA', 'SC', 'TN', 'VA', 'WV'];
+const INTERNAL_DIALER_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'FL', 'GA', 'IN', 'KY', 'LA', 'ME', 'MI', 'MO', 'MS', 'NC', 'NM', 'OH', 'OK', 'PA', 'SC', 'TN', 'VA', 'WV'];
 const PITCH_BPO_ALLOWED_STATES = ['AL', 'AR', 'AZ', 'FL', 'IN', 'KS', 'LA', 'MI', 'MO', 'MS', 'OH', 'OK', 'SC', 'TN', 'TX'];
 
 interface PrePingRequest {
