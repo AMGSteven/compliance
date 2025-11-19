@@ -148,11 +148,11 @@ export async function GET(request: NextRequest) {
         query_performance: 'Cross-temporal SQL with EST timezone handling'
       }));
       
-      // Enhance with list descriptions
+      // Enhance with list descriptions (include ALL lists, even paused - we need all purchased leads)
       const { data: listRoutings } = await supabase
         .from('list_routings')
-        .select('list_id, description, campaign_id')
-        .eq('active', true);
+        .select('list_id, description, campaign_id');
+        // REMOVED: .eq('active', true) - We need ALL leads in date range, even from paused campaigns
       
       const routingMap = new Map(listRoutings?.map(r => [r.list_id, r]) || []);
       
@@ -270,12 +270,12 @@ export async function GET(request: NextRequest) {
     } else {
       console.log('🔥 NORMAL MODE: Using get_lead_counts_unified for mathematical consistency');
       
-      // STEP 1: Get all active list routings (for bid calculations)
-      console.log('📋 Fetching active list routings...');
+      // STEP 1: Get all list routings (including paused/inactive - revenue reporting needs ALL purchased leads)
+      console.log('📋 Fetching all list routings (including paused) for accurate revenue reporting...');
       const { data: listRoutings, error: routingsError } = await supabase
         .from('list_routings')
         .select('list_id, description, bid, campaign_id, active, vertical')
-        .eq('active', true)
+        // REMOVED: .eq('active', true) - We need ALL leads in date range, even from paused campaigns
         .gt('bid', 0); // Only include lists with bids > 0
       
       if (routingsError) {
