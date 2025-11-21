@@ -1337,8 +1337,44 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
         });
         
         const dialerResult = await dialerResponse.json();
-        console.log('Dialer API response:', dialerResult);
+        console.log('Dialer API response status:', dialerResponse.status);
+        console.log('Dialer API response body:', dialerResult);
         
+        // CRITICAL FIX: Check if dialer returned error status codes (400, 409, 422) or error response
+        if (dialerResponse.status !== 200 || dialerResult.error || dialerResult.rejected_leads) {
+          console.error(`❌ DIALER REJECTED LEAD: Status ${dialerResponse.status}`, dialerResult);
+          
+          // Delete the lead from database since dialer rejected it
+          try {
+            const supabase = createServerClient();
+            await supabase
+              .from('leads')
+              .delete()
+              .eq('id', leadData[0].id);
+            
+            console.log('✅ Deleted rejected lead from database');
+          } catch (deleteError) {
+            console.error('Error deleting rejected lead:', deleteError);
+          }
+          
+          // Return error response to vendor with dialer's error details
+          return NextResponse.json({
+            success: false,
+            bid: 0.00,
+            error: dialerResult.error || 'Dialer rejected lead',
+            message: dialerResult.message || 'Lead rejected by internal dialer',
+            details: {
+              dialer_status: dialerResponse.status,
+              dialer_error: dialerResult.error,
+              dialer_message: dialerResult.message,
+              rejection_reason: dialerResult.rejected_leads?.[0]?.reason,
+              rejection_details: dialerResult.rejected_leads?.[0]?.details,
+              summary: dialerResult.summary
+            }
+          }, { status: 400 });
+        }
+        
+        // Dialer accepted the lead successfully
         // Check if dialer response contains a compliance_lead_id to associate with our lead_id
         if (dialerResult && dialerResult.compliance_lead_id) {
           console.log('Received compliance_lead_id from dialer:', dialerResult.compliance_lead_id);
@@ -1376,19 +1412,33 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
         
         return NextResponse.json(responseObj);
       } catch (dialerError) {
-        console.error('Error forwarding lead to dialer:', dialerError);
-        // Still return success for the lead insertion, but include the dialer error
-        // Include bid information for successful lead submission even when dialer fails
+        console.error('❌ CRITICAL ERROR forwarding lead to dialer:', dialerError);
+        
+        // CRITICAL FIX: Delete the lead from database since dialer failed to accept it
+        try {
+          const supabase = createServerClient();
+          await supabase
+            .from('leads')
+            .delete()
+            .eq('id', leadData[0].id);
+          
+          console.log('✅ Deleted failed lead from database');
+        } catch (deleteError) {
+          console.error('Error deleting failed lead:', deleteError);
+        }
+        
+        // Return error response to vendor - lead was rejected
         return NextResponse.json({ 
-          success: true, 
-          lead_id: leadData[0].id, // Explicitly return the lead ID
-          data: leadData[0],
-          bid: routingData?.bid || 0.00,
-          dialer: {
-            forwarded: false,
-            error: dialerError instanceof Error ? dialerError.message : 'Unknown error'
+          success: false,
+          bid: 0.00,
+          error: 'Dialer connection failed',
+          message: 'Failed to forward lead to internal dialer',
+          details: {
+            error: dialerError instanceof Error ? dialerError.message : 'Unknown error',
+            dialer_type: 'internal',
+            forwarded: false
           }
-        });
+        }, { status: 500 });
       }
     }
     
