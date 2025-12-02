@@ -149,6 +149,11 @@ const navigationItems = [
         href: "/dashboard/revenue-tracking",
         icon: BarChart3,
       },
+      {
+        title: "Cohort Revenue",
+        href: "/cohort-revenue",
+        icon: DollarSign,
+      },
     ],
   },
   {
