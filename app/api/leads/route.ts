@@ -1041,9 +1041,9 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
       dialerType = DIALER_TYPE_PITCH_BPO;
     } else {
       // Only use weighted/normal routing for non-exclusive states
-      try {
-        if (routingData?.weighted_routing_enabled) {
-          const supabase = createServerClient();
+    try {
+      if (routingData?.weighted_routing_enabled) {
+        const supabase = createServerClient();
           
           // Get weights for this list ID
           const { data: weights, error: weightErr } = await supabase
@@ -1066,14 +1066,14 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
                 break;
               }
             }
-          } else if (weightErr) {
+        } else if (weightErr) {
             console.warn('[WEIGHTED_ROUTING] Fallback to routing dialer due to weight query error:', weightErr);
           } else {
             console.warn('[WEIGHTED_ROUTING] No weights found for list_id:', listId);
-          }
         }
-      } catch (weightedSelectionErr) {
-        console.warn('[WEIGHTED_ROUTING] Exception selecting weighted dialer; using routing default:', weightedSelectionErr);
+      }
+    } catch (weightedSelectionErr) {
+      console.warn('[WEIGHTED_ROUTING] Exception selecting weighted dialer; using routing default:', weightedSelectionErr);
       }
     }
     console.log(`Using dialer type: ${dialerType === DIALER_TYPE_INTERNAL ? 'Internal Dialer' : dialerType === DIALER_TYPE_PITCH_BPO ? 'Pitch BPO' : dialerType === DIALER_TYPE_CONVOSO ? 'Convoso (IBP BPO)' : 'Unknown'}`);

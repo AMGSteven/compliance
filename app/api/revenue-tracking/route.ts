@@ -393,7 +393,7 @@ export async function GET(request: NextRequest) {
           });
 
           const dialerGroups: Record<number, { lead_count: number; transfer_count: number; policy_count: number }> = {};
-          
+
           if (dialerPivotError) {
             console.error(`❌ Dialer pivot error for ${routing.list_id}:`, dialerPivotError);
             // Fallback: Create a default group with the unified totals
@@ -405,14 +405,14 @@ export async function GET(request: NextRequest) {
           } else {
             // Filter results for this specific list_id and build dialer groups
             let foundDialerData = false;
-            for (const row of (dialerPivot || [])) {
+          for (const row of (dialerPivot || [])) {
               if (row.list_id === routing.list_id) {
                 const d = row.dialer_type ?? 0;
-                dialerGroups[d] = {
+            dialerGroups[d] = {
                   lead_count: Number(row.total_leads) || 0,
-                  transfer_count: Number(row.transfer_count) || 0,
-                  policy_count: Number(row.policy_count) || 0,
-                };
+              transfer_count: Number(row.transfer_count) || 0,
+              policy_count: Number(row.policy_count) || 0,
+            };
                 foundDialerData = true;
               }
             }
