@@ -1076,6 +1076,13 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
       console.warn('[WEIGHTED_ROUTING] Exception selecting weighted dialer; using routing default:', weightedSelectionErr);
       }
     }
+    
+    // CRITICAL: TX leads MUST go to Pitch BPO only - override if weighted routing selected Internal
+    if (normalizedState === 'TX' && dialerType === DIALER_TYPE_INTERNAL) {
+      console.log(`[TX OVERRIDE] TX lead was assigned to Internal Dialer, but TX is Pitch BPO ONLY - forcing to Pitch BPO`);
+      dialerType = DIALER_TYPE_PITCH_BPO;
+    }
+    
     console.log(`Using dialer type: ${dialerType === DIALER_TYPE_INTERNAL ? 'Internal Dialer' : dialerType === DIALER_TYPE_PITCH_BPO ? 'Pitch BPO' : dialerType === DIALER_TYPE_CONVOSO ? 'Convoso (IBP BPO)' : 'Unknown'}`);
 
     // STEP 1: Validate state based on dialer type (existing validation)
@@ -1085,6 +1092,16 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     
     if (!allowedStates.includes(normalizedState)) {
       console.log(`[STATE VALIDATION - DIALER] Rejecting lead with non-allowed state: ${state} for ${dialerName}`);
+      
+      // CRITICAL: Delete lead from database since we're rejecting it
+      try {
+        const supabase = createServerClient();
+        await supabase.from('leads').delete().eq('id', leadData[0].id);
+        console.log(`🗑️ Deleted rejected lead ${leadData[0].id} - state ${state} not allowed for ${dialerName}`);
+      } catch (delErr) {
+        console.error('Failed to delete rejected lead:', delErr);
+      }
+      
       return NextResponse.json(
         {
           success: false,
@@ -1111,6 +1128,16 @@ async function handleStandardLead(body: any, request: Request, isTestModeForPhon
     if (!isVerticalStateAllowed) {
       const verticalAllowedStates = await getAllowedStatesForVertical(vertical);
       console.log(`[STATE VALIDATION - VERTICAL] Rejecting lead: state ${state} not approved for ${vertical} vertical`);
+      
+      // CRITICAL: Delete lead from database since we're rejecting it
+      try {
+        const supabase = createServerClient();
+        await supabase.from('leads').delete().eq('id', leadData[0].id);
+        console.log(`🗑️ Deleted rejected lead ${leadData[0].id} - state ${state} not approved for ${vertical} vertical`);
+      } catch (delErr) {
+        console.error('Failed to delete rejected lead:', delErr);
+      }
+      
       return NextResponse.json(
         {
           success: false,

@@ -213,6 +213,9 @@ export default function RevenueTrackingPage() {
   // NEW: Dialer-specific analytics state (default OFF per product decision)
   const [groupByDialer, setGroupByDialer] = useState<boolean>(false);
   
+  // NEW: Dialer type filter - filters ALL data by dialer type
+  const [selectedDialerType, setSelectedDialerType] = useState<number | null>(null);
+  
   // NEW: Vertical filtering state
   const [selectedVertical, setSelectedVertical] = useState<string | null>(null);
   const [availableVerticals, setAvailableVerticals] = useState<string[]>([]);
@@ -374,7 +377,7 @@ export default function RevenueTrackingPage() {
 
   useEffect(() => {
     refreshData();
-  }, [temporalViewMode, generationDateRange, processingDateRange, timeFrame, enableLeadDateFilter, leadGenerationDateRange, selectedVertical]);
+  }, [temporalViewMode, generationDateRange, processingDateRange, timeFrame, enableLeadDateFilter, leadGenerationDateRange, selectedVertical, selectedDialerType]);
 
   // ✅ FORCE fetchPitchPerfectCosts to run on mount and data changes
   useEffect(() => {
@@ -430,6 +433,12 @@ export default function RevenueTrackingPage() {
       if (selectedVertical) {
         apiParams.append('vertical', selectedVertical);
         console.log(`🎯 Vertical filter: ${selectedVertical}`);
+      }
+      
+      // NEW: Add dialer type filter parameter
+      if (selectedDialerType !== null) {
+        apiParams.append('dialer_type', selectedDialerType.toString());
+        console.log(`📞 Dialer type filter: ${selectedDialerType === 1 ? 'Internal Dialer' : selectedDialerType === 2 ? 'Pitch BPO' : 'Unknown'}`);
       }
           
       // NEW: Add dialer grouping parameter
@@ -806,6 +815,11 @@ export default function RevenueTrackingPage() {
         subidParams.append('vertical', selectedVertical);
       }
       
+      // NEW: Add dialer type filter parameter
+      if (selectedDialerType !== null) {
+        subidParams.append('dialer_type', selectedDialerType.toString());
+      }
+      
       const apiUrl = `/api/revenue-tracking/subids?${subidParams.toString()}`;
       
       console.log(`✅ FIXED: Fetching SUBID data for list_id: ${listId}, dateRange: ${startDate.format('YYYY-MM-DD')} to ${endDate.format('YYYY-MM-DD')} (matches main API)${groupByDialer ? ' with dialer grouping' : ''}`);
@@ -1044,14 +1058,14 @@ export default function RevenueTrackingPage() {
     fetchPitchPerfectCosts();
     fetchBlandAICosts();
     fetchTrackdriveCosts();
-  }, [timeFrame, generationDateRange, processingDateRange, selectedVertical]);
+  }, [timeFrame, generationDateRange, processingDateRange, selectedVertical, selectedDialerType]);
 
   // ✅ CLEAR SUBID CACHE when dates change to ensure fresh data with correct date ranges
   useEffect(() => {
     console.log('🗑️ Clearing SUBID cache due to date/temporal mode change...');
     setSubidData({});
     setExpandedRowKeys([]);
-  }, [temporalViewMode, generationDateRange, processingDateRange, timeFrame, enableLeadDateFilter, leadGenerationDateRange, selectedVertical]);
+  }, [temporalViewMode, generationDateRange, processingDateRange, timeFrame, enableLeadDateFilter, leadGenerationDateRange, selectedVertical, selectedDialerType]);
 
   // NEW: Refresh data when dialer grouping changes
   useEffect(() => {
@@ -1571,23 +1585,38 @@ export default function RevenueTrackingPage() {
           )}
           
           {/* NEW: Vertical Filter */}
-          <Col span={temporalViewMode === 'processing' ? 3 : 4}>
+          <Col span={temporalViewMode === 'processing' ? 2 : 3}>
             <Space direction="vertical" style={{ width: '100%' }}>
-              <Text strong>🎯 Vertical Filter</Text>
+              <Text strong>🎯 Vertical</Text>
               <Select 
                 value={selectedVertical} 
                 onChange={(value) => setSelectedVertical(value)}
                 style={{ width: '100%' }}
-                placeholder="All Verticals"
+                placeholder="All"
                 allowClear
               >
                 {availableVerticals.map(vertical => (
                   <Option key={vertical} value={vertical}>{vertical}</Option>
                 ))}
               </Select>
-              <Text type="secondary" style={{ fontSize: '11px' }}>
-                Filter by vertical
-              </Text>
+            </Space>
+          </Col>
+          
+          {/* NEW: Dialer Type Filter */}
+          <Col span={temporalViewMode === 'processing' ? 2 : 3}>
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Text strong>📞 Dialer</Text>
+              <Select 
+                value={selectedDialerType} 
+                onChange={(value) => setSelectedDialerType(value)}
+                style={{ width: '100%' }}
+                placeholder="All Dialers"
+                allowClear
+              >
+                <Option value={1}>Internal Dialer</Option>
+                <Option value={2}>Pitch BPO</Option>
+                <Option value={0}>Unassigned</Option>
+              </Select>
             </Space>
           </Col>
           

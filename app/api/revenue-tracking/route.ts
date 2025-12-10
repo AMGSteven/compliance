@@ -58,6 +58,10 @@ export async function GET(request: NextRequest) {
     // NEW: Vertical filtering parameter
     const vertical = url.searchParams.get('vertical');
     
+    // NEW: Dialer type filter - filters ALL data by assigned_dialer_type
+    const dialerTypeParam = url.searchParams.get('dialer_type');
+    const dialerType = dialerTypeParam !== null ? parseInt(dialerTypeParam) : null;
+    
     // Cross-temporal filtering parameters
     const leadStartDate = url.searchParams.get('leadStartDate');
     const leadEndDate = url.searchParams.get('leadEndDate'); 
@@ -73,7 +77,8 @@ export async function GET(request: NextRequest) {
       useProcessingDate, 
       isDualDateFiltering,
       groupByDialer,
-      vertical
+      vertical,
+      dialerType
     });
     
     // Handle date defaults
@@ -298,21 +303,62 @@ export async function GET(request: NextRequest) {
           // NEW: Use different query approach based on groupByDialer flag
           // SCALABLE: Use identical logic for both modes, just add dialer grouping for dialer mode
           
-          // STEP 1: Get lead counts using same unified function (IDENTICAL LOGIC)
-          const { data: unifiedResults, error: unifiedError } = await supabase.rpc('get_lead_counts_unified', {
-            p_list_id: routing.list_id,
-            p_start_date: startDate,
-            p_end_date: endDate,
-            p_use_policy_date: false, // Normal mode: use created_at for lead counting
-            p_policy_status: null, // Get all policies
-            p_transfer_status: null, // Get all transfers
-            p_status: null, // Use default status filtering (new/success)
-            p_search: null,
-            p_weekend_only: false,
-            p_page: 1,
-            p_page_size: 1, // We only need the count, not the data
-            p_vertical: vertical // NEW: Vertical filtering
-          });
+          // STEP 1: Get lead counts - use direct query when dialer filter is active
+          let unifiedResults: any[] | null = null;
+          let unifiedError: any = null;
+          
+          if (dialerType !== null) {
+            // Direct query with dialer type filter
+            const startDateUTC = `${startDate}T04:00:00.000Z`;
+            const nextDayForLeads = new Date(endDate);
+            nextDayForLeads.setDate(nextDayForLeads.getDate() + 1);
+            const endDateUTC = `${nextDayForLeads.toISOString().split('T')[0]}T03:59:59.999Z`;
+            
+            let leadQuery = supabase
+              .from('leads')
+              .select('id, created_at', { count: 'exact' })
+              .eq('list_id', routing.list_id)
+              .in('status', ['new', 'success'])
+              .gte('created_at', startDateUTC)
+              .lte('created_at', endDateUTC)
+              .eq('assigned_dialer_type', dialerType);
+            
+            if (vertical) {
+              leadQuery = leadQuery.eq('vertical', vertical);
+            }
+            
+            const { count: totalCount, error: countError } = await leadQuery;
+            
+            if (countError) {
+              unifiedError = countError;
+            } else {
+              // Estimate weekend/weekday split (will be less accurate but functional)
+              const weekendRatio = 2/7; // Approximately 2 days out of 7 are weekends
+              unifiedResults = [{
+                total_count: totalCount || 0,
+                weekend_count: Math.round((totalCount || 0) * weekendRatio),
+                weekday_count: Math.round((totalCount || 0) * (1 - weekendRatio))
+              }];
+            }
+          } else {
+            // Use RPC function when no dialer filter (original logic)
+            const rpcResult = await supabase.rpc('get_lead_counts_unified', {
+              p_list_id: routing.list_id,
+              p_start_date: startDate,
+              p_end_date: endDate,
+              p_use_policy_date: false,
+              p_policy_status: null,
+              p_transfer_status: null,
+              p_status: null,
+              p_search: null,
+              p_weekend_only: false,
+              p_page: 1,
+              p_page_size: 1,
+              p_vertical: vertical
+            });
+            unifiedResults = rpcResult.data;
+            unifiedError = rpcResult.error;
+          }
           
           if (unifiedError) {
             console.error(`❌ Unified query error for ${routing.list_id}:`, unifiedError);
@@ -331,23 +377,52 @@ export async function GET(request: NextRequest) {
           
           // STEP 2: Get policy counts for policies ISSUED in date range (IDENTICAL LOGIC)
           let policyCount = 0;
-          const { data: policyResults, error: policyError } = await supabase.rpc('get_lead_counts_unified', {
-            p_list_id: routing.list_id,
-            p_start_date: startDate,
-            p_end_date: endDate,
-            p_use_policy_date: true, // ✅ Use policy_date to get policies issued in date range
-            p_policy_status: 'issued',
-            p_transfer_status: null,
-            p_status: null,
-            p_search: null,
-            p_weekend_only: false,
-            p_page: 1,
-            p_page_size: 1,
-            p_vertical: vertical // NEW: Vertical filtering
-          });
           
-          if (!policyError && policyResults && policyResults.length > 0) {
-            policyCount = parseInt(policyResults[0].total_count) || 0;
+          if (dialerType !== null) {
+            // Direct query with dialer type filter for policies
+            const policyStartUTC = `${startDate}T04:00:00.000Z`;
+            const nextDayForPolicy = new Date(endDate);
+            nextDayForPolicy.setDate(nextDayForPolicy.getDate() + 1);
+            const policyEndUTC = `${nextDayForPolicy.toISOString().split('T')[0]}T03:59:59.999Z`;
+            
+            let policyQuery = supabase
+              .from('leads')
+              .select('id', { count: 'exact', head: true })
+              .eq('list_id', routing.list_id)
+              .eq('policy_status', 'issued')
+              .gte('policy_postback_date', policyStartUTC)
+              .lte('policy_postback_date', policyEndUTC)
+              .eq('assigned_dialer_type', dialerType);
+            
+            if (vertical) {
+              policyQuery = policyQuery.eq('vertical', vertical);
+            }
+            
+            const { count: policyDbCount, error: policyCountError } = await policyQuery;
+            
+            if (!policyCountError && policyDbCount !== null) {
+              policyCount = policyDbCount;
+            }
+          } else {
+            // Use RPC function when no dialer filter (original logic)
+            const { data: policyResults, error: policyError } = await supabase.rpc('get_lead_counts_unified', {
+              p_list_id: routing.list_id,
+              p_start_date: startDate,
+              p_end_date: endDate,
+              p_use_policy_date: true,
+              p_policy_status: 'issued',
+              p_transfer_status: null,
+              p_status: null,
+              p_search: null,
+              p_weekend_only: false,
+              p_page: 1,
+              p_page_size: 1,
+              p_vertical: vertical
+            });
+            
+            if (!policyError && policyResults && policyResults.length > 0) {
+              policyCount = parseInt(policyResults[0].total_count) || 0;
+            }
           }
           
           // STEP 3: Get transfer counts for transfers COMPLETED in date range (IDENTICAL LOGIC)
@@ -361,7 +436,7 @@ export async function GET(request: NextRequest) {
           const nextDayStr = nextDay.toISOString().split('T')[0];
           const endDateUTC = `${nextDayStr}T03:59:59.999Z`;   // EDT 11:59pm = UTC 3:59am next day
           
-          const { data: transferData, error: transferError, count: transferDbCount } = await supabase
+          let transferQuery = supabase
             .from('leads')
             .select('id', { count: 'exact', head: true })
             .eq('list_id', routing.list_id)
@@ -369,6 +444,13 @@ export async function GET(request: NextRequest) {
             .not('transferred_at', 'is', null) // Must have transfer date
             .gte('transferred_at', startDateUTC) // UTC timezone start
             .lte('transferred_at', endDateUTC); // UTC timezone end
+          
+          // NEW: Filter by dialer type if specified
+          if (dialerType !== null) {
+            transferQuery = transferQuery.eq('assigned_dialer_type', dialerType);
+          }
+          
+          const { data: transferData, error: transferError, count: transferDbCount } = await transferQuery;
           
           if (!transferError && transferDbCount !== null) {
             transferCount = transferDbCount;
@@ -386,11 +468,29 @@ export async function GET(request: NextRequest) {
           const policyRate = totalLeads > 0 ? (policyCount / totalLeads) * 100 : 0;
 
           // STEP 4: Build dialer breakdown via unified SQL pivot (consistent windows)
-          const { data: dialerPivot, error: dialerPivotError } = await supabase.rpc('get_unified_dialer_pivot', {
-            p_start_date: startDate,
-            p_end_date: endDate,
-            p_vertical: vertical // NEW: Vertical filtering
-          });
+          // Skip pivot when filtering by specific dialer (we already have the filtered data)
+          let dialerPivot: any[] | null = null;
+          let dialerPivotError: any = null;
+          
+          if (dialerType === null) {
+            // Only call pivot function when not filtering by dialer
+            const pivotResult = await supabase.rpc('get_unified_dialer_pivot', {
+              p_start_date: startDate,
+              p_end_date: endDate,
+              p_vertical: vertical
+            });
+            dialerPivot = pivotResult.data;
+            dialerPivotError = pivotResult.error;
+          } else {
+            // When filtering by dialer, create a single-dialer pivot from the counts we already have
+            dialerPivot = [{
+              list_id: routing.list_id,
+              dialer_type: dialerType,
+              total_leads: totalLeads,
+              transfer_count: transferCount,
+              policy_count: policyCount
+            }];
+          }
 
           const dialerGroups: Record<number, { lead_count: number; transfer_count: number; policy_count: number }> = {};
 

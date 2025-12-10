@@ -38,6 +38,10 @@ export async function GET(request: NextRequest) {
     // NEW: Vertical filtering parameter
     const vertical = url.searchParams.get('vertical');
     
+    // NEW: Dialer type filter
+    const dialerTypeParam = url.searchParams.get('dialer_type');
+    const dialerType = dialerTypeParam !== null ? parseInt(dialerTypeParam) : null;
+    
     if (!listId) {
       return NextResponse.json({
         success: false,
@@ -68,13 +72,20 @@ export async function GET(request: NextRequest) {
     
     // ✅ FIXED: LEAD-FIRST APPROACH (matches main revenue API)
     // Get total lead count first (like main API does)
-    const { count: totalLeadCount, error: countError } = await supabase
+    let countQuery = supabase
       .from('leads')
       .select('*', { count: 'exact', head: true })
       .eq('list_id', listId)
       .in('status', ['new', 'success']) // Include both new (modern) and success (legacy) leads
       .gte('created_at', startDateUTC)
       .lte('created_at', endDateUTC);
+    
+    // NEW: Filter by dialer type if specified
+    if (dialerType !== null) {
+      countQuery = countQuery.eq('assigned_dialer_type', dialerType);
+    }
+    
+    const { count: totalLeadCount, error: countError } = await countQuery;
       
     if (countError) {
       console.error('Error getting total lead count:', countError);
@@ -95,7 +106,7 @@ export async function GET(request: NextRequest) {
     
     // ✅ FIXED: Fetch ALL leads created in date range (same as main API)
     for (let page = 0; page < totalPages; page++) {
-      const { data: pageLeads, error: pageError } = await supabase
+      let pageQuery = supabase
         .from('leads')
         .select('id, custom_fields, created_at, policy_status, policy_postback_date, transfer_status, transferred_at')
         .eq('list_id', listId)
@@ -104,6 +115,13 @@ export async function GET(request: NextRequest) {
         .lte('created_at', endDateUTC)
         .order('created_at', { ascending: false})
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      
+      // NEW: Filter by dialer type if specified
+      if (dialerType !== null) {
+        pageQuery = pageQuery.eq('assigned_dialer_type', dialerType);
+      }
+      
+      const { data: pageLeads, error: pageError } = await pageQuery;
         
       if (pageError) {
         console.error(`Error fetching leads page ${page}:`, pageError);

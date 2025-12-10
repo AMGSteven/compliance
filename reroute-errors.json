@@ -1,0 +1,770 @@
+[
+  {
+    "lead_id": "901e3e32-90fa-4a6b-a7a4-e39c1aba2418",
+    "phone": "0969601883",
+    "state": "GA",
+    "dialer_type": "Internal Dialer",
+    "error": "Dialer rejected: 400 - {\"error\":\"INVALID_PHONE\",\"message\":\"Invalid phone number: area code cannot start with 0\",\"list_id\":\"cd86b81c-1c76-4639-b287-d482bb215dfe\",\"list_name\":\"Ifficent Off Hours\",\"organization_id\":\"15d30f02-3f66-4b1f-a2d0-f3da96663ffd\",\"summary\":{\"total_submitted\":1,\"total_rejected\":1,\"rejection_breakdown\":{\"invalid_phones\":1,\"dnc_violations\":0,\"campaign_duplicates\":0}},\"rejected_leads\":[{\"phone\":\"+10969601883\",\"normalized_phone\":null,\"reason\":\"INVALID_PHONE\",\"message\":\"Invalid phone number: area code cannot start with 0\",\"details\":{\"originalPhone\":\"+10969601883\",\"reason\":\"Invalid phone number: area code cannot start with 0\"},\"original_lead\":null}],\"request_id\":\"lead-postback-1764737481672-6ugd3ta\"}",
+    "timestamp": "2025-12-03T04:51:21.708Z"
+  },
+  {
+    "lead_id": "a809d0b7-5af8-4856-b6ee-9720cc1fd0ef",
+    "phone": "1718953257",
+    "state": "GA",
+    "dialer_type": "Internal Dialer",
+    "error": "Dialer rejected: 400 - {\"error\":\"INVALID_PHONE\",\"message\":\"Invalid phone number: area code cannot start with 1\",\"list_id\":\"ecd78ed5-886d-4b93-aa0e-963d18b692a0\",\"list_name\":\"ACA - What If Off Hour\",\"organization_id\":\"15d30f02-3f66-4b1f-a2d0-f3da96663ffd\",\"summary\":{\"total_submitted\":1,\"total_rejected\":1,\"rejection_breakdown\":{\"invalid_phones\":1,\"dnc_violations\":0,\"campaign_duplicates\":0}},\"rejected_leads\":[{\"phone\":\"+11718953257\",\"normalized_phone\":null,\"reason\":\"INVALID_PHONE\",\"message\":\"Invalid phone number: area code cannot start with 1\",\"details\":{\"originalPhone\":\"+11718953257\",\"reason\":\"Invalid phone number: area code cannot start with 1\"},\"original_lead\":null}],\"request_id\":\"lead-postback-1764737582395-drkq6lx\"}",
+    "timestamp": "2025-12-03T04:53:02.476Z"
+  },
+  {
+    "lead_id": "f699ab08-a997-432d-aa76-a6ab5b759964",
+    "phone": "1785418196",
+    "state": "KS",
+    "dialer_type": "Internal Dialer",
+    "error": "Dialer rejected: 400 - {\"error\":\"INVALID_PHONE\",\"message\":\"Invalid phone number: area code cannot start with 1\",\"list_id\":\"cd86b81c-1c76-4639-b287-d482bb215dfe\",\"list_name\":\"Ifficent Off Hours\",\"organization_id\":\"15d30f02-3f66-4b1f-a2d0-f3da96663ffd\",\"summary\":{\"total_submitted\":1,\"total_rejected\":1,\"rejection_breakdown\":{\"invalid_phones\":1,\"dnc_violations\":0,\"campaign_duplicates\":0}},\"rejected_leads\":[{\"phone\":\"+11785418196\",\"normalized_phone\":null,\"reason\":\"INVALID_PHONE\",\"message\":\"Invalid phone number: area code cannot start with 1\",\"details\":{\"originalPhone\":\"+11785418196\",\"reason\":\"Invalid phone number: area code cannot start with 1\"},\"original_lead\":null}],\"request_id\":\"lead-postback-1764737614477-0hd8lw7\"}",
+    "timestamp": "2025-12-03T04:53:34.606Z"
+  },
+  {
+    "lead_id": "6254be35-5d97-406b-88bf-bdd435de1217",
+    "phone": "8324694806",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:17.407Z"
+  },
+  {
+    "lead_id": "6e3f86f8-7c53-4b9d-8a2e-991d845e4fa4",
+    "phone": "9035016072",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:17.915Z"
+  },
+  {
+    "lead_id": "a19121fb-afca-4761-9b0a-657f39886877",
+    "phone": "8062001384",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:17.917Z"
+  },
+  {
+    "lead_id": "2f2199a8-2b04-4a78-9ff2-85befb3555e4",
+    "phone": "5807407729",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:18.775Z"
+  },
+  {
+    "lead_id": "b3c675cd-b482-428e-b58d-9e7fa582ddeb",
+    "phone": "5752956553",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:18.833Z"
+  },
+  {
+    "lead_id": "a647d526-aa26-497d-869a-ce0a08de4b95",
+    "phone": "3615790938",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:18.845Z"
+  },
+  {
+    "lead_id": "f08bd333-8954-4c89-8deb-51df7c9df0fd",
+    "phone": "2108500741",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:18.885Z"
+  },
+  {
+    "lead_id": "bde4a29b-0c0b-46e7-a4ef-959690df0b39",
+    "phone": "2298090926",
+    "state": "GA",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:19.172Z"
+  },
+  {
+    "lead_id": "9cbd2264-8b4f-4df8-af5b-8b10c45a38de",
+    "phone": "9727233386",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:19.204Z"
+  },
+  {
+    "lead_id": "481b41e6-a52b-43fe-9946-ba12ff00cac8",
+    "phone": "8328451459",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:19.767Z"
+  },
+  {
+    "lead_id": "260804a8-9c4f-4cf5-bc72-2396f30ec781",
+    "phone": "2149005825",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:19.786Z"
+  },
+  {
+    "lead_id": "6a565bd9-7a33-438f-9078-1984d3e80270",
+    "phone": "4697330793",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:19.829Z"
+  },
+  {
+    "lead_id": "b274ea2b-d426-405d-9b3d-c6ededff10cb",
+    "phone": "9037528819",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:19.941Z"
+  },
+  {
+    "lead_id": "3c469a4c-437e-4898-a688-c379ee79e768",
+    "phone": "4043543145",
+    "state": "GA",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:20.148Z"
+  },
+  {
+    "lead_id": "491007ac-43e2-4522-a9c1-d0d80d23a0ce",
+    "phone": "6087321485",
+    "state": "GA",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:20.150Z"
+  },
+  {
+    "lead_id": "42d3b1fe-6882-476b-8696-ecd14d77c5f8",
+    "phone": "7372983133",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:20.800Z"
+  },
+  {
+    "lead_id": "632ccda3-136c-4414-a125-4af1fbb9f7fa",
+    "phone": "4782325721",
+    "state": "GA",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:20.801Z"
+  },
+  {
+    "lead_id": "6ea9f020-c1a5-4c97-a106-c2800efdbc52",
+    "phone": "4235802463",
+    "state": "GA",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:20.833Z"
+  },
+  {
+    "lead_id": "0d2534d1-b485-424f-8ff2-b3308f60a7fa",
+    "phone": "6783083234",
+    "state": "GA",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:21.076Z"
+  },
+  {
+    "lead_id": "b28c72cc-b97a-4ff3-a29d-bb43b3808b0d",
+    "phone": "9729924592",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:21.828Z"
+  },
+  {
+    "lead_id": "b6101d89-bc36-4014-a9c1-fefdb9d80dac",
+    "phone": "2543698690",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:22.184Z"
+  },
+  {
+    "lead_id": "5a77f757-899e-4367-8703-632b1f0af9f6",
+    "phone": "3464305900",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:22.807Z"
+  },
+  {
+    "lead_id": "8943c16d-6953-489d-967e-109b8ec33189",
+    "phone": "4328899077",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:22.809Z"
+  },
+  {
+    "lead_id": "00fa603e-3a51-4203-b214-43e442cc5d3a",
+    "phone": "2544264604",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:22.812Z"
+  },
+  {
+    "lead_id": "88c3939d-3044-4ead-8dd7-8a30831c63bb",
+    "phone": "9564163618",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:22.814Z"
+  },
+  {
+    "lead_id": "d16a1ab6-6bde-485d-a0e7-954dc49bf2e5",
+    "phone": "8328869453",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:22.830Z"
+  },
+  {
+    "lead_id": "d64a68af-c22a-4f86-bd72-9da504f213ca",
+    "phone": "9362224096",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:22.831Z"
+  },
+  {
+    "lead_id": "d9af6e2b-c9e0-495c-936a-677c9fda2d04",
+    "phone": "8177224750",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:22.853Z"
+  },
+  {
+    "lead_id": "5ba341f5-2093-4ede-9883-1dbe0bc66780",
+    "phone": "9563126759",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:22.855Z"
+  },
+  {
+    "lead_id": "9f9c17c7-b749-49ca-8271-b9990bd0ec7e",
+    "phone": "9032098264",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:22.857Z"
+  },
+  {
+    "lead_id": "3ca4ebca-43e0-42b2-b2f2-d3f9776f1639",
+    "phone": "7542684683",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:23.174Z"
+  },
+  {
+    "lead_id": "1450b934-b9e9-4948-bbe9-2a5adf7a3834",
+    "phone": "4696714088",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:24.885Z"
+  },
+  {
+    "lead_id": "9e531b38-3dc0-497b-899c-7d5995f5ab39",
+    "phone": "8069392516",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:24.886Z"
+  },
+  {
+    "lead_id": "2c5887c4-91b8-4181-8d25-9dca3e53b525",
+    "phone": "2543024530",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:24.886Z"
+  },
+  {
+    "lead_id": "2f588e92-ddf0-437d-b91b-98eecb30f74d",
+    "phone": "9033636451",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:24.896Z"
+  },
+  {
+    "lead_id": "ec345875-0487-4d64-8435-4c211dd19f55",
+    "phone": "9566197242",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:24.896Z"
+  },
+  {
+    "lead_id": "071e3c7f-0f2d-4a2d-b41e-86b662de316f",
+    "phone": "8305077141",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:24.897Z"
+  },
+  {
+    "lead_id": "c1085a44-6251-4b01-b9d8-1a5a7ede8e5e",
+    "phone": "6236874955",
+    "state": "AZ",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:25.250Z"
+  },
+  {
+    "lead_id": "ef4364bd-32ce-4c7c-b98c-c611487aba89",
+    "phone": "2546406366",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:25.251Z"
+  },
+  {
+    "lead_id": "8f5ffa9f-8a89-44b1-9878-83404be5ec80",
+    "phone": "8326041824",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:25.589Z"
+  },
+  {
+    "lead_id": "43bd2f83-8e08-4c46-bbf7-6ba80febd433",
+    "phone": "8177978042",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:25.722Z"
+  },
+  {
+    "lead_id": "002f40fa-35cb-4f7e-8d99-d7890c241f5e",
+    "phone": "2144004179",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:25.756Z"
+  },
+  {
+    "lead_id": "0bb7048d-09ae-423d-86e4-4d688371117d",
+    "phone": "8063050499",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:26.666Z"
+  },
+  {
+    "lead_id": "67720709-a6de-416d-b78f-b66308b41a3f",
+    "phone": "2103896333",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:10:26.666Z"
+  },
+  {
+    "lead_id": "52dfbb90-55e0-43a5-9d78-f5b61326bde2",
+    "phone": "9725718850",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:30.068Z"
+  },
+  {
+    "lead_id": "3b4a9c2e-0f9b-4de4-8ce9-3e07c6a05183",
+    "phone": "2819094121",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:30.141Z"
+  },
+  {
+    "lead_id": "54316555-fb4f-47d2-8d47-0b857bccc52a",
+    "phone": "2109822943",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:30.401Z"
+  },
+  {
+    "lead_id": "ca17eae6-5a4a-4f2b-8d52-b764b4397594",
+    "phone": "2818080149",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:30.783Z"
+  },
+  {
+    "lead_id": "2f6712fa-497b-4fca-be39-34083a42c140",
+    "phone": "3255184669",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:30.784Z"
+  },
+  {
+    "lead_id": "7c48628d-3a4c-4572-b026-b34852f9fa80",
+    "phone": "3144955831",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:30.785Z"
+  },
+  {
+    "lead_id": "f16b60cd-deef-46a3-abe4-7cb75c45ed2f",
+    "phone": "4696724065",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:30.786Z"
+  },
+  {
+    "lead_id": "43d0e7b2-06d6-4fdd-b921-05f66a5c011c",
+    "phone": "4303020793",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:30.786Z"
+  },
+  {
+    "lead_id": "1fbcffdd-52ef-4dba-abef-d0898bc9c59d",
+    "phone": "2149948602",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:30.793Z"
+  },
+  {
+    "lead_id": "f265a165-6f09-4fca-a443-37337edc541c",
+    "phone": "2103130673",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:31.038Z"
+  },
+  {
+    "lead_id": "cb5e6153-2e06-402b-9756-9fd85f6871ae",
+    "phone": "2147212981",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:31.413Z"
+  },
+  {
+    "lead_id": "e4baaf4a-8c2e-4b19-8586-f7309272cf77",
+    "phone": "4302919745",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:31.419Z"
+  },
+  {
+    "lead_id": "e5a2ec54-7b56-48f3-b467-f91bc147aad6",
+    "phone": "2817997117",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:31.422Z"
+  },
+  {
+    "lead_id": "f36f3af3-80f3-4386-99f0-da9a9237ee2d",
+    "phone": "5122734826",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:31.442Z"
+  },
+  {
+    "lead_id": "4dce1c1a-c729-4d71-90d6-9e01200ef011",
+    "phone": "6823479775",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:31.647Z"
+  },
+  {
+    "lead_id": "e71431c8-5137-4e85-b4ec-065d8e12c91e",
+    "phone": "2148594862",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:31.937Z"
+  },
+  {
+    "lead_id": "d12847ee-2a56-4665-ab85-6a65c367b339",
+    "phone": "8327941796",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:32.367Z"
+  },
+  {
+    "lead_id": "fff120d3-2222-4e68-a03a-eab5b3fd22c5",
+    "phone": "8066728658",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:32.430Z"
+  },
+  {
+    "lead_id": "c8775d17-30be-4c3c-ab9d-4eaa6bfb787b",
+    "phone": "3463648893",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:32.432Z"
+  },
+  {
+    "lead_id": "a0aacb54-0e76-4c71-8d99-a251886f90cf",
+    "phone": "7146619841",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:32.447Z"
+  },
+  {
+    "lead_id": "43d40609-66fe-4e1f-8429-ac3a3706686b",
+    "phone": "4697505638",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:32.793Z"
+  },
+  {
+    "lead_id": "d92ee984-0861-43fe-95e8-c7878787195f",
+    "phone": "2149913826",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:32.794Z"
+  },
+  {
+    "lead_id": "b6340608-18d1-4173-8040-087fa28ae535",
+    "phone": "8325438160",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:33.429Z"
+  },
+  {
+    "lead_id": "224e3fe2-b512-44f6-98d9-68d3275f66e5",
+    "phone": "2106098019",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:33.430Z"
+  },
+  {
+    "lead_id": "e356baae-e817-4c58-a3e8-2e36005290f0",
+    "phone": "2142985069",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:33.439Z"
+  },
+  {
+    "lead_id": "79131bda-e330-467a-a2f7-f7f17b203c3e",
+    "phone": "6822886077",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:33.442Z"
+  },
+  {
+    "lead_id": "ee667c83-60b9-41e7-9ca3-08cc924525a4",
+    "phone": "8305707561",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:33.788Z"
+  },
+  {
+    "lead_id": "8cf66c7b-ab1b-4f7d-ad69-63c068709fa6",
+    "phone": "7062012231",
+    "state": "GA",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:33.799Z"
+  },
+  {
+    "lead_id": "a11702c1-56ca-4567-aa03-e8dbdaa36897",
+    "phone": "8322842154",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:34.435Z"
+  },
+  {
+    "lead_id": "c957b633-c86e-4288-b2b6-f5f716d17b54",
+    "phone": "8176555442",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:34.436Z"
+  },
+  {
+    "lead_id": "0b257b0a-9b99-4bb2-a5b0-09b784a2a321",
+    "phone": "4097979794",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:34.437Z"
+  },
+  {
+    "lead_id": "d9e9ad87-4399-46fb-9752-7cdbd6b2128b",
+    "phone": "8177349148",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:34.438Z"
+  },
+  {
+    "lead_id": "a47a8123-bcca-4d6d-8e1c-a83a0013fd68",
+    "phone": "2109128653",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:34.442Z"
+  },
+  {
+    "lead_id": "4b1d3ab2-55fa-40be-97e6-6854d2dfe546",
+    "phone": "3463066586",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:34.442Z"
+  },
+  {
+    "lead_id": "96c0060b-bad7-4119-8b7b-969c50c4d070",
+    "phone": "4782378980",
+    "state": "GA",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:34.444Z"
+  },
+  {
+    "lead_id": "3ebe1fc4-4228-47f7-8ad2-b7cead414ebd",
+    "phone": "9794227603",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:34.449Z"
+  },
+  {
+    "lead_id": "060bff7a-0b59-4e76-9827-7c1839cfdd30",
+    "phone": "8326337855",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:34.449Z"
+  },
+  {
+    "lead_id": "ab950564-b746-4947-852d-62b44167c847",
+    "phone": "8174558710",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:34.452Z"
+  },
+  {
+    "lead_id": "f1e4b0ee-60fe-4f68-93cc-b651c407cc31",
+    "phone": "8068378082",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:34.457Z"
+  },
+  {
+    "lead_id": "8b5780f6-29f0-4cd5-b040-caec8b18b445",
+    "phone": "5127707075",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:34.460Z"
+  },
+  {
+    "lead_id": "7e5c906e-a028-41ad-acba-e5c357970d5d",
+    "phone": "8324279724",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:34.801Z"
+  },
+  {
+    "lead_id": "d84ab862-4082-4f53-bff7-9cc38b559408",
+    "phone": "2813036668",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:35.160Z"
+  },
+  {
+    "lead_id": "af41b541-9d78-46be-9996-7a63d4006086",
+    "phone": "9453015106",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:36.426Z"
+  },
+  {
+    "lead_id": "03f7c046-557e-4067-9c07-fcc3b6e50407",
+    "phone": "7064951965",
+    "state": "GA",
+    "dialer_type": "Pitch BPO",
+    "error": "fetch failed",
+    "timestamp": "2025-12-03T05:11:36.427Z"
+  },
+  {
+    "lead_id": "b3c9c2a8-fbfb-4928-9994-c2f3a194e90f",
+    "phone": "9183538070",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "Pitch BPO error: 503 - The service is unavailable.",
+    "timestamp": "2025-12-03T05:11:48.193Z"
+  },
+  {
+    "lead_id": "37908f2c-fc14-4c18-b023-997031496fb6",
+    "phone": "2148531051",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "Pitch BPO error: 503 - The service is unavailable.",
+    "timestamp": "2025-12-03T05:11:48.197Z"
+  },
+  {
+    "lead_id": "a7e9ec55-a6dc-46e6-9846-d74a816ed766",
+    "phone": "8178802098",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "Pitch BPO error: 503 - The service is unavailable.",
+    "timestamp": "2025-12-03T05:11:48.198Z"
+  },
+  {
+    "lead_id": "988a607e-1d92-4523-af33-aa52d2b9ef71",
+    "phone": "8327857880",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "Pitch BPO error: 503 - The service is unavailable.",
+    "timestamp": "2025-12-03T05:11:49.049Z"
+  },
+  {
+    "lead_id": "bb103067-15af-4c2a-92c5-aa8e6cc7b2f6",
+    "phone": "9039443304",
+    "state": "TX",
+    "dialer_type": "Pitch BPO",
+    "error": "Pitch BPO error: 503 - The service is unavailable.",
+    "timestamp": "2025-12-03T05:11:49.050Z"
+  }
+]
