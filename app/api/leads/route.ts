@@ -412,6 +412,18 @@ async function forwardToConvoso(params: {
 
 export async function POST(request: Request) {
   try {
+    return NextResponse.json(
+      {
+        success: false,
+        bid: 0.0,
+        error: 'Lead ingest is currently paused. All new leads are being rejected.',
+        details: {
+          reason: 'LEAD_INGEST_PAUSED'
+        }
+      },
+      { status: 403 }
+    );
+
     // Parse the request body
     const body = await request.json();
     console.log('Received lead submission body:', JSON.stringify(body).slice(0, 500) + '...');
