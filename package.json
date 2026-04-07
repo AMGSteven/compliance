@@ -60,7 +60,7 @@
     "jspdf": "^3.0.1",
     "lucide-react": "^0.454.0",
     "nanoid": "latest",
-    "next": "^16.0.8",
+    "next": "16.0.10",
     "next-themes": "latest",
     "node-fetch": "^2.7.0",
     "react": "^19.2.1",
