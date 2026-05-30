@@ -8,6 +8,14 @@ export async function POST(request: NextRequest) {
   const supabase = createServerClient()
 
   try {
+    return NextResponse.json(
+      {
+        error: "Compliance checking is currently paused. All leads are being rejected as non-compliant.",
+        paused: true
+      },
+      { status: 403 }
+    );
+
     const body = (await request.json()) as BatchSuppressionCheckRequest
 
     // Validate request

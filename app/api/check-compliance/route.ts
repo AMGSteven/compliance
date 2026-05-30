@@ -19,6 +19,25 @@ const allowedOrigins = [
 export async function POST(request: Request) {
   console.log('Starting compliance check...');
   try {
+    return new NextResponse(
+      JSON.stringify({ 
+        isCompliant: false,
+        reason: 'Phone number is not compliant',
+        checks: {
+          tcpa: { isCompliant: false, reason: 'TCPA check failed' },
+          blacklist: { isCompliant: false, reason: 'Blacklist check failed' },
+          webrecon: { isCompliant: false, reason: 'Webrecon check failed' },
+          internalDNC: { isCompliant: false, reason: 'Internal DNC check failed' },
+          synergyDNC: { isCompliant: false, reason: 'Synergy DNC check failed' }
+        }
+      }),
+      {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
     // Get the origin from the request headers
     const headersList = await headers();
     const origin = headersList.get('origin') || '';

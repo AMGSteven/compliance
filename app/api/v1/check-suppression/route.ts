@@ -9,6 +9,14 @@ export async function POST(request: NextRequest) {
   const suppressionService = new SuppressionService()
 
   try {
+    return NextResponse.json(
+      {
+        error: "Compliance checking is currently paused. All leads are being rejected as non-compliant.",
+        paused: true
+      },
+      { status: 403 }
+    );
+
     // Validate API key if provided
     const apiKey = request.headers.get("Api-Key") || request.headers.get("Authorization")?.replace("Bearer ", "")
 

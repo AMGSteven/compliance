@@ -161,6 +161,15 @@ async function checkRecordCompliance(record: any): Promise<ComplianceResult> {
 
 export async function POST(request: NextRequest) {
   try {
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Compliance checking is currently paused. All leads are being rejected as non-compliant.',
+        paused: true
+      },
+      { status: 403 }
+    );
+
     const formData = await request.formData();
     const file = formData.get('file') as File;
     

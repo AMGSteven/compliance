@@ -5,6 +5,15 @@ import { validateApiKey } from "@/lib/middleware/api-key-middleware"
 
 export async function POST(request: NextRequest) {
   try {
+    return NextResponse.json(
+      {
+        compliant: false,
+        reasons: ["Compliance checking is currently paused. All leads are being rejected as non-compliant."],
+        paused: true
+      },
+      { status: 403 }
+    );
+
     // Validate API key
     const apiKeyValidation = await validateApiKey(request, ["tcpa:read", "tcpa:write"])
     if (!apiKeyValidation.valid) {

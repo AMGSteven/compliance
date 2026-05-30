@@ -4,6 +4,21 @@ import { validateApiKey } from "@/lib/middleware/api-key-middleware"
 
 export async function POST(request: NextRequest) {
   try {
+    return NextResponse.json(
+      { 
+        isCompliant: false,
+        reason: 'Phone number is not compliant',
+        checks: {
+          tcpa: { isCompliant: false, reason: 'TCPA check failed' },
+          blacklist: { isCompliant: false, reason: 'Blacklist check failed' },
+          webrecon: { isCompliant: false, reason: 'Webrecon check failed' },
+          internalDNC: { isCompliant: false, reason: 'Internal DNC check failed' },
+          synergyDNC: { isCompliant: false, reason: 'Synergy DNC check failed' }
+        }
+      },
+      { status: 200 }
+    );
+
     // Validate API key using the middleware
     const apiKeyValidation = await validateApiKey(request);
     
