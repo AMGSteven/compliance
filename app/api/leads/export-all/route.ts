@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
                 source,
                 vertical,
                 sub_id,
-                list_routings!inner (
+                list_routings!left (
                   partner_name,
                   description
                 )
