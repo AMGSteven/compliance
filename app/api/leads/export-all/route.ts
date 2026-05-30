@@ -32,9 +32,7 @@ export async function GET(request: NextRequest) {
       'traffic_source',
       'source',
       'vertical',
-      'sub_id',
-      'partner_name',
-      'list_description'
+      'sub_id'
     ];
     
     // Start CSV response with streaming
@@ -47,10 +45,10 @@ export async function GET(request: NextRequest) {
           
           let lastId = '';
           let exportedCount = 0;
-          const batchSize = 1000;
+          const batchSize = 5000;
           
           while (true) {
-            // Query leads with cursor-based pagination
+            // Query leads with cursor-based pagination (no JOIN for performance)
             let query = supabase
               .from('leads')
               .select(`
@@ -70,11 +68,7 @@ export async function GET(request: NextRequest) {
                 traffic_source,
                 source,
                 vertical,
-                sub_id,
-                list_routings!left (
-                  partner_name,
-                  description
-                )
+                sub_id
               `)
               .order('id', { ascending: true })
               .limit(batchSize);
@@ -113,9 +107,7 @@ export async function GET(request: NextRequest) {
                 escapeCSV(lead.traffic_source || ''),
                 escapeCSV(lead.source || ''),
                 escapeCSV(lead.vertical || ''),
-                escapeCSV(lead.sub_id || ''),
-                escapeCSV(lead.list_routings?.partner_name || ''),
-                escapeCSV(lead.list_routings?.description || '')
+                escapeCSV(lead.sub_id || '')
               ];
               
               controller.enqueue(encoder.encode(row.join(',') + '\n'));
