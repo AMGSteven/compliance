@@ -227,6 +227,16 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
   
   try {
+    return NextResponse.json(
+      {
+        success: false,
+        accepted: false,
+        error: 'Pre-ping validation is currently paused. All requests are being rejected.',
+        rejection_reasons: ['PRE_PING_PAUSED']
+      },
+      { status: 403 }
+    );
+
     // Parse request body
     const body: PrePingRequest = await request.json();
     
@@ -293,7 +303,17 @@ export async function GET(request: NextRequest) {
         }
       });
     }
-    
+
+    return NextResponse.json(
+      {
+        success: false,
+        accepted: false,
+        error: 'Pre-ping validation is currently paused. All requests are being rejected.',
+        rejection_reasons: ['PRE_PING_PAUSED']
+      },
+      { status: 403 }
+    );
+
     // Extract API key from Authorization header
     const authHeader = request.headers.get('authorization');
     const apiKey = authHeader?.replace('Bearer ', '') || null;
@@ -311,7 +331,7 @@ export async function GET(request: NextRequest) {
 
     // Create request body object from query parameters
     const body: PrePingRequest = {
-      phone,
+      phone: phone || '',
       state: state || undefined,
       email: email || undefined,
       firstName: firstName || undefined,
